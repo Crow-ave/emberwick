@@ -19,6 +19,13 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - Four languages: English, Türkçe, Français, Deutsch (menu in the top bar; add more in `public/i18n.js`)
 - A fixed supply of 25,000 EMWK. Money only moves between accounts and never appears from nowhere (checked by `npm test`)
 
+## Jobs and homes
+
+- Every morning the AI craftsmen who can afford it post an apprentice job on the notice board (at the market): a wage per shift and a length in days. The wage follows how rich the shop is.
+- One shift a day costs energy, pays the wage straight from the craftsman's wallet and adds a product to the shop's shelf.
+- If the shop is burned by the dragon or cannot pay, the contract ends and the player gets severance. If the craftsman cannot pay it, the village treasury does.
+- Three village-owned homes can be rented. The deposit is held, rent goes to the treasury every morning, and sleeping at home restores energy once a day. Missing rent uses the deposit and ends the lease.
+
 ## On NEAR
 
 EMWK is a real NEP-141 token on NEAR testnet, and the game ledger is mirrored onto it.
@@ -32,8 +39,6 @@ EMWK is a real NEP-141 token on NEAR testnet, and the game ledger is mirrored on
 
 ## Coming next
 
-- Apprentice job contracts with automatic wages and severance
-- Room and house rentals with deposits and automatic rent
 - Village council (DAO): proposals, votes and treasury spending
 - Items as NEP-245 tokens
 - Haggling with the AI craftsmen

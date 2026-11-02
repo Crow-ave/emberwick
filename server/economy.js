@@ -3,7 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
-import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS } from './world.js';
+import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -52,6 +52,7 @@ export function createState(seed = Date.now()) {
     state.balances['bot:' + id] = each;
   });
   for (const g of Object.keys(GOODS)) state.history[g] = [];
+  ensureContracts(state);
   addLog(state, 'The embers of Emberwick are lit again. Newcomers are welcome at the gate.', 'info', 'log.start');
   return state;
 }
@@ -259,6 +260,7 @@ export function playerAction(state, playerId, action) {
   const qty = Math.max(1, Math.min(50, parseInt(action.qty, 10) || 1));
 
   ensurePlayer(p);
+  ensureContracts(state);
   p.quest = p.quest || 0;
   actor.bonus = (skillLevel(p, 'trading') - 1) * RULES.tradeBonus;
   const res = doAction(state, p, actor, action, qty);
@@ -271,6 +273,8 @@ export function playerAction(state, playerId, action) {
 }
 
 function doAction(state, p, actor, action, qty) {
+  const c = contractAction(state, p, action);
+  if (c) return c;
   if (action.type === 'visit') {
     if (!BUILDINGS.some((b) => b.id === action.place)) return { ok: false, error: 'Unknown place.', code: 'err.unknownPlace' };
     p.stats.visited[action.place] = true;
@@ -367,6 +371,7 @@ function advanceQuest(state, p) {
 // ---------- the simulation tick ----------
 
 export function tick(state) {
+  ensureContracts(state);
   state.tick++;
   state.rev = (state.rev || 0) + 1;
   const newDay = state.tick % RULES.ticksPerDay === 0;
@@ -490,6 +495,8 @@ function recordHistory(state) {
 
 function startNewDay(state) {
   state.day++;
+  ensureContracts(state);
+  settleContracts(state);
   const ev = state.events;
   if (ev.drought > 0 && --ev.drought === 0) addLog(state, 'Rain returns to the fields. The drought is over.', 'good', 'log.rain');
 
@@ -532,6 +539,154 @@ function startNewDay(state) {
     ev.dragon--;
   }
   if (ev.attackDay !== null && state.day >= ev.attackDay) resolveAttack(state);
+  postJobOffers(state);
+}
+
+// ---------- jobs and homes ----------
+
+export function ensureContracts(state) {
+  if (!state.jobOffers) state.jobOffers = {};
+  if (!state.houses) state.houses = Object.fromEntries(Object.keys(HOUSES).map((id) => [id, { tenant: null, since: null }]));
+  if (state.balances.deposits === undefined) state.balances.deposits = 0;
+  if (!state.jobsPosted) { state.jobsPosted = true; postJobOffers(state); }
+}
+
+function wageFor(state, npc) {
+  const bal = balance(state, npcAcct(npc));
+  return Math.max(4, Math.round(JOBS.wageBase[npc] * Math.min(1.4, Math.max(0.7, bal / 500))));
+}
+
+function employs(state, npc) {
+  return Object.values(state.players).some((p) => p.job && p.job.npc === npc);
+}
+
+function postJobOffers(state) {
+  state.jobOffers = {};
+  for (const def of CRAFTSMEN) {
+    const n = state.npcs[def.id];
+    if (!JOBS.wageBase[def.id] || n.damagedUntil > state.day || employs(state, def.id)) continue;
+    const wage = wageFor(state, def.id);
+    if (balance(state, npcAcct(def.id)) < wage * JOBS.days + JOBS.reserve) continue;
+    state.jobOffers[def.id] = { npc: def.id, wage, days: JOBS.days, day: state.day };
+  }
+}
+
+function endJob(state, p, reason) {
+  const j = p.job;
+  if (!j) return;
+  let severance = 0;
+  if (reason === 'closed' || reason === 'broke') {
+    severance = r2(j.wage * JOBS.severanceDays);
+    // the employer pays; if they cannot, the village treasury steps in
+    const payer = balance(state, npcAcct(j.npc)) >= severance ? npcAcct(j.npc) : 'treasury';
+    transfer(state, payer, 'player:' + p.id, severance);
+    p.stats.earned = r2(p.stats.earned + severance);
+    addLog(state, `${p.name}'s job ended early. Severance paid: ${severance} EMWK.`, 'warn', 'log.severance', { name: p.name, n: severance, place: { $place: j.npc }, payer: payer === 'treasury' ? 'treasury' : 'npc' });
+  } else if (reason === 'done') {
+    addLog(state, `${p.name} finished an apprenticeship.`, 'good', 'log.jobDone', { name: p.name, place: { $place: j.npc }, n: j.shifts });
+  }
+  p.jobsDone = (p.jobsDone || 0) + (reason === 'quit' ? 0 : 1);
+  p.job = null;
+}
+
+function settleContracts(state) {
+  for (const p of Object.values(state.players)) {
+    if (p.job) {
+      const j = p.job, n = state.npcs[j.npc];
+      j.daysLeft--;
+      if (n.damagedUntil > state.day) endJob(state, p, 'closed');
+      else if (j.daysLeft <= 0) endJob(state, p, 'done');
+      else if (balance(state, npcAcct(j.npc)) < j.wage) endJob(state, p, 'broke');
+    }
+    if (p.home) {
+      const h = HOUSES[p.home];
+      if (!transfer(state, 'player:' + p.id, 'treasury', h.rent)) {
+        // cannot pay: the deposit covers the debt and the home is given back
+        transfer(state, 'deposits', 'treasury', h.deposit);
+        addLog(state, `${p.name} could not pay the rent and had to move out.`, 'warn', 'log.evicted', { name: p.name, place: { $place: p.home } });
+        state.houses[p.home] = { tenant: null, since: null };
+        p.home = null;
+      } else {
+        p.stats.spent = r2(p.stats.spent + h.rent);
+      }
+    }
+  }
+}
+
+function contractAction(state, p, action) {
+  const acct = 'player:' + p.id;
+  if (action.type === 'takeJob') {
+    const o = state.jobOffers[action.npc];
+    if (!o) return { ok: false, error: 'That job is no longer offered.', code: 'err.noJob' };
+    if (p.job) return { ok: false, error: 'You already have a job.', code: 'err.haveJob' };
+    p.job = { npc: o.npc, wage: o.wage, daysLeft: o.days, startDay: state.day, lastShift: null, shifts: 0 };
+    delete state.jobOffers[o.npc];
+    addLog(state, `${p.name} became an apprentice.`, 'join', 'log.hired', { name: p.name, place: { $place: o.npc }, n: o.wage });
+    return { ok: true, job: p.job };
+  }
+  if (action.type === 'shift') {
+    const j = p.job;
+    if (!j || (action.npc && action.npc !== j.npc)) return { ok: false, error: 'You do not work here.', code: 'err.noJobHere' };
+    if (j.lastShift === state.day) return { ok: false, error: 'You already worked today.', code: 'err.shiftDone' };
+    if (state.npcs[j.npc].damagedUntil > state.day) return { ok: false, error: 'This shop is closed.', code: 'err.closed' };
+    if (p.energy < JOBS.shiftEnergy) return { ok: false, error: 'You are too tired.', code: 'err.tired' };
+    if (!transfer(state, npcAcct(j.npc), acct, j.wage)) {
+      endJob(state, p, 'broke');
+      return { ok: false, error: 'The shopkeeper cannot pay. Your contract ended.', code: 'err.employerBroke' };
+    }
+    p.energy = r2(p.energy - JOBS.shiftEnergy);
+    j.lastShift = state.day;
+    j.shifts++;
+    p.stats.earned = r2(p.stats.earned + j.wage);
+    // your work turns into goods on the craftsman's shelf
+    const def = CRAFTSMEN.find((c) => c.id === j.npc);
+    let made = null;
+    if (def.recipe) {
+      made = Object.keys(def.recipe.out)[0];
+      const n = state.npcs[j.npc];
+      n.stock[made] = (n.stock[made] || 0) + 1;
+    }
+    const levelUp = gainXp(p, 'trading');
+    return { ok: true, wage: j.wage, made, levelUp };
+  }
+  if (action.type === 'quitJob') {
+    if (!p.job) return { ok: false, error: 'You have no job.', code: 'err.noJobHere' };
+    endJob(state, p, 'quit');
+    return { ok: true };
+  }
+  if (action.type === 'rentHouse') {
+    const h = HOUSES[action.house], st = state.houses[action.house];
+    if (!h) return { ok: false, error: 'Unknown place.', code: 'err.unknownPlace' };
+    if (p.home) return { ok: false, error: 'You already rent a home.', code: 'err.haveHome' };
+    if (st.tenant) return { ok: false, error: 'Someone already lives here.', code: 'err.houseTaken' };
+    if (balance(state, acct) + 1e-9 < h.deposit + h.rent) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+    transfer(state, acct, 'deposits', h.deposit);
+    transfer(state, acct, 'treasury', h.rent);
+    p.stats.spent = r2(p.stats.spent + h.rent);
+    p.home = action.house;
+    p.restedDay = null;
+    state.houses[action.house] = { tenant: p.id, since: state.day };
+    addLog(state, `${p.name} rented a home.`, 'join', 'log.rented', { name: p.name, place: { $place: action.house } });
+    return { ok: true, rent: h.rent, deposit: h.deposit };
+  }
+  if (action.type === 'leaveHouse') {
+    if (!p.home) return { ok: false, error: 'You do not rent a home.', code: 'err.noHome' };
+    const h = HOUSES[p.home];
+    transfer(state, 'deposits', acct, h.deposit);
+    state.houses[p.home] = { tenant: null, since: null };
+    p.home = null;
+    return { ok: true, deposit: h.deposit };
+  }
+  if (action.type === 'rest') {
+    if (!p.home) return { ok: false, error: 'You do not rent a home.', code: 'err.noHome' };
+    if (p.restedDay === state.day) return { ok: false, error: 'You already slept here today.', code: 'err.rested' };
+    const before = p.energy;
+    p.energy = Math.min(maxEnergy(p), r2(p.energy + HOUSES[p.home].rest));
+    if (p.energy <= before) return { ok: false, error: 'You are not tired.', code: 'err.notTired' };
+    p.restedDay = state.day;
+    return { ok: true, energy: r2(p.energy - before) };
+  }
+  return null;
 }
 
 function resolveAttack(state) {
@@ -570,6 +725,8 @@ function playerView(state, p) {
   const costs = Object.fromEntries(Object.keys(GATHER_SPOTS).map((k) => [k, energyCost(p, k)]));
   return {
     ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p),
+    job: p.job ? { ...p.job, shiftToday: p.job.lastShift === state.day, energy: JOBS.shiftEnergy } : null,
+    home: p.home ? { id: p.home, ...HOUSES[p.home], restedToday: p.restedDay === state.day } : null,
     skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,
   };
 }
@@ -606,5 +763,10 @@ export function publicView(state, playerId) {
     log: state.log.slice(0, 12),
     player: p ? playerView(state, p) : null,
     bots: Object.values(state.bots).map((b) => ({ id: b.id, name: b.name, path: b.path })),
+    jobOffers: Object.values(state.jobOffers || {}),
+    houses: Object.fromEntries(Object.entries(HOUSES).map(([id, h]) => {
+      const st = (state.houses || {})[id] || {};
+      return [id, { ...h, tenant: st.tenant ? (state.players[st.tenant] || {}).name || '?' : null, mine: !!(st.tenant && st.tenant === playerId) }];
+    })),
   };
 }

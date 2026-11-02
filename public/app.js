@@ -216,7 +216,7 @@ function goAndDo(placeId, verb, run) {
   status[placeId] = { key: 'status.walking', p: { place: { $place: placeId } } };
   renderPanel();
   walkYouTo(placeId, () => {
-    if (verb === 'gather' && you && !still) {
+    if ((verb === 'gather' || verb === 'shift') && you && !still) {
       status[placeId] = { key: 'status.working' };
       renderPanel();
       renderScene();
@@ -237,6 +237,15 @@ function goAndDo(placeId, verb, run) {
 let sceneKey = null;
 function openScene(id) { ui.scene = id; sceneKey = null; renderScene(); }
 function closeScene() { ui.scene = null; sceneKey = null; renderScene(); renderMapNow(); }
+
+// the info bar sits right under the scene, however tall the side panel gets
+function placeSceneBar() {
+  const sc = $('scene'), bar = $('scene-bar');
+  if (sc.hasAttribute('hidden')) return;
+  bar.style.top = sc.getBoundingClientRect().bottom - $('scene').closest('.stage').getBoundingClientRect().top + 10 + 'px';
+  bar.style.bottom = 'auto';
+}
+addEventListener('resize', placeSceneBar);
 
 function renderScene() {
   const sc = $('scene'), mini = $('mini'), bar = $('scene-bar');
@@ -265,6 +274,7 @@ function renderScene() {
   } else if (n) {
     bar.innerHTML = `<div class="info"><b>${esc(placeName(id))} · ${esc(npcName(id))}</b><span class="quote">"${esc(t('line.' + n.lineKey))}"</span><div class="muted" style="font-size:12px;margin-top:4px">${t('scene.tradeHint')}</div></div>`;
   }
+  placeSceneBar();
 }
 $('mini').addEventListener('click', () => closeScene());
 
@@ -280,6 +290,7 @@ function panelCraftsman(b) {
   let h = `<h2>${esc(npcName(b.id))}</h2><div class="muted">${esc(t('panel.purse', { place: placeName(b.id), n: n.wallet }))}</div>`;
   if (n.closed) h += `<p class="closed">${t('panel.closed')}</p>`;
   h += `<div class="quote">"${esc(t('line.' + n.lineKey))}"</div>`;
+  h += jobSection(b.id);
   if (chainOk()) h += `<p class="small">${exLink('address/' + view.chain.accounts.npcs[b.id], t('near.view') + ' · ' + esc(view.chain.accounts.npcs[b.id]))}</p>`;
   if (b.id === 'inn') {
     const full = me && me.energy >= me.maxEnergy;
@@ -336,7 +347,7 @@ function panelMarket() {
     if (!s || !s.length) continue;
     h += `<tr><td>${goodName(g)}</td><td class="n">${Math.round(s[s.length - 1])} EMWK</td><td class="n">${spark(s)}</td></tr>`;
   }
-  return h + `</table><p class="muted" style="font-size:12px">${t('market.note')}</p>`;
+  return h + `</table><p class="muted" style="font-size:12px">${t('market.note')}</p>` + boardSection();
 }
 
 function panelDragon() {
@@ -352,7 +363,7 @@ function panelSimple(b) {
   if (b.id === 'council') return title + `<p>${t('council.text')}</p><p class="muted">${t('council.soon')}</p>`;
   if (b.id === 'gate') return title + `<p>${t('gate.text')}</p><button class="primary" data-act="elder">${t('gate.talk')}</button><p class="muted">${t('gate.pop', { n: view.population })}</p>`;
   if (b.id === 'expansion') return title + `<p>${t('expansion.text')}</p>`;
-  if (b.type === 'house') return title + `<p>${t('house.text')}</p>`;
+  if (b.type === 'house') return panelHouse(b);
   return title;
 }
 
@@ -454,6 +465,51 @@ function renderPanel() {
 }
 
 
+
+// ---------- jobs and homes ----------
+
+function jobSection(npc) {
+  const me = view.player;
+  const j = me && me.job;
+  if (j && j.npc === npc) {
+    return `<div class="contract"><b>${t('job.mine')}</b><div class="muted small">${t('job.status', { n: j.wage, days: j.daysLeft })}</div>` +
+      (j.shiftToday ? `<p class="small">${t('job.shiftDone')}</p>`
+        : `<button class="primary big" data-act="shift" ${me.energy < j.energy ? 'disabled' : ''}>${t('job.shift', { e: j.energy, n: j.wage })}</button>` + (me.energy < j.energy ? tiredHelp(me) : '')) +
+      `<p class="muted small">${t('job.severance', { n: j.wage })}</p><button class="linkbtn" data-act="quitJob">${t('job.quit')}</button></div>`;
+  }
+  const o = view.jobOffers.find((x) => x.npc === npc);
+  if (!o) return '';
+  return `<div class="contract offer"><b>${t('job.offerTitle')}</b><p class="small">${t('job.offer', { n: o.wage, days: o.days, e: 3 })}</p>` +
+    (j ? `<p class="muted small">${t('job.haveOther', { place: placeName(j.npc) })}</p>` : `<button class="primary" data-act="takeJob" ${me ? '' : 'disabled'}>${t('job.take')}</button>`) +
+    `<p class="muted small">${t('job.severance', { n: o.wage })}</p></div>`;
+}
+
+function panelHouse(b) {
+  const h = view.houses[b.id], me = view.player;
+  let x = `<h2>${esc(placeName(b.id))}</h2><p class="muted">${t('house.rentInfo', { r: h.rent, d: h.deposit })}</p>` +
+    `<p>${h.rest >= 99 ? t('house.restFull') : t('house.restInfo', { n: h.rest })}</p>`;
+  if (h.mine) {
+    const rested = me.home && me.home.restedToday;
+    x += `<div class="contract"><b>${t('house.yours')}</b>` +
+      (rested ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary big" data-act="rest">${h.rest >= 99 ? t('house.restFullBtn') : t('house.rest', { n: h.rest })}</button>`) +
+      `<button class="linkbtn" data-act="leaveHouse">${t('house.leave', { n: h.deposit })}</button></div>`;
+  } else if (h.tenant) x += `<p class="muted">${t('house.taken', { name: esc(h.tenant) })}</p>`;
+  else if (me && me.home) x += `<p class="muted small">${t('house.haveOther', { place: placeName(me.home.id) })}</p>`;
+  else x += `<p class="ok">${t('house.free')}</p><button class="primary" data-act="rentHouse" ${!me || me.coins < h.rent + h.deposit ? 'disabled' : ''}>${t('house.rent', { n: h.rent + h.deposit })}</button>`;
+  return x + `<p class="muted small">${t('house.note')}</p>`;
+}
+
+function boardSection() {
+  const me = view.player;
+  let h = `<h3 class="board-h">${t('board.title')}</h3><p class="sub2">${t('board.jobs')}</p>`;
+  h += view.jobOffers.length ? view.jobOffers.map((o) => `<div class="trow"><span>${esc(t('board.jobRow', { place: placeName(o.npc), n: o.wage, days: o.days }))}</span><button data-go="${o.npc}">${t('board.go')}</button></div>`).join('')
+    : `<p class="muted small">${t('board.noJobs')}</p>`;
+  if (me && me.job) h += `<div class="trow"><span><b>${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</b></span><button data-go="${me.job.npc}">${t('board.go')}</button></div>`;
+  h += `<p class="sub2">${t('board.homes')}</p>` + Object.entries(view.houses).map(([id, x]) =>
+    `<div class="trow"><span>${esc(t('board.homeRow', { place: placeName(id), r: x.rent }))} · <span class="${x.tenant ? 'muted' : 'ok'}">${x.mine ? t('board.yours') : x.tenant ? esc(x.tenant) : t('house.free')}</span></span><button data-go="${id}">${t('board.go')}</button></div>`).join('');
+  return h;
+}
+
 // ---------- NEAR ----------
 
 const chainOk = () => view.chain && view.chain.status === 'ready';
@@ -470,6 +526,30 @@ const exLink = (path, text, cls = 'near-link') => `<a class="${cls}" href="${vie
 function timeAgo(at) {
   const s = Math.max(0, Math.round((Date.now() - at) / 1000));
   return s < 60 ? s + 's' : Math.round(s / 60) + 'm';
+}
+
+
+// who sent what, in the game's own words (falls back to NEAR account names)
+function holderName(h, serverName) {
+  if (!h) return serverName;
+  if (h.startsWith('npc:')) return npcName(h.slice(4));
+  if (h === 'treasury') return placeName('treasury');
+  if (h.startsWith('player:') && view.player && h.slice(7) === view.player.id) return t('near.you');
+  if (['newcomerFund', 'adventurerFund', 'botFund', 'deposits'].includes(h)) return t('near.h.' + h);
+  return serverName;
+}
+function feedList(list, mineOnly) {
+  return `<ul class="near-feed">${list.map((f) => {
+    const items = f.items.filter((it) => !mineOnly || it.player === playerId).map((it) => {
+      const isMine = it.player && it.player === playerId;
+      const route = it.who ? `${esc(holderName(it.who.from, it.who.fromName))} → ${esc(holderName(it.who.to, it.who.toName))}`
+        : `${esc(chainName(f.from))} → ${esc(chainName(it.to))}${it.n > 1 ? ` <span class="muted">(${t('near.trades', { n: it.n })})</span>` : ''}`;
+      const sync = it.label === 'balance sync' ? ` <span class="muted">(${t('near.sync')})</span>` : '';
+      return `<span class="${isMine ? 'mine' : ''}">${route} <b>${it.amount} EMWK</b>${sync}</span>`;
+    }).join('<br>');
+    const link = f.hash ? exLink('txns/' + f.hash, t('near.tx')) : '';
+    return `<li class="${f.ok ? '' : 'bad'}"><span class="muted small">${timeAgo(f.at)}</span> ${items} ${f.ok ? link : `<span class="bad small">${t('near.failed')}</span>`}</li>`;
+  }).join('')}</ul>`;
 }
 
 function panelNear() {
@@ -489,14 +569,13 @@ function panelNear() {
   if (c.accounts && st === 'ready') {
     const a = c.accounts, bal = c.balances || {};
     const row = (id) => `<tr><td>${esc(chainName(id))}<br>${exLink('address/' + id, esc(shortId(id)), 'near-link small')}</td><td class="n">${bal[id] !== undefined ? Math.round(bal[id]) + ' EMWK' : ''}</td></tr>`;
+    const mine = c.feed.filter((f) => f.items.some((it) => it.player && it.player === playerId));
+    h += `<p class="sub2">${t('near.mine')}</p><p class="muted small">${t('near.mineNote')}</p>`;
+    h += mine.length ? feedList(mine, true) : `<p class="muted small">${t('near.mineNone')}</p>`;
+    h += `<p class="sub2">${t('near.feed')}${c.pending ? ` <span class="muted small">· ${t('near.pending', { n: c.pending })}</span>` : ''}</p>`;
+    h += c.feed.length ? feedList(c.feed.slice(0, 15), false) : `<p class="muted small">${t('near.noFeed')}</p>`;
     h += `<p class="sub2">${t('near.token')}</p><p>${exLink('token/' + a.token, esc(a.token))}</p>`;
     h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, ...Object.values(a.npcs)].map(row).join('')}</table>`;
-    h += `<p class="sub2">${t('near.feed')}${c.pending ? ` <span class="muted small">· ${t('near.pending', { n: c.pending })}</span>` : ''}</p>`;
-    h += c.feed.length ? `<ul class="near-feed">${c.feed.map((f) => {
-      const items = f.items.map((it) => `${esc(chainName(f.from))} → ${esc(chainName(it.to))} <b>${it.amount} EMWK</b>${it.label === 'balance sync' ? ` <span class="muted">(${t('near.sync')})</span>` : ''}`).join('<br>');
-      const link = f.hash ? exLink('txns/' + f.hash, '↗') : '';
-      return `<li class="${f.ok ? '' : 'bad'}"><span class="muted small">${timeAgo(f.at)}</span> ${items} ${f.ok ? link : `<span class="bad small">${t('near.failed')}</span>`}</li>`;
-    }).join('')}</ul>` : `<p class="muted small">${t('near.noFeed')}</p>`;
   }
 
   h += `<p class="sub2">${t('near.wallet')}</p>`;
@@ -543,7 +622,8 @@ function renderHud() {
   if (!me) { $('me').innerHTML = `<p class="muted" style="margin:0">${t('me.join')}</p>`; $('quest').hidden = true; return; }
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('rank.' + String(me.rank).toLowerCase())}</div></div></div>` +
     `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
-    `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>`;
+    `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
+    (me.job || me.home ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}</div>` : '');
   const q = me.questInfo;
   ui.target = q.target;
   const qt = questTexts(q);
@@ -620,7 +700,7 @@ function renderDock() {
 
 function logText(l) {
   if (!l.key) return l.text;
-  const p = { ...(l.p || {}) };
+  const p = resolve(l.p || {});
   if (p.path) p.path = t('path.' + p.path);
   return t(l.key, p);
 }
@@ -686,7 +766,7 @@ async function act(type, extra = {}) {
 }
 
 function explain(type, extra, r) {
-  const place = type === 'gather' ? extra.spot : extra.npc;
+  const place = type === 'gather' ? extra.spot : extra.npc || extra.house;
   if (type === 'gather') {
     popup(place, `+${r.got} ${goodName(r.good)}`, '#3d7a34');
     flash('bag');
@@ -711,6 +791,19 @@ function explain(type, extra, r) {
       const spot = world.routes[view.player.path].spot;
       result.inn = { key: 'result.meal', p: { total: r.total }, next: { key: 'go.to', p: { place: { $place: spot } }, go: spot } };
     }
+  } else if (type === 'shift') {
+    popup(place, `+${r.wage} EMWK`, '#a8461a');
+    flash('coins');
+    result[place] = r.made ? { key: 'result.shiftMade', p: { n: r.wage, good: { $good: r.made } } } : { key: 'result.shift', p: { n: r.wage } };
+  } else if (type === 'takeJob') {
+    result[place] = { key: 'result.hired' };
+  } else if (type === 'rentHouse') {
+    result[extra.house] = { key: 'result.rented', p: { r: r.rent } };
+  } else if (type === 'leaveHouse') {
+    result[extra.house] = { key: 'result.left', p: { n: r.deposit } };
+  } else if (type === 'rest') {
+    popupYou(t('fx.energy', { n: Math.round(r.energy) }), '#b07a12');
+    flash('energy');
   } else if (type === 'buy') {
     popup(place, `+1 ${goodName(extra.good)}`, '#3a5fa0');
     flash('bag');
@@ -803,6 +896,8 @@ document.body.addEventListener('click', (e) => {
   if (a === 'close') { ui.selected = null; renderMapNow(); renderPanel(); renderDock(); }
   else if (a === 'elder') openElder();
   else if (a === 'meal') { delete result.inn; goAndDo('inn', 'meal', () => act('meal')); }
+  else if (a === 'takeJob' || a === 'shift' || a === 'quitJob') { const npc = btn.dataset.npc || ui.selected; delete result[npc]; goAndDo(npc, a, () => act(a, { npc })); }
+  else if (a === 'rentHouse' || a === 'leaveHouse' || a === 'rest') { const house = ui.selected; delete result[house]; goAndDo(house, a, () => act(a, { house })); }
   else if (a === 'gather') { const spot = btn.dataset.spot || ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
   else { const npc = btn.dataset.npc || ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
 });

@@ -153,7 +153,7 @@ button.eat { font-size: 11px; padding: 1px 7px; margin-left: 4px; border-radius:
 @media (max-width: 1000px) { .dock { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .dock { grid-template-columns: 1fr; } }
 
-#scene { grid-column: 1; grid-row: 1; width: 100%; height: auto; display: block; align-self: center; border-radius: var(--radius); }
+#scene { grid-column: 1; grid-row: 1; width: 100%; height: auto; display: block; align-self: start; margin: 122px 0 104px; border-radius: var(--radius); }
 #scene[hidden], .mini[hidden], .scene-bar[hidden] { display: none; }
 .mini { position: absolute; top: 14px; left: 14px; width: 150px; height: 96px; padding: 0; border-radius: 12px; border: 3px solid #fffaf2;
   background: #b7d68f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 150 96'%3E%3Cpolygon points='75,8 140,44 75,80 10,44' fill='%2386c152'/%3E%3Cpolygon points='62,30 74,36 62,42 50,36' fill='%23a33a2f'/%3E%3Cpolygon points='92,40 104,46 92,52 80,46' fill='%2355606e'/%3E%3Cpolygon points='75,54 87,60 75,66 63,60' fill='%23dcc8a2'/%3E%3Cpolygon points='112,32 122,18 130,38' fill='%237c6c5e'/%3E%3C/svg%3E") center / cover no-repeat;
@@ -220,3 +220,16 @@ button.eat { font-size: 11px; padding: 1px 7px; margin-left: 4px; border-radius:
 .near-feed li { padding: 6px 0; border-bottom: 1px solid #efe4d2; }
 .near-feed li.bad { opacity: .7; }
 .bad.small { color: #b23b22; }
+
+/* ---------- jobs and homes ---------- */
+.contract { border: 1px solid #ead9bd; background: #fffaf1; border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.contract.offer { border-color: #e8a37a; background: #fff3ea; }
+.contract p { margin: 6px 0; }
+.contract .primary { margin: 6px 0; }
+.linkbtn { background: none; border: 0; padding: 0; color: #b5501e; font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; }
+.ok { color: #2f7a3a; }
+.board-h { margin: 16px 0 4px; font-size: 15px; border-top: 1px solid #efe4d2; padding-top: 12px; }
+.contracts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { background: #f4ead9; border: 1px solid #e3d2b3; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; color: #5a4128; }
+.chip:hover { background: #ecdcc2; }
+.near-feed .mine { background: #fff1c9; border-radius: 4px; padding: 0 3px; }

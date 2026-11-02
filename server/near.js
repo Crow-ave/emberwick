@@ -35,7 +35,7 @@ const ROOT_MIN_SETUP = 4.5; // root needs at least this before it creates everyt
 const LOW_GAS = 0.05;       // top an account up below this
 const MAX_ACTIONS = 15;     // ft_transfer actions per transaction
 const FT_GAS = 15n * 10n ** 12n;
-const FEED_MAX = 30;
+const FEED_MAX = 40;
 
 const ICON = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#3a2a1e"/>' +
@@ -90,12 +90,13 @@ export class Bridge {
     if (this.status !== 'ready') return; // reconcile catches up once the bridge is live
     const a = this.chainOf(from), b = this.chainOf(to);
     if (!a || !b || a === b || amount <= 0) return;
-    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}` });
+    const player = from.startsWith('player:') ? from.slice(7) : to.startsWith('player:') ? to.slice(7) : null;
+    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) } });
   }
 
   canWithdraw() { return this.status === 'ready'; }
-  withdraw(wallet, amount, who) {
-    this.queue.push({ from: this.root, to: wallet, amount: toUnits(amount), label: `${who} → ${wallet}`, withdraw: true });
+  withdraw(wallet, amount, who, player = null) {
+    this.queue.push({ from: this.root, to: wallet, amount: toUnits(amount), label: `${who} → ${wallet}`, withdraw: true, player, who: { from: player ? 'player:' + player : 'bank', to: 'wallet', fromName: who, toName: wallet } });
   }
 
   view() {
@@ -106,7 +107,7 @@ export class Bridge {
     return {
       network: NET.networkId, explorer: NET.explorer, wallet: NET.wallet,
       status: this.status, detail: this.detail, accounts,
-      balances: this.chainBalances, feed: this.feed.slice(0, 12), pending: this.queue.length, txCount: this.txCount,
+      balances: this.chainBalances, feed: this.feed.slice(0, FEED_MAX), pending: this.queue.length, txCount: this.txCount,
     };
   }
 
@@ -255,17 +256,19 @@ export class Bridge {
     const withdrawals = [];
     for (const it of items) {
       if (it.withdraw) { withdrawals.push(it); continue; }
+      // a player's own transfers are kept apart, so they can find them on chain
       const [x, y, s] = it.from < it.to ? [it.from, it.to, 1n] : [it.to, it.from, -1n];
-      const k = x + '|' + y;
-      const p = pair.get(k) || { x, y, amt: 0n, n: 0, label: it.label };
-      p.amt += s * it.amount; p.n++; p.label = it.label;
+      const k = x + '|' + y + '|' + (it.player || '');
+      const p = pair.get(k) || { x, y, amt: 0n, n: 0, labels: new Set(), player: it.player || null, who: it.who };
+      p.amt += s * it.amount; p.n++; p.labels.add(it.label); p.who = it.who;
       pair.set(k, p);
     }
     const out = [];
     for (const p of pair.values()) {
       if (p.amt === 0n) continue;
       const fwd = p.amt > 0n;
-      out.push({ from: fwd ? p.x : p.y, to: fwd ? p.y : p.x, amount: fwd ? p.amt : -p.amt, label: p.n > 1 ? `${p.n} trades` : p.label, n: p.n });
+      const label = p.labels.size === 1 ? [...p.labels][0] : `${p.n} trades`;
+      out.push({ from: fwd ? p.x : p.y, to: fwd ? p.y : p.x, amount: fwd ? p.amt : -p.amt, label, n: p.n, player: p.player, who: p.labels.size === 1 ? p.who : null });
     }
     return [...out, ...withdrawals];
   }
@@ -279,7 +282,7 @@ export class Bridge {
     for (const [from, items] of bySender) {
       for (let i = 0; i < items.length; i += MAX_ACTIONS) {
         const chunk = items.slice(i, i + MAX_ACTIONS);
-        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw })), hash: null, ok: false };
+        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw, player: c.player || null, n: c.n || 1, who: c.who || null })), hash: null, ok: false };
         try {
           const wallets = chunk.filter((c) => c.withdraw).map((c) => c.to);
           entry.hash = await this.adapter.ftTransfers(from, this.tokenId, chunk.map((c) => ({ to: c.to, amount: c.amount, memo: c.label })), wallets);

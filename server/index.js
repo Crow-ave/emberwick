@@ -41,7 +41,7 @@ async function startNear() {
     if (h.startsWith('npc:')) return CRAFTSMEN.find((c) => c.id === h.slice(4))?.name || h;
     if (h.startsWith('player:')) return state.players[h.slice(7)]?.name || 'player';
     if (h.startsWith('bot:')) return state.bots[h.slice(4)]?.name || 'villager';
-    return { treasury: 'Treasury', newcomerFund: 'Newcomer fund', adventurerFund: 'Adventurer fund', botFund: 'Villagers', withdrawn: 'NEAR wallet' }[h] || h;
+    return { treasury: 'Treasury', newcomerFund: 'Newcomer fund', adventurerFund: 'Adventurer fund', botFund: 'Villagers', deposits: 'Rent deposits', withdrawn: 'NEAR wallet' }[h] || h;
   };
   bridge = new Bridge({
     adapter, store, names,
@@ -147,7 +147,7 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     if (!bridge || !bridge.canWithdraw()) return sendJson(res, 400, { ok: false, code: 'err.chainOff', error: 'NEAR is not connected yet.' });
     const r = withdraw(state, body.player, body.amount);
-    if (r.ok) { bridge.withdraw(r.wallet, r.amount, state.players[body.player].name); save(); broadcast(); }
+    if (r.ok) { bridge.withdraw(r.wallet, r.amount, state.players[body.player].name, body.player); save(); broadcast(); }
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 

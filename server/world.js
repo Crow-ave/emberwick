@@ -151,6 +151,23 @@ export const RULES = {
   minPrice: 1,
 };
 
+// Apprentice jobs: craftsmen post an offer each day if they can afford it.
+// Wages are paid per shift, straight from the craftsman's wallet.
+export const JOBS = {
+  wageBase: { smithy: 12, carpenter: 11, bakery: 9, mill: 9, woodcutter: 8, inn: 8, tower: 10 },
+  days: 3,               // length of a contract in game days
+  shiftEnergy: 3,        // energy one shift costs
+  severanceDays: 1,      // wages paid if the employer ends the contract early
+  reserve: 100,          // a craftsman keeps this much before hiring
+};
+
+// Homes are owned by the village. Rent goes to the treasury every day.
+export const HOUSES = {
+  'house-1': { size: 'room',  rent: 3, deposit: 6,  rest: 6 },
+  'house-2': { size: 'small', rent: 5, deposit: 10, rest: 10 },
+  'house-3': { size: 'large', rent: 8, deposit: 16, rest: 99 }, // a full night's sleep
+};
+
 // Where each starting path gathers and who buys what they gather.
 export const PATH_ROUTE = {
   farmer:     { spot: 'fields', shop: 'mill' },
