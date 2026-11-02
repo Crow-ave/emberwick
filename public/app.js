@@ -270,7 +270,7 @@ function renderScene() {
     const cost = me ? me.costs[id] : SPOT_COST[id];
     const working = status[id] && status[id].key === 'status.working';
     bar.innerHTML = `<div class="info"><b>${esc(placeName(id))}</b>${working ? esc(t('scene.working', { name: me ? me.name : '' })) : t('scene.ready')}<div class="prog"><div id="scene-prog"></div></div></div>` +
-      `<button class="primary" data-act="gather" data-spot="${id}" ${!me || me.energy < cost || working ? 'disabled' : ''}>${t('scene.again', { n: cost })}</button>`;
+      `<button class="primary" data-act="gather" data-spot="${id}" ${!me || me.energy < cost || working || me.job ? 'disabled' : ''}>${t('scene.again', { n: cost })}</button>`;
   } else if (n) {
     bar.innerHTML = `<div class="info"><b>${esc(placeName(id))} · ${esc(npcName(id))}</b><span class="quote">"${esc(t('line.' + n.lineKey))}"</span><div class="muted" style="font-size:12px;margin-top:4px">${t('scene.tradeHint')}</div></div>`;
   }
@@ -335,8 +335,9 @@ function panelGather(b) {
   const best = bestBuyer(good);
   return `<h2>${esc(placeName(b.id))}</h2><p>${t('gather.' + b.id)}</p><p class="muted">${t('gather.cost', { n: energy })}${me ? ' ' + t('gather.youHave', { n: Math.floor(me.energy) }) : ''}</p>` +
     (me ? `<p>${t('gather.carry', { n: me.inv[good] || 0, good: goodWord(good) })}</p>` : '') +
+    (me && me.job ? `<div class="contract"><p class="small">${t('job.blocked', { place: placeName(me.job.npc) })}</p><button data-go="${me.job.npc}">${esc(t('go.to', { place: placeName(me.job.npc) }))}</button></div>` :
     `<button class="primary big" data-act="gather" ${!me || me.energy < energy ? 'disabled' : ''}>${t('gather.btn.' + good, { n: energy })}</button>` +
-    (me && me.energy < energy ? tiredHelp(me) : '') +
+    (me && me.energy < energy ? tiredHelp(me) : '')) +
     (best ? `<p style="font-size:13px;margin-top:14px">${t('gather.best', { name: esc(npcName(best.id)), p: best.buys[good] })}</p><button data-go="${best.id}">${esc(t('go.to', { place: placeName(best.id) }))}</button>` : '');
 }
 
@@ -472,14 +473,14 @@ function jobSection(npc) {
   const me = view.player;
   const j = me && me.job;
   if (j && j.npc === npc) {
-    return `<div class="contract"><b>${t('job.mine')}</b><div class="muted small">${t('job.status', { n: j.wage, days: j.daysLeft })}</div>` +
+    return `<div class="contract"><b>${t('job.mine')}</b><div class="muted small">${t('job.status', { n: j.wage, days: j.daysLeft })} · ${t('job.today', { a: j.shiftsToday, b: j.maxShifts })}</div>` +
       (j.shiftToday ? `<p class="small">${t('job.shiftDone')}</p>`
         : `<button class="primary big" data-act="shift" ${me.energy < j.energy ? 'disabled' : ''}>${t('job.shift', { e: j.energy, n: j.wage })}</button>` + (me.energy < j.energy ? tiredHelp(me) : '')) +
-      `<p class="muted small">${t('job.severance', { n: j.wage })}</p><button class="linkbtn" data-act="quitJob">${t('job.quit')}</button></div>`;
+      `<p class="muted small">${t('job.severance', { n: j.wage })} ${t('job.quitNote')}</p><button class="linkbtn" data-act="quitJob">${t('job.quit')}</button></div>`;
   }
   const o = view.jobOffers.find((x) => x.npc === npc);
   if (!o) return '';
-  return `<div class="contract offer"><b>${t('job.offerTitle')}</b><p class="small">${t('job.offer', { n: o.wage, days: o.days, e: 3 })}</p>` +
+  return `<div class="contract offer"><b>${t('job.offerTitle')}</b><p class="small">${t('job.offer', { n: o.wage, days: o.days, e: 3 })}</p><p class="small">${t('job.exclusive')}</p>` +
     (j ? `<p class="muted small">${t('job.haveOther', { place: placeName(j.npc) })}</p>` : `<button class="primary" data-act="takeJob" ${me ? '' : 'disabled'}>${t('job.take')}</button>`) +
     `<p class="muted small">${t('job.severance', { n: o.wage })}</p></div>`;
 }
@@ -519,6 +520,7 @@ function chainName(id) {
   if (!a) return shortId(id);
   if (id === a.bank) return t('near.bank');
   if (id === a.treasury) return placeName('treasury');
+  if (a.deposits && id === a.deposits) return t('near.h.deposits');
   for (const [npc, acct] of Object.entries(a.npcs)) if (acct === id) return npcName(npc);
   return shortId(id);
 }
@@ -575,7 +577,7 @@ function panelNear() {
     h += `<p class="sub2">${t('near.feed')}${c.pending ? ` <span class="muted small">· ${t('near.pending', { n: c.pending })}</span>` : ''}</p>`;
     h += c.feed.length ? feedList(c.feed.slice(0, 15), false) : `<p class="muted small">${t('near.noFeed')}</p>`;
     h += `<p class="sub2">${t('near.token')}</p><p>${exLink('token/' + a.token, esc(a.token))}</p>`;
-    h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, ...Object.values(a.npcs)].map(row).join('')}</table>`;
+    h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, a.deposits, ...Object.values(a.npcs)].filter(Boolean).map(row).join('')}</table>`;
   }
 
   h += `<p class="sub2">${t('near.wallet')}</p>`;
@@ -801,6 +803,11 @@ function explain(type, extra, r) {
     result[extra.house] = { key: 'result.rented', p: { r: r.rent } };
   } else if (type === 'leaveHouse') {
     result[extra.house] = { key: 'result.left', p: { n: r.deposit } };
+    popupYou(`+${r.deposit} EMWK`, '#a8461a');
+    flash('coins');
+    toast(t('result.left', { n: r.deposit }), 'win');
+  } else if (type === 'quitJob') {
+    toast(t('result.quit'), '');
   } else if (type === 'rest') {
     popupYou(t('fx.energy', { n: Math.round(r.energy) }), '#b07a12');
     flash('energy');

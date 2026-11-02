@@ -81,9 +81,10 @@ export class Bridge {
     if (holder === 'withdrawn') return null;
     if (holder.startsWith('npc:')) return this.subId(holder.slice(4));
     if (holder === 'treasury') return this.subId('treasury');
+    if (holder === 'deposits') return this.subId('deposits'); // rent deposits are held apart, so they show on chain
     return this.root; // players, bots and the village funds live in the village bank
   }
-  subAccounts() { return ['treasury', ...this.npcIds].map((n) => this.subId(n)); }
+  subAccounts() { return ['treasury', 'deposits', ...this.npcIds].map((n) => this.subId(n)); }
 
   // --- game hooks ---
   onTransfer(from, to, amount) {
@@ -101,7 +102,7 @@ export class Bridge {
 
   view() {
     const accounts = this.root ? {
-      bank: this.root, token: this.tokenId, treasury: this.subId('treasury'),
+      bank: this.root, token: this.tokenId, treasury: this.subId('treasury'), deposits: this.subId('deposits'),
       npcs: Object.fromEntries(this.npcIds.map((id) => [id, this.subId(id)])),
     } : null;
     return {

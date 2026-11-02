@@ -281,6 +281,7 @@ function doAction(state, p, actor, action, qty) {
     return { ok: true, silent: true };
   }
   if (action.type === 'gather') {
+    if (p.job) return { ok: false, error: 'You are an apprentice. You can only work at your shop until you quit.', code: 'err.employed' };
     const spot = GATHER_SPOTS[action.spot];
     if (!spot) return { ok: false, error: 'You cannot gather there.', code: 'err.cannotGather' };
     const cost = energyCost(p, action.spot);
@@ -566,7 +567,7 @@ function postJobOffers(state) {
     const n = state.npcs[def.id];
     if (!JOBS.wageBase[def.id] || n.damagedUntil > state.day || employs(state, def.id)) continue;
     const wage = wageFor(state, def.id);
-    if (balance(state, npcAcct(def.id)) < wage * JOBS.days + JOBS.reserve) continue;
+    if (balance(state, npcAcct(def.id)) < wage * JOBS.shiftsPerDay * JOBS.days + JOBS.reserve) continue;
     state.jobOffers[def.id] = { npc: def.id, wage, days: JOBS.days, day: state.day };
   }
 }
@@ -619,7 +620,7 @@ function contractAction(state, p, action) {
     const o = state.jobOffers[action.npc];
     if (!o) return { ok: false, error: 'That job is no longer offered.', code: 'err.noJob' };
     if (p.job) return { ok: false, error: 'You already have a job.', code: 'err.haveJob' };
-    p.job = { npc: o.npc, wage: o.wage, daysLeft: o.days, startDay: state.day, lastShift: null, shifts: 0 };
+    p.job = { npc: o.npc, wage: o.wage, daysLeft: o.days, startDay: state.day, shiftDay: null, shiftsToday: 0, shifts: 0 };
     delete state.jobOffers[o.npc];
     addLog(state, `${p.name} became an apprentice.`, 'join', 'log.hired', { name: p.name, place: { $place: o.npc }, n: o.wage });
     return { ok: true, job: p.job };
@@ -627,7 +628,8 @@ function contractAction(state, p, action) {
   if (action.type === 'shift') {
     const j = p.job;
     if (!j || (action.npc && action.npc !== j.npc)) return { ok: false, error: 'You do not work here.', code: 'err.noJobHere' };
-    if (j.lastShift === state.day) return { ok: false, error: 'You already worked today.', code: 'err.shiftDone' };
+    if (j.shiftDay !== state.day) { j.shiftDay = state.day; j.shiftsToday = 0; }
+    if (j.shiftsToday >= JOBS.shiftsPerDay) return { ok: false, error: 'You worked all your shifts today.', code: 'err.shiftDone' };
     if (state.npcs[j.npc].damagedUntil > state.day) return { ok: false, error: 'This shop is closed.', code: 'err.closed' };
     if (p.energy < JOBS.shiftEnergy) return { ok: false, error: 'You are too tired.', code: 'err.tired' };
     if (!transfer(state, npcAcct(j.npc), acct, j.wage)) {
@@ -635,7 +637,7 @@ function contractAction(state, p, action) {
       return { ok: false, error: 'The shopkeeper cannot pay. Your contract ended.', code: 'err.employerBroke' };
     }
     p.energy = r2(p.energy - JOBS.shiftEnergy);
-    j.lastShift = state.day;
+    j.shiftsToday++;
     j.shifts++;
     p.stats.earned = r2(p.stats.earned + j.wage);
     // your work turns into goods on the craftsman's shelf
@@ -725,7 +727,10 @@ function playerView(state, p) {
   const costs = Object.fromEntries(Object.keys(GATHER_SPOTS).map((k) => [k, energyCost(p, k)]));
   return {
     ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p),
-    job: p.job ? { ...p.job, shiftToday: p.job.lastShift === state.day, energy: JOBS.shiftEnergy } : null,
+    job: p.job ? (() => {
+      const today = p.job.shiftDay === state.day ? p.job.shiftsToday : 0;
+      return { ...p.job, shiftsToday: today, maxShifts: JOBS.shiftsPerDay, shiftToday: today >= JOBS.shiftsPerDay, energy: JOBS.shiftEnergy };
+    })() : null,
     home: p.home ? { id: p.home, ...HOUSES[p.home], restedToday: p.restedDay === state.day } : null,
     skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,
   };

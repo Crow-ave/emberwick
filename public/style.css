@@ -16,7 +16,7 @@ body { margin: 0; background: var(--bg); color: var(--ink); }
 #ready-fill { height: 100%; width: 0; background: var(--ember); transition: width .6s; }
 
 .stage { position: relative; margin: 12px 16px 0; background: #b7d68f; border-radius: var(--radius); overflow: hidden; min-height: 520px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
-#map { grid-column: 1; grid-row: 1; align-self: center; }
+#map { grid-column: 1; grid-row: 1; align-self: start; margin-top: 20px; }
 #map { width: 100%; height: auto; display: block; }
 #map .bld { cursor: pointer; }
 #map .bld:hover, #map .bld:focus { filter: brightness(1.1); outline: none; }

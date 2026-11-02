@@ -153,10 +153,12 @@ export const RULES = {
 
 // Apprentice jobs: craftsmen post an offer each day if they can afford it.
 // Wages are paid per shift, straight from the craftsman's wallet.
+// While under contract the player works only for their employer (no gathering).
 export const JOBS = {
   wageBase: { smithy: 12, carpenter: 11, bakery: 9, mill: 9, woodcutter: 8, inn: 8, tower: 10 },
   days: 3,               // length of a contract in game days
   shiftEnergy: 3,        // energy one shift costs
+  shiftsPerDay: 3,       // an apprentice works only at their shop, up to this many shifts a day
   severanceDays: 1,      // wages paid if the employer ends the contract early
   reserve: 100,          // a craftsman keeps this much before hiring
 };
