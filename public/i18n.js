@@ -3,6 +3,13 @@
 
 const en = {
   'lang.name': 'English',
+  "quest.gather.jobText": "You are an apprentice: work two shifts at the {shop}.",
+  "quest.sell.jobText": "Earn your first wages: work 3 shifts at the {shop}.",
+  "quest.supply.jobText": "Make 8 goods for the village: work 8 shifts at the {shop}.",
+  "guide.jobShift": "You are an apprentice at the <b>{place}</b>. Work a shift there for <b>{n} EMWK</b> (today {a}/{b}). Mining, woodcutting and farming are closed while you have the job.",
+  "guide.jobDone": "All of today's shifts at the <b>{place}</b> are done. Come back tomorrow. Meanwhile you can sell what you carry or buy what you need.",
+  "guide.sleepHome": "Sleep at home (<b>{place}</b>) to get your energy back.",
+  "guide.tiredHome": "You are too tired for a shift. Sleep at home (<b>{place}</b>) to get your energy back.",
   "job.quitNote": "If you quit yourself, there is no severance.",
   "result.quit": "You quit the job. No severance when you leave on your own.",
   "near.mine": "Your transfers on NEAR",
@@ -250,6 +257,13 @@ const en = {
 
 const tr = {
   'lang.name': 'Türkçe',
+  "quest.gather.jobText": "Çıraksın: şurada iki vardiya çalış: {shop}.",
+  "quest.sell.jobText": "İlk ücretlerini kazan: şurada 3 vardiya çalış: {shop}.",
+  "quest.supply.jobText": "Köy için 8 mal üret: şurada 8 vardiya çalış: {shop}.",
+  "guide.jobShift": "<b>{place}</b> çırağısın. Orada bir vardiya çalış, <b>{n} EMWK</b> kazan (bugün {a}/{b}). İşin varken maden, odun ve tarla kapalı.",
+  "guide.jobDone": "Bugünkü bütün vardiyaların bitti (<b>{place}</b>). Yarın tekrar gel. Bu arada elindekini satabilir ya da ihtiyacını alabilirsin.",
+  "guide.sleepHome": "Enerjini doldurmak için evinde uyu (<b>{place}</b>).",
+  "guide.tiredHome": "Vardiya için çok yorgunsun. Enerjini doldurmak için evinde uyu (<b>{place}</b>).",
   "job.quitNote": "İşi kendin bırakırsan tazminat almazsın.",
   "result.quit": "İşi bıraktın. Kendi isteğinle ayrıldığın için tazminat yok.",
   "near.mine": "NEAR'daki senin transferlerin",
@@ -497,6 +511,13 @@ const tr = {
 
 const fr = {
   'lang.name': 'Français',
+  "quest.gather.jobText": "Vous êtes apprenti : faites deux services ici : {shop}.",
+  "quest.sell.jobText": "Gagnez vos premiers salaires : faites 3 services ici : {shop}.",
+  "quest.supply.jobText": "Fabriquez 8 marchandises pour le village : faites 8 services ici : {shop}.",
+  "guide.jobShift": "Vous êtes apprenti ici : <b>{place}</b>. Faites-y un service pour <b>{n} EMWK</b> (aujourd'hui {a}/{b}). Mine, bûcheronnage et champs sont fermés pendant votre emploi.",
+  "guide.jobDone": "Tous les services du jour sont faits (<b>{place}</b>). Revenez demain. En attendant, vendez ce que vous portez ou achetez ce qu'il vous faut.",
+  "guide.sleepHome": "Dormez chez vous (<b>{place}</b>) pour retrouver votre énergie.",
+  "guide.tiredHome": "Vous êtes trop fatigué pour un service. Dormez chez vous (<b>{place}</b>) pour retrouver votre énergie.",
   "job.quitNote": "Si vous démissionnez, pas d'indemnité.",
   "result.quit": "Vous avez démissionné. Pas d'indemnité quand on part de soi-même.",
   "near.mine": "Vos transferts sur NEAR",
@@ -744,6 +765,13 @@ const fr = {
 
 const de = {
   'lang.name': 'Deutsch',
+  "quest.gather.jobText": "Du bist Lehrling: Arbeite zwei Schichten hier: {shop}.",
+  "quest.sell.jobText": "Verdiene deinen ersten Lohn: Arbeite 3 Schichten hier: {shop}.",
+  "quest.supply.jobText": "Mach 8 Waren für das Dorf: Arbeite 8 Schichten hier: {shop}.",
+  "guide.jobShift": "Du bist Lehrling hier: <b>{place}</b>. Arbeite dort eine Schicht für <b>{n} EMWK</b> (heute {a}/{b}). Bergbau, Holzfällen und Feldarbeit sind geschlossen, solange du die Stelle hast.",
+  "guide.jobDone": "Alle Schichten für heute sind erledigt (<b>{place}</b>). Komm morgen wieder. Bis dahin kannst du verkaufen, was du trägst, oder kaufen, was du brauchst.",
+  "guide.sleepHome": "Schlaf zu Hause (<b>{place}</b>), um deine Energie zurückzubekommen.",
+  "guide.tiredHome": "Du bist zu müde für eine Schicht. Schlaf zu Hause (<b>{place}</b>), um deine Energie zurückzubekommen.",
   "job.quitNote": "Wenn du selbst kündigst, gibt es keine Abfindung.",
   "result.quit": "Du hast gekündigt. Wer selbst geht, bekommt keine Abfindung.",
   "near.mine": "Deine Überweisungen auf NEAR",

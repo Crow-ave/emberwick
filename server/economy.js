@@ -342,19 +342,25 @@ export function questFor(p) {
   const fill = (t) => t && t.replace('{spot}', route.spot).replace('{shop}', route.shop);
   const fillText = (t) => t.replace('{spot}', name(route.spot).toLowerCase()).replace('{shop}', name(route.shop).toLowerCase());
   const st = p.stats || { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} };
-  const progress = { gather: [st.gathers, 2], earn: [Math.floor(st.earned), 40], supply: [st.sold, 15] }[q.id] || null;
-  return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target: fill(q.target), reward: q.reward, progress, spot: route.spot, shop: route.shop };
+  const sh = st.shifts || 0;
+  // an apprentice cannot gather, so the work goals count shifts at their shop instead
+  const job = p.job && ['gather', 'sell', 'supply'].includes(q.id) ? p.job.npc : null;
+  const progress = job
+    ? { gather: [st.gathers + sh, 2], sell: [Math.max(st.sells ? 3 : 0, sh), 3], supply: [Math.max(Math.round(st.sold * 8 / 15), sh), 8] }[q.id]
+    : { gather: [st.gathers, 2], earn: [Math.floor(st.earned), 40], supply: [st.sold, 15] }[q.id] || null;
+  const target = job || fill(q.target);
+  return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target, reward: q.reward, progress, spot: route.spot, shop: route.shop, job };
 }
 
 function questDone(p, q) {
   const st = p.stats, route = PATH_ROUTE[p.path] || PATH_ROUTE.farmer;
   switch (q.id) {
     case 'meet': return !!st.visited.gate;
-    case 'gather': return st.gathers >= 2;
-    case 'sell': return st.sells >= 1;
+    case 'gather': return st.gathers + (st.shifts || 0) >= 2;
+    case 'sell': return st.sells >= 1 || (st.shifts || 0) >= 3;
     case 'peak': return !!st.visited.dragonpeak;
     case 'earn': return st.earned >= 40;
-    case 'supply': return st.sold >= 15;
+    case 'supply': return st.sold >= 15 || (st.shifts || 0) >= 8;
     default: return false;
   }
 }
@@ -639,6 +645,7 @@ function contractAction(state, p, action) {
     p.energy = r2(p.energy - JOBS.shiftEnergy);
     j.shiftsToday++;
     j.shifts++;
+    p.stats.shifts = (p.stats.shifts || 0) + 1;
     p.stats.earned = r2(p.stats.earned + j.wage);
     // your work turns into goods on the craftsman's shelf
     const def = CRAFTSMEN.find((c) => c.id === j.npc);

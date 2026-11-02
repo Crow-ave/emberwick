@@ -405,7 +405,8 @@ function panelTalk() {
 // ---------- "what should I do now?" ----------
 
 function questTexts(q) {
-  const p = { spot: placeName(q.spot), shop: placeName(q.shop) };
+  const p = { spot: placeName(q.spot), shop: placeName(q.job || q.shop) };
+  if (q.job) return { title: t(`quest.${q.id}.title`), text: t(`quest.${q.id}.jobText`, p) };
   return { title: t(`quest.${q.id}.title`), text: t(`quest.${q.id}.text`, p) };
 }
 
@@ -420,6 +421,18 @@ function panelGuide() {
       const best = bestBuyer(g);
       if (best) steps.push({ text: t('guide.carry', { n: me.inv[g], good: goodWord(g), name: esc(npcName(best.id)), place: placeName(best.id), p: best.buys[g] }), go: best.id, label: t('go.to', { place: placeName(best.id) }) });
     }
+  }
+  const j = me.job;
+  if (j) {
+    // apprentices work only at their shop
+    const shop = placeName(j.npc);
+    if (j.shiftToday) steps.push({ text: t('guide.jobDone', { place: shop }) + (me.home ? ' ' + t('guide.sleepHome', { place: placeName(me.home.id) }) : ''), go: me.home ? me.home.id : null, label: me.home ? t('go.to', { place: placeName(me.home.id) }) : '' });
+    else if (me.energy >= j.energy) steps.push({ text: t('guide.jobShift', { place: shop, n: j.wage, a: j.shiftsToday, b: j.maxShifts }), go: j.npc, label: t('go.to', { place: shop }) });
+    else if (me.home && !me.home.restedToday) steps.push({ text: t('guide.tiredHome', { place: placeName(me.home.id) }), go: me.home.id, label: t('go.to', { place: placeName(me.home.id) }) });
+    else if ((me.inv.bread || 0) > 0) steps.push({ text: t('guide.tiredBread', { n: Math.floor(me.energy) }), eat: true });
+    else steps.push({ text: t('guide.tiredNoBread', { n: Math.floor(me.energy), bread: view.npcs.bakery.sells.bread, meal: view.npcs.inn.sells.meal }), go: 'bakery', label: t('go.to', { place: placeName('bakery') }) });
+  } else if (carried.length) {
+    // already suggested selling above
   } else if (me.energy >= me.costs[route.spot]) {
     steps.push({ text: t('guide.empty', { place: placeName(route.spot) }), go: route.spot, label: t('go.to', { place: placeName(route.spot) }) });
   } else if ((me.inv.bread || 0) > 0) {
