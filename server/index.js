@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createState, tick, joinPlayer, playerAction, publicView } from './economy.js';
-import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN } from './world.js';
+import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE } from './world.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(root, 'public');
@@ -56,7 +56,7 @@ function readBody(req) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
-  if (url.pathname === '/api/world') return sendJson(res, 200, { buildings: BUILDINGS, goods: GOODS, paths: START_PATHS, token: TOKEN, rules: { ticksPerDay: RULES.ticksPerDay, tickMs: RULES.tickMs } });
+  if (url.pathname === '/api/world') return sendJson(res, 200, { buildings: BUILDINGS, goods: GOODS, paths: START_PATHS, routes: PATH_ROUTE, token: TOKEN, rules: { ticksPerDay: RULES.ticksPerDay, tickMs: RULES.tickMs } });
   if (url.pathname === '/api/state') return sendJson(res, 200, publicView(state, url.searchParams.get('player')));
 
   if (url.pathname === '/api/stream') {

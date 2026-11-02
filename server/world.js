@@ -74,7 +74,7 @@ export const CRAFTSMEN = [
   {
     id: 'mill', name: 'Ilsa the Miller', wallet: 400,
     recipe: { in: { wheat: 3 }, out: { flour: 2 } },
-    buys: { wheat: 2 }, sells: { flour: 5, plow: 22 },
+    buys: { wheat: 3 }, sells: { flour: 6, plow: 22 },
     stock: { wheat: 9, flour: 4, plow: 2 }, target: { wheat: 12, flour: 6, plow: 2 },
     lines: ['The stones turn whether you bring wheat or not.', 'Bring me grain, I will make you flour.'],
   },
@@ -135,3 +135,23 @@ export const RULES = {
   profitTaxRate: 0.2,
   minPrice: 1,
 };
+
+// Where each starting path gathers and who buys what they gather.
+export const PATH_ROUTE = {
+  farmer:     { spot: 'fields', shop: 'mill' },
+  miner:      { spot: 'mine',   shop: 'smithy' },
+  woodcutter: { spot: 'forest', shop: 'woodcutter' },
+  apprentice: { spot: 'forest', shop: 'woodcutter' },
+};
+
+// The newcomer's first goals. `target` tells the map which building to highlight.
+// Rewards come from the newcomer fund, so the money supply stays fixed.
+export const QUESTS = [
+  { id: 'meet',   title: 'Meet Elder Rowan', text: 'Walk to the village gate and hear what the elder has to say.', target: 'gate', reward: 5 },
+  { id: 'gather', title: 'Your first work', text: 'Gather at the {spot} two times.', target: '{spot}', reward: 5 },
+  { id: 'sell',   title: 'Make a sale', text: 'Sell what you gathered to the {shop}.', target: '{shop}', reward: 10 },
+  { id: 'peak',   title: 'Know the danger', text: 'Look at Dragon peak to see how ready the village is.', target: 'dragonpeak', reward: 5 },
+  { id: 'earn',   title: 'Stand on your own feet', text: 'Earn 40 EMWK from trading.', target: '{shop}', reward: 10 },
+  { id: 'supply', title: 'Feed the village', text: 'Sell 15 goods in total to the craftsmen.', target: 'market', reward: 15 },
+  { id: 'done',   title: 'A true villager', text: 'Jobs, homes and the village council open in the next update. Keep trading and watch the prices.', target: null, reward: 0 },
+];

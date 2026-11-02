@@ -3,7 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
-import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES } from './world.js';
+import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -170,11 +170,12 @@ export function joinPlayer(state, name, pathKey) {
   state.players[id] = {
     id, name, path: pathKey, rank: 'Newcomer',
     energy: RULES.energyMax, inv: { ...path.items }, skills: { wood: 0, wheat: 0, ore: 0 },
-    joinedDay: state.day,
+    joinedDay: state.day, quest: 0, stats: { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} },
   };
   state.balances['player:' + id] = 0;
   const coins = Math.min(path.coins, balance(state, 'newcomerFund'));
   transfer(state, 'newcomerFund', 'player:' + id, coins);
+  state.rev = (state.rev || 0) + 1;
   addLog(state, `${name} arrived at the gate as a ${path.name.toLowerCase()}.`, 'join');
   return { ok: true, id };
 }
@@ -185,6 +186,22 @@ export function playerAction(state, playerId, action) {
   const actor = { acct: 'player:' + playerId, holder: p };
   const qty = Math.max(1, Math.min(50, parseInt(action.qty, 10) || 1));
 
+  if (!p.stats) { p.stats = { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} }; p.quest = p.quest || 0; }
+  const res = doAction(state, p, actor, action, qty);
+  if (res.ok) {
+    state.rev = (state.rev || 0) + 1;
+    const done = advanceQuest(state, p);
+    if (done) res.quest = done;
+  }
+  return res;
+}
+
+function doAction(state, p, actor, action, qty) {
+  if (action.type === 'visit') {
+    if (!BUILDINGS.some((b) => b.id === action.place)) return { ok: false, error: 'Unknown place.' };
+    p.stats.visited[action.place] = true;
+    return { ok: true, silent: true };
+  }
   if (action.type === 'gather') {
     const spot = GATHER_SPOTS[action.spot];
     if (!spot) return { ok: false, error: 'You cannot gather there.' };
@@ -193,10 +210,12 @@ export function playerAction(state, playerId, action) {
     const got = gatherYield(state, action.spot, p);
     addInv(p, spot.good, got);
     p.skills[spot.good] = (p.skills[spot.good] || 0) + 1;
-    return { ok: true, message: `You gathered ${got} ${GOODS[spot.good].name.toLowerCase()}.` };
+    p.stats.gathers++;
+    return { ok: true, got, good: spot.good, message: `You gathered ${got} ${GOODS[spot.good].name.toLowerCase()}.` };
   }
   if (action.type === 'sell') {
     const res = sellToNpc(state, actor, action.npc, action.good, qty);
+    if (res.ok) { p.stats.sells++; p.stats.sold += qty; p.stats.earned = r2(p.stats.earned + res.total - res.tax); }
     if (res.ok) res.message = `Sold ${qty} ${GOODS[action.good].name.toLowerCase()} for ${res.total} EMWK (tax ${res.tax}).`;
     return res;
   }
@@ -208,10 +227,45 @@ export function playerAction(state, playerId, action) {
   return { ok: false, error: 'Unknown action.' };
 }
 
+export function questFor(p) {
+  const q = QUESTS[Math.min(p.quest || 0, QUESTS.length - 1)];
+  const route = PATH_ROUTE[p.path] || PATH_ROUTE.farmer;
+  const name = (id) => (BUILDINGS.find((b) => b.id === id) || {}).name || id;
+  const fill = (t) => t && t.replace('{spot}', route.spot).replace('{shop}', route.shop);
+  const fillText = (t) => t.replace('{spot}', name(route.spot).toLowerCase()).replace('{shop}', name(route.shop).toLowerCase());
+  const st = p.stats || { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} };
+  const progress = { gather: [st.gathers, 2], earn: [Math.floor(st.earned), 40], supply: [st.sold, 15] }[q.id] || null;
+  return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target: fill(q.target), reward: q.reward, progress };
+}
+
+function questDone(p, q) {
+  const st = p.stats, route = PATH_ROUTE[p.path] || PATH_ROUTE.farmer;
+  switch (q.id) {
+    case 'meet': return !!st.visited.gate;
+    case 'gather': return st.gathers >= 2;
+    case 'sell': return st.sells >= 1;
+    case 'peak': return !!st.visited.dragonpeak;
+    case 'earn': return st.earned >= 40;
+    case 'supply': return st.sold >= 15;
+    default: return false;
+  }
+}
+
+function advanceQuest(state, p) {
+  const q = QUESTS[p.quest || 0];
+  if (!q || !questDone(p, q)) return null;
+  const reward = Math.min(q.reward, balance(state, 'newcomerFund'));
+  transfer(state, 'newcomerFund', 'player:' + p.id, reward);
+  p.quest = (p.quest || 0) + 1;
+  if (p.quest >= 4 && p.rank === 'Newcomer') { p.rank = 'Settler'; addLog(state, `${p.name} is now a settler of Emberwick.`, 'good'); }
+  return { title: q.title, reward };
+}
+
 // ---------- the simulation tick ----------
 
 export function tick(state) {
   state.tick++;
+  state.rev = (state.rev || 0) + 1;
   const newDay = state.tick % RULES.ticksPerDay === 0;
 
   // energy recovers for everyone
@@ -419,6 +473,7 @@ export function publicView(state, playerId) {
   const p = playerId && state.players[playerId];
   return {
     token: TOKEN,
+    rev: state.rev || 0,
     day: state.day,
     dayProgress: (state.tick % RULES.ticksPerDay) / RULES.ticksPerDay,
     events: state.events,
@@ -429,6 +484,7 @@ export function publicView(state, playerId) {
     npcs,
     history: state.history,
     log: state.log.slice(0, 12),
-    player: p ? { ...p, coins: r2(balance(state, 'player:' + p.id)) } : null,
+    player: p ? { ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p) } : null,
+    bots: Object.values(state.bots).map((b) => ({ id: b.id, name: b.name, path: b.path })),
   };
 }
