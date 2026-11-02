@@ -1,9 +1,10 @@
 import { setupMap, renderMap, buildGrid, entranceOf, findPath, cellCenter, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
 import { t, LANGS, getLang, setLang } from './i18n.js';
+import { sceneMarkup, hasScene, SW, SH } from './scenes.js';
 
 const $ = (id) => document.getElementById(id);
 let world, view, playerId = null, pathChoice = 'farmer';
-const ui = { selected: null, hover: null, target: null, nameOf: (id) => t('b.' + id) };
+const ui = { selected: null, hover: null, target: null, scene: null, nameOf: (id) => t('b.' + id) };
 
 const store = {
   get() { try { return localStorage.getItem('emberwick-player'); } catch { return null; } },
@@ -66,11 +67,14 @@ let you = null;
 const fx = []; // floating "+4 Wheat" texts
 
 function popupYou(text, color) {
+  if (ui.scene) sceneFx.push({ x: SW / 2, y: 230, text, color, t0: performance.now() });
   if (!you) return;
   const [x, y] = walkerPos(you);
   fx.push({ x, y: y - 50, text, color, t0: performance.now() });
 }
+const sceneFx = [];
 function popup(placeId, text, color) {
+  if (ui.scene === placeId) sceneFx.push({ x: SW / 2 + 40, y: 260, text, color, t0: performance.now() });
   const b = world.buildings.find((x) => x.id === placeId);
   if (!b) return;
   const [x, y] = cellCenter(b.i + (b.w - 1) / 2, b.j + (b.w - 1) / 2);
@@ -171,6 +175,18 @@ function animate(now) {
     return `<text x="${f.x}" y="${f.y - p * 50}" text-anchor="middle" font-size="22" font-weight="bold" fill="${f.color}" stroke="#fffaf2" stroke-width="4" paint-order="stroke" opacity="${1 - p * p}">${esc(f.text)}</text>`;
   }).join('');
   $('map').querySelector('#fx').innerHTML = over;
+  if (ui.scene) {
+    const sc = $('scene');
+    sc.classList.toggle('is-working', !!(you && you.look.work != null));
+    for (let k = sceneFx.length - 1; k >= 0; k--) if (now - sceneFx[k].t0 > 2000) sceneFx.splice(k, 1);
+    const dyn = sc.querySelector('#scene-fx');
+    if (dyn) dyn.innerHTML = sceneFx.map((f) => {
+      const p = (now - f.t0) / 2000;
+      return `<text x="${f.x}" y="${f.y - p * 70}" text-anchor="middle" font-size="40" font-weight="bold" fill="${f.color}" stroke="#fffaf2" stroke-width="7" paint-order="stroke" opacity="${1 - p * p}">${esc(f.text)}</text>`;
+    }).join('');
+    const bar = $('scene-prog');
+    if (bar) bar.style.width = (you && you.look.work != null ? you.look.work * 100 : 0) + '%';
+  }
   requestAnimationFrame(animate);
 }
 
@@ -178,7 +194,12 @@ function walkYouTo(id, then) {
   if (!you) { if (then) then(); return; }
   const dest = workCellOf(id, 4);
   if (!dest) return;
-  const enter = () => { you.inside = isOpenArea(id) ? null : id; renderPanel(); if (then) then(); };
+  const enter = () => {
+    you.inside = isOpenArea(id) ? null : id;
+    if (hasScene(id, view) && ui.selected === id) openScene(id);
+    renderPanel();
+    if (then) then();
+  };
   const atDest = you.cell[0] === dest[0] && you.cell[1] === dest[1] && you.path.length <= 1;
   if (atDest) { you.path = []; enter(); return; }
   you.inside = null;
@@ -198,17 +219,54 @@ function goAndDo(placeId, verb, run) {
     if (verb === 'gather' && you && !still) {
       status[placeId] = { key: 'status.working' };
       renderPanel();
+      renderScene();
       const t0 = performance.now();
       const tickWork = () => {
         const k = Math.min(1, (performance.now() - t0) / 1400);
         you.look.work = k;
         if (k < 1) requestAnimationFrame(tickWork);
-        else { you.look.work = null; delete status[placeId]; run(); }
+        else { you.look.work = null; delete status[placeId]; renderScene(); run(); }
       };
       tickWork();
     } else { delete status[placeId]; run(); }
   });
 }
+
+// ---------- close-up scenes ----------
+
+let sceneKey = null;
+function openScene(id) { ui.scene = id; sceneKey = null; renderScene(); }
+function closeScene() { ui.scene = null; sceneKey = null; renderScene(); renderMapNow(); }
+
+function renderScene() {
+  const sc = $('scene'), mini = $('mini'), bar = $('scene-bar');
+  const id = ui.scene;
+  // svg elements have no .hidden property, so toggle the attribute itself
+  const show = (el, on) => (on ? el.removeAttribute('hidden') : el.setAttribute('hidden', ''));
+  if (!id || !view) { show(sc, false); show(mini, false); show(bar, false); show($('map'), true); return; }
+  show($('map'), false); show(sc, true); show(mini, true); show(bar, true); $('hint').hidden = true;
+  mini.innerHTML = `<span>${t('scene.back')}</span>`;
+  mini.setAttribute('aria-label', t('scene.back'));
+  const n = view.npcs[id];
+  const key = [id, getLang(), n ? JSON.stringify(n.stock) + n.closed : '', view.events.drought, view.events.winter].join('|');
+  if (key !== sceneKey) {
+    sceneKey = key;
+    sc.setAttribute('viewBox', `0 0 ${SW} ${SH}`);
+    sc.setAttribute('aria-label', placeName(id));
+    const look = you ? you.look : PATH_LOOK.farmer;
+    sc.innerHTML = `<g>${sceneMarkup(id, view, look)}</g><g id="scene-fx"></g>`;
+  }
+  const me = view.player;
+  if (SPOT_GOOD[id]) {
+    const cost = me ? me.costs[id] : SPOT_COST[id];
+    const working = status[id] && status[id].key === 'status.working';
+    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))}</b>${working ? esc(t('scene.working', { name: me ? me.name : '' })) : t('scene.ready')}<div class="prog"><div id="scene-prog"></div></div></div>` +
+      `<button class="primary" data-act="gather" data-spot="${id}" ${!me || me.energy < cost || working ? 'disabled' : ''}>${t('scene.again', { n: cost })}</button>`;
+  } else if (n) {
+    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))} · ${esc(npcName(id))}</b><span class="quote">"${esc(t('line.' + n.lineKey))}"</span><div class="muted" style="font-size:12px;margin-top:4px">${t('scene.tradeHint')}</div></div>`;
+  }
+}
+$('mini').addEventListener('click', () => closeScene());
 
 // ---------- side panel ----------
 
@@ -498,7 +556,7 @@ function renderChrome() {
 }
 
 function renderMapNow() { ui.closedTag = t('ui.closedTag'); renderMap($('map'), world, view, ui); }
-function render() { renderHud(); renderMapNow(); renderChrome(); renderPanel(); renderDock(); }
+function render() { renderHud(); renderMapNow(); renderChrome(); renderPanel(); renderDock(); renderScene(); }
 
 // ---------- static page text and the language menu ----------
 
@@ -587,6 +645,7 @@ function flash(what) {
 }
 
 function select(id) {
+  if (ui.scene && ui.scene !== id) { ui.scene = null; sceneKey = null; }
   ui.selected = id;
   walkYouTo(id);
   render();
@@ -630,6 +689,7 @@ $('map').addEventListener('click', (e) => {
   if (g) select(g.dataset.id);
 });
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && ui.scene) { closeScene(); return; }
   if (e.key === 'Escape' && ui.selected) { ui.selected = null; renderMapNow(); renderPanel(); renderDock(); }
 });
 $('map').addEventListener('keydown', (e) => {
@@ -646,13 +706,13 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
-  const btn = e.target.closest('#panel button[data-act], #dock button[data-act]');
+  const btn = e.target.closest('#panel button[data-act], #dock button[data-act], #scene-bar button[data-act]');
   if (!btn) return;
   const a = btn.dataset.act;
   if (a === 'close') { ui.selected = null; renderMapNow(); renderPanel(); renderDock(); }
   else if (a === 'elder') openElder();
   else if (a === 'meal') { delete result.inn; goAndDo('inn', 'meal', () => act('meal')); }
-  else if (a === 'gather') { const spot = ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
+  else if (a === 'gather') { const spot = btn.dataset.spot || ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
   else { const npc = btn.dataset.npc || ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
 });
 

@@ -3,6 +3,7 @@
 
 const en = {
   'lang.name': 'English',
+  'scene.back': 'Back to the village', 'scene.working': '{name} is working…', 'scene.ready': 'Ready to work', 'scene.again': 'Work again ({n} energy)', 'scene.tradeHint': 'Buy and sell with the panel on the right.',
   'dock.bag': 'My bag', 'dock.wealth': 'My wealth', 'dock.skills': 'My skills', 'dock.here': 'At this shop',
   'dock.worth': '{p} each', 'dock.total': '= {p}', 'dock.uses': '{n}/{max} uses left', 'dock.empty': 'Empty. Go and gather something!',
   'w.coins': 'Coins', 'w.goods': 'Goods and tools', 'w.total': 'Total wealth', 'w.start': 'You started with', 'w.profit': 'Profit so far',
@@ -128,6 +129,7 @@ const en = {
 
 const tr = {
   'lang.name': 'Türkçe',
+  'scene.back': 'Köye dön', 'scene.working': '{name} çalışıyor…', 'scene.ready': 'Çalışmaya hazır', 'scene.again': 'Tekrar çalış ({n} enerji)', 'scene.tradeHint': 'Alım ve satımı sağdaki panelden yapabilirsin.',
   'dock.bag': 'Çantam', 'dock.wealth': 'Servetim', 'dock.skills': 'Becerilerim', 'dock.here': 'Bu dükkanda',
   'dock.worth': 'tanesi {p}', 'dock.total': '= {p}', 'dock.uses': '{n}/{max} kullanım kaldı', 'dock.empty': 'Boş. Git bir şeyler topla!',
   'w.coins': 'Para', 'w.goods': 'Mallar ve aletler', 'w.total': 'Toplam servet', 'w.start': 'Başlangıçtaki paran', 'w.profit': 'Şu ana kadarki kâr',
@@ -253,6 +255,7 @@ const tr = {
 
 const fr = {
   'lang.name': 'Français',
+  'scene.back': 'Retour au village', 'scene.working': '{name} travaille…', 'scene.ready': 'Prêt à travailler', 'scene.again': 'Travailler encore ({n} énergie)', 'scene.tradeHint': 'Achetez et vendez avec le panneau de droite.',
   'dock.bag': 'Mon sac', 'dock.wealth': 'Ma fortune', 'dock.skills': 'Mes compétences', 'dock.here': 'Dans cette boutique',
   'dock.worth': '{p} pièce', 'dock.total': '= {p}', 'dock.uses': '{n}/{max} utilisations restantes', 'dock.empty': 'Vide. Allez récolter quelque chose !',
   'w.coins': 'Pièces', 'w.goods': 'Marchandises et outils', 'w.total': 'Fortune totale', 'w.start': 'Au départ, vous aviez', 'w.profit': 'Bénéfice jusqu\'ici',
@@ -378,6 +381,7 @@ const fr = {
 
 const de = {
   'lang.name': 'Deutsch',
+  'scene.back': 'Zurück ins Dorf', 'scene.working': '{name} arbeitet…', 'scene.ready': 'Bereit zur Arbeit', 'scene.again': 'Weiterarbeiten ({n} Energie)', 'scene.tradeHint': 'Kaufen und verkaufen kannst du im Feld rechts.',
   'dock.bag': 'Meine Tasche', 'dock.wealth': 'Mein Vermögen', 'dock.skills': 'Meine Fähigkeiten', 'dock.here': 'In diesem Laden',
   'dock.worth': '{p} pro Stück', 'dock.total': '= {p}', 'dock.uses': 'noch {n}/{max} Einsätze', 'dock.empty': 'Leer. Geh und sammle etwas!',
   'w.coins': 'Münzen', 'w.goods': 'Waren und Werkzeuge', 'w.total': 'Gesamtvermögen', 'w.start': 'Dein Startgeld', 'w.profit': 'Bisheriger Gewinn',
