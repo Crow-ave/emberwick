@@ -1,0 +1,13 @@
+{
+  "name": "emberwick",
+  "version": "0.1.0",
+  "description": "A living village economy on NEAR",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node server/selftest.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

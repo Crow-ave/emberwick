@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Emberwick — a living village economy</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="ember"></span>Emberwick</div>
+    <div class="stat" id="day">Day 1</div>
+    <div class="stat" id="coins">— EMWK</div>
+    <div class="stat" id="energy">Energy —</div>
+    <div class="stat muted" id="who">Not joined</div>
+    <div class="readiness" title="How ready the village is for a dragon attack">
+      <span>Readiness</span><div class="bar"><div id="ready-fill"></div></div><span id="ready-num">0%</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="map-wrap">
+      <svg id="map" viewBox="0 0 760 450" role="img" aria-label="Map of Emberwick village"></svg>
+      <div class="inventory" id="inventory"></div>
+    </section>
+    <aside class="panel" id="panel">
+      <h2>Welcome to Emberwick</h2>
+      <p class="muted">Click any building on the map to visit it.</p>
+    </aside>
+  </main>
+
+  <div class="banner" id="banner" hidden></div>
+  <section class="log"><h3>Village news</h3><ul id="log"></ul></section>
+
+  <div class="overlay" id="join" hidden>
+    <form class="join-card" id="join-form" novalidate>
+      <h1>Emberwick</h1>
+      <p class="story">The dragon burned this village to ash. Years later, a few craftsmen came back and relit the embers. The elder gives every newcomer a handful of coins and asks one thing: help Emberwick stand again, because the dragon will return.</p>
+      <label for="join-name">Your name</label>
+      <input id="join-name" maxlength="20" placeholder="Rustem" autocomplete="off">
+      <div class="error" id="join-error"></div>
+      <p class="label">Choose how you start</p>
+      <div class="paths" id="paths"></div>
+      <button type="submit" class="primary">Enter the village</button>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
