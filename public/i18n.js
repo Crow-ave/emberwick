@@ -1,0 +1,484 @@
+// Emberwick translations. Add a language by copying the `en` block.
+// {name} style placeholders are filled in by t(key, params).
+
+const en = {
+  'lang.name': 'English',
+  'ui.day': 'Day {n}', 'ui.winter': 'Winter', 'ui.night': 'Night',
+  'ui.pop': '{n} villagers · Treasury {t} EMWK', 'ui.readiness': 'Dragon readiness',
+  'ui.hint': 'Click a building to visit it. Click a villager on the road to talk.', 'ui.news': 'Village news', 'ui.close': 'Close',
+  'ui.youHere': 'You are here', 'ui.closedTag': '(closed)', 'ui.language': 'Language', 'ui.mapLabel': 'Map of Emberwick village',
+
+  'join.story': 'The dragon burned this village to ash. Years later, a few craftsmen came back and relit the embers. Now Emberwick needs people: farmers, miners, woodcutters and apprentices who will work, trade and get the village ready before the dragon returns.',
+  'join.name': 'Your name', 'join.who': 'Who are you?', 'join.enter': 'Enter the village', 'join.errName': 'Enter a name first.',
+  'path.farmer': 'Farmer', 'path.miner': 'Miner', 'path.woodcutter': 'Woodcutter', 'path.apprentice': 'Apprentice',
+  'blurb.farmer': 'Grows wheat for the miller.', 'blurb.miner': 'Digs ore for the smith.', 'blurb.woodcutter': 'Chops wood for the village.', 'blurb.apprentice': 'No tools, more coins. Learns any trade.',
+
+  'b.forest': 'Forest', 'b.fields': 'Fields', 'b.mine': 'Mine', 'b.dragonpeak': 'Dragon peak', 'b.woodcutter': 'Woodcutter', 'b.mill': 'Mill',
+  'b.smithy': 'Smithy', 'b.carpenter': 'Carpenter', 'b.bakery': 'Bakery', 'b.inn': 'Inn', 'b.tower': 'Guard tower', 'b.market': 'Market',
+  'b.council': 'Council hall', 'b.treasury': 'Treasury', 'b.house-1': 'Room', 'b.house-2': 'Small house', 'b.house-3': 'Large house',
+  'b.gate': 'Village gate', 'b.expansion': 'Expansion land',
+
+  'g.wheat': 'Wheat', 'g.wood': 'Wood', 'g.ore': 'Iron ore', 'g.lumber': 'Lumber', 'g.flour': 'Flour', 'g.bread': 'Bread', 'g.sword': 'Sword',
+  'g.pickaxe': 'Pickaxe', 'g.axe': 'Axe', 'g.plow': 'Plow', 'g.cart': 'Cart', 'g.meal': 'Meal',
+
+  'npc.woodcutter': 'Bram the Woodcutter', 'npc.mill': 'Ilsa the Miller', 'npc.bakery': 'Tobin the Baker', 'npc.smithy': 'Doran the Blacksmith',
+  'npc.carpenter': 'Wren the Carpenter', 'npc.inn': 'Marta the Innkeeper', 'npc.tower': 'Captain Hale',
+  'line.woodcutter.0': 'Good timber keeps a village standing.', 'line.woodcutter.1': 'Dry wood, fair price. That is my rule.',
+  'line.mill.0': 'The stones turn whether you bring wheat or not.', 'line.mill.1': 'Bring me grain, I will make you flour.',
+  'line.bakery.0': 'Warm bread, warm village.', 'line.bakery.1': 'No flour, no bread. Simple as that.',
+  'line.smithy.0': 'Iron in, steel out.', 'line.smithy.1': 'Dragon talk is good for business, I will admit.',
+  'line.carpenter.0': 'Measure twice, cut once.', 'line.carpenter.1': 'A good cart carries a family through winter.',
+  'line.inn.0': 'Travellers bring coin and stories.', 'line.inn.1': 'Full tables mean a full purse.',
+  'line.tower.0': 'The peak is quiet. For now.', 'line.tower.1': 'A blade in every hand when the dragon comes.',
+
+  'role.farmer': 'Farmer', 'role.miner': 'Miner', 'role.woodcutter': 'Woodcutter', 'role.traveller': 'Traveller', 'role.elder': 'Village elder',
+  'rank.newcomer': 'Newcomer', 'rank.settler': 'Settler',
+
+  'me.energy': 'Energy', 'me.bagEmpty': 'Your bag is empty.', 'me.eat': 'Eat', 'me.join': 'Join the village to play.',
+  'quest.step': 'Goal {n} of {total}', 'quest.allDone': 'All goals done', 'quest.showMe': 'Show me', 'quest.reward': 'Reward: {n} EMWK', 'quest.help': 'What should I do now?',
+  'quest.meet.title': 'Meet Elder Rowan', 'quest.meet.text': 'Walk to the village gate and hear what the elder has to say.',
+  'quest.gather.title': 'Your first work', 'quest.gather.text': 'Gather at the {spot} two times.',
+  'quest.sell.title': 'Make a sale', 'quest.sell.text': 'Sell what you gathered at the {shop}.',
+  'quest.peak.title': 'Know the danger', 'quest.peak.text': 'Look at Dragon peak to see how ready the village is.',
+  'quest.earn.title': 'Stand on your own feet', 'quest.earn.text': 'Earn 40 EMWK from trading.',
+  'quest.supply.title': 'Feed the village', 'quest.supply.text': 'Sell 15 goods in total to the craftsmen.',
+  'quest.done.title': 'A true villager', 'quest.done.text': 'Jobs, homes and the village council open in the next update. Keep trading and watch the prices.',
+
+  'elder.title': 'Elder Rowan', 'elder.ok': "I'm ready",
+  'elder.text': 'Welcome to Emberwick, {name}. The embers are lit again, but this village is still weak. Your work starts at the {spot}. Gather there, then sell at the {shop}. Every sale feeds the craftsmen, and a little tax goes to our treasury. Keep an eye on Dragon peak: when smoke rises, the guards need swords and bread, and fast.',
+
+  'panel.purse': '{place} · purse {n} EMWK · AI craftsman', 'panel.closed': 'Closed for repairs after the dragon attack.',
+  'panel.buysFromYou': 'Buys from you', 'panel.sells': 'Sells', 'panel.youHave': 'you have {n}', 'panel.left': '{n} left',
+  'panel.sellAll': 'Sell all {n}', 'panel.sell': 'Sell', 'panel.buy': 'Buy',
+  'panel.pricesNote': 'Prices move with supply and demand. Haggling and apprentice jobs arrive in the next update.',
+  'panel.meal': 'Have a hot meal: +5 energy ({p} EMWK)', 'panel.full': 'You are full of energy right now.', 'panel.mealsReady': '{n} meals ready in the kitchen.',
+  'panel.breadHint': 'Bread gives <b>+3 energy</b> when you eat it. Buy some and keep it in your bag for when you get tired.',
+
+  'gather.forest': 'Chop wood here. An axe gives +2 per trip.', 'gather.fields': 'Harvest wheat here. A plow gives +2. Droughts halve the harvest.',
+  'gather.mine': 'Dig iron ore here. A pickaxe gives +2.', 'gather.cost': 'Costs {n} energy.', 'gather.youHave': 'You have {n}.',
+  'gather.carry': 'You carry <b>{n} {good}</b>.', 'gather.btn.wood': 'Chop wood ({n} energy)', 'gather.btn.wheat': 'Harvest wheat ({n} energy)', 'gather.btn.ore': 'Dig ore ({n} energy)',
+  'gather.best': 'Best price right now: <b>{name}</b> pays <b>{p} EMWK</b>.', 'go.to': 'Go to: {place}',
+
+  'tired.body': '<b>You are tired.</b> Eat something to get your energy back, or wait: it also comes back slowly by itself.',
+  'tired.eat': 'Eat bread from your bag (+3 energy)', 'tired.buyBread': 'Bread at the bakery: {p} EMWK, +3 energy', 'tired.meal': 'Hot meal at the inn: {p} EMWK, +5 energy',
+
+  'market.title': 'Market', 'market.sub': 'Average prices across the village.',
+  'market.note': 'Red line: getting more expensive. Green: getting cheaper. Every sale pays a 3% tax to the village treasury.',
+  'dragon.warn': 'The dragon may attack on day {day}.', 'dragon.quiet': 'The peak is quiet for now.', 'dragon.ready': 'Village readiness: <b>{n}%</b>.',
+  'dragon.rule': 'At 60% or more the guards drive the dragon back and every villager is rewarded. Below that, part of the village burns.',
+  'dragon.tip': 'Readiness grows with swords and bread in the guard tower. Bring ore to the smith so he can forge swords, and wheat to the miller so the baker can bake.',
+  'treasury.text': "The village's shared purse: <b>{n} EMWK</b>.", 'treasury.note': 'It collects market tax and profit tax from rich shops, and pays the guard captain and dragon rewards. Nobody can take money out on their own. Spending will be decided by council votes.',
+  'council.text': 'Villagers who rent a home will propose and vote on taxes, building projects and the defence budget here.', 'council.soon': 'Opens in the next update.',
+  'gate.text': 'Elder Rowan greets newcomers here, and travellers arrive to spend their coin at the inn.', 'gate.talk': 'Talk to Elder Rowan', 'gate.pop': 'Population: {n}',
+  'expansion.text': 'Reserved for future neighbourhoods and new shops. New buildings will go here without moving anything that exists today.',
+  'house.text': 'A home in Emberwick. Renting with a deposit, and the council vote that comes with living here, open in the next update.',
+
+  'status.walking': 'Walking to: {place}…', 'status.working': 'Working…', 'status.here': 'You are here: {place}.',
+  'result.done': 'Done!', 'result.gathered': 'You gathered {n} {good}. You now carry {have}.', 'result.sellAt': 'Sell at: {place} ({p} EMWK each)',
+  'result.sold': 'Sold for {total} EMWK ({unit} each). Village tax: {tax}. You received {got} EMWK.', 'result.next': 'Next: {text}',
+  'result.bought': 'You bought 1 {good} for {total} EMWK.', 'result.meal': 'You had a hot meal for {total} EMWK. +5 energy. Back to work!',
+  'fx.energy': '+{n} energy', 'toast.goal': 'Goal complete: {title}', 'toast.join': 'Join the village first.',
+
+  'talk.farmer.0': 'The mill pays {p} EMWK for wheat today.', 'talk.farmer.1': 'Good soil this year. My back hurts though.',
+  'talk.farmer.1d': 'This drought is ruining my crop. Bread will get expensive.', 'talk.farmer.2': 'With a plow you harvest two more wheat every time.',
+  'talk.miner.0': 'Doran the smith pays {p} EMWK per ore right now.', 'talk.miner.1': 'It is cold and dark down in the mine. Pays well though.',
+  'talk.miner.1d': 'Smoke on the peak! The smith needs every lump of ore for swords.', 'talk.miner.2': 'Sell where the price is highest. It changes all day.',
+  'talk.woodcutter.0': 'Bram buys wood at {p} EMWK. The baker needs wood for his ovens too.', 'talk.woodcutter.1': 'An axe makes the work go twice as fast.',
+  'talk.woodcutter.1d': 'Winter is here. Everyone wants firewood now.', 'talk.woodcutter.2': 'When a shop runs short, its price goes up. That is when you sell.',
+  'talk.traveller.0': 'Three days on the road. The stew at the inn is worth it.', 'talk.traveller.1': 'A meal here costs {p} EMWK. Cheap compared to the city!',
+  'talk.traveller.2': 'They say the dragon sleeps under that peak. I hope your guards are ready.',
+  'talk.note': 'Click other villagers on the road to hear what they know. What they say comes from the live village.',
+
+  'guide.title': 'What should I do now?', 'guide.sentence': 'The game in one sentence: work, sell to the craftsmen for the best price, grow your coins and keep the village strong enough to beat the dragon.',
+  'guide.carry': 'You are carrying <b>{n} {good}</b>. Sell it to <b>{name}</b> ({place}). They pay <b>{p} EMWK</b> each.',
+  'guide.empty': 'Your bag is empty. Go to: <b>{place}</b> and press the big button to gather.',
+  'guide.tiredBread': 'You are tired (energy {n}/10). You have bread in your bag: eat it for +3 energy.',
+  'guide.tiredNoBread': 'You are tired (energy {n}/10). Buy bread at the bakery (<b>{bread} EMWK</b>, +3 energy) or have a hot meal at the inn (<b>{meal} EMWK</b>, +5 energy). Energy also comes back slowly by itself.',
+  'guide.goal': 'Your current goal: <b>{title}</b>. {text}',
+  'guide.dragon': 'The dragon may attack on <b>day {day}</b> (today is day {today}). Readiness is {ready}%, it needs 60%. Ore for the smith and wheat for the miller help the guards get swords and bread.',
+  'guide.eat': 'Eat bread', 'guide.seePeak': 'See Dragon peak', 'guide.join': 'Join the village first.',
+  'banner.attack': 'Smoke over Dragon peak! The dragon may attack on day {day}. Readiness is {ready}%: the guards need swords and bread.',
+  'banner.drought': 'Drought: wheat harvests are halved and bread is getting expensive.',
+
+  'log.day': 'Day {n}', 'log.start': 'The embers of Emberwick are lit again. Newcomers are welcome at the gate.',
+  'log.join': '{name} arrived at the gate ({path}).', 'log.settler': '{name} is now a settler of Emberwick.',
+  'log.rain': 'Rain returns to the fields. The drought is over.', 'log.winter': 'Winter arrives. Firewood is in demand.',
+  'log.drought': 'A drought hits the fields. Wheat harvests are halved.', 'log.smoke': 'Smoke rises over Dragon peak. The dragon may attack in {days} days.',
+  'log.repelled': 'The dragon attacked and was driven back! Readiness was {ready}%. Every villager earns {reward} EMWK.',
+  'log.burned': 'The dragon burned part of the village. Readiness was only {ready}%. One shop is closed for repairs.',
+
+  'err.notBuying': 'This shop does not buy that.', 'err.notEnough': 'You do not have enough.', 'err.shopBroke': 'The shopkeeper cannot afford that right now.',
+  'err.notSelling': 'This shop does not sell that.', 'err.outOfStock': 'Out of stock.', 'err.noMoney': 'You do not have enough EMWK.',
+  'err.unknownPath': 'Unknown starting path.', 'err.enterName': 'Enter a name.', 'err.unknownPlayer': 'Unknown player. Join the village first.',
+  'err.unknownPlace': 'Unknown place.', 'err.cannotGather': 'You cannot gather there.', 'err.tired': 'You are too tired. Eat something or rest.',
+  'err.noBread': 'You have no bread. Buy some at the bakery.', 'err.notHungry': 'You are not hungry yet.',
+  'err.kitchenEmpty': 'The kitchen is out of food. Try again soon, or eat bread.', 'err.unknownAction': 'Unknown action.',
+};
+
+const tr = {
+  'lang.name': 'Türkçe',
+  'ui.day': '{n}. gün', 'ui.winter': 'Kış', 'ui.night': 'Gece',
+  'ui.pop': '{n} köylü · Hazine {t} EMWK', 'ui.readiness': 'Ejderhaya hazırlık',
+  'ui.hint': 'Ziyaret etmek için bir binaya, konuşmak için yoldaki bir köylüye tıkla.', 'ui.news': 'Köy haberleri', 'ui.close': 'Kapat',
+  'ui.youHere': 'Buradasın', 'ui.closedTag': '(kapalı)', 'ui.language': 'Dil', 'ui.mapLabel': 'Emberwick köyünün haritası',
+
+  'join.story': 'Ejderha bu köyü yakıp kül etti. Yıllar sonra birkaç esnaf geri döndü ve közleri yeniden yaktı. Emberwick\'in şimdi insanlara ihtiyacı var: ejderha dönmeden önce çalışacak, ticaret yapacak ve köyü hazırlayacak çiftçiler, madenciler, oduncular ve çıraklar.',
+  'join.name': 'Adın', 'join.who': 'Sen kimsin?', 'join.enter': 'Köye gir', 'join.errName': 'Önce bir ad yaz.',
+  'path.farmer': 'Çiftçi', 'path.miner': 'Madenci', 'path.woodcutter': 'Oduncu', 'path.apprentice': 'Çırak',
+  'blurb.farmer': 'Değirmenci için buğday yetiştirir.', 'blurb.miner': 'Demirci için cevher çıkarır.', 'blurb.woodcutter': 'Köy için odun keser.', 'blurb.apprentice': 'Aleti yok ama parası fazla. Her işi öğrenir.',
+
+  'b.forest': 'Orman', 'b.fields': 'Tarla', 'b.mine': 'Maden', 'b.dragonpeak': 'Ejderha Dağı', 'b.woodcutter': 'Oduncu', 'b.mill': 'Değirmen',
+  'b.smithy': 'Demirci', 'b.carpenter': 'Marangoz', 'b.bakery': 'Fırın', 'b.inn': 'Han', 'b.tower': 'Muhafız kulesi', 'b.market': 'Pazar',
+  'b.council': 'Meclis binası', 'b.treasury': 'Hazine', 'b.house-1': 'Oda', 'b.house-2': 'Küçük ev', 'b.house-3': 'Büyük ev',
+  'b.gate': 'Köy kapısı', 'b.expansion': 'Genişleme alanı',
+
+  'g.wheat': 'Buğday', 'g.wood': 'Odun', 'g.ore': 'Demir cevheri', 'g.lumber': 'Kereste', 'g.flour': 'Un', 'g.bread': 'Ekmek', 'g.sword': 'Kılıç',
+  'g.pickaxe': 'Kazma', 'g.axe': 'Balta', 'g.plow': 'Saban', 'g.cart': 'Araba', 'g.meal': 'Yemek',
+
+  'npc.woodcutter': 'Oduncu Bram', 'npc.mill': 'Değirmenci Ilsa', 'npc.bakery': 'Fırıncı Tobin', 'npc.smithy': 'Demirci Doran',
+  'npc.carpenter': 'Marangoz Wren', 'npc.inn': 'Hancı Marta', 'npc.tower': 'Kaptan Hale',
+  'line.woodcutter.0': 'İyi kereste köyü ayakta tutar.', 'line.woodcutter.1': 'Kuru odun, adil fiyat. Benim kuralım bu.',
+  'line.mill.0': 'Buğday getirsen de getirmesen de taşlar döner.', 'line.mill.1': 'Bana tahıl getir, sana un yapayım.',
+  'line.bakery.0': 'Sıcak ekmek, sıcak köy.', 'line.bakery.1': 'Un yoksa ekmek de yok. Bu kadar basit.',
+  'line.smithy.0': 'Demir girer, çelik çıkar.', 'line.smithy.1': 'İtiraf edeyim, ejderha lafı işlere iyi geliyor.',
+  'line.carpenter.0': 'İki kere ölç, bir kere kes.', 'line.carpenter.1': 'İyi bir araba bir aileyi kıştan çıkarır.',
+  'line.inn.0': 'Yolcular para ve hikaye getirir.', 'line.inn.1': 'Dolu masa, dolu kese demek.',
+  'line.tower.0': 'Dağ sessiz. Şimdilik.', 'line.tower.1': 'Ejderha geldiğinde her ele bir kılıç.',
+
+  'role.farmer': 'Çiftçi', 'role.miner': 'Madenci', 'role.woodcutter': 'Oduncu', 'role.traveller': 'Yolcu', 'role.elder': 'Köyün muhtarı',
+  'rank.newcomer': 'Yeni gelen', 'rank.settler': 'Yerleşik',
+
+  'me.energy': 'Enerji', 'me.bagEmpty': 'Çantan boş.', 'me.eat': 'Ye', 'me.join': 'Oynamak için köye katıl.',
+  'quest.step': 'Hedef {n} / {total}', 'quest.allDone': 'Bütün hedefler tamam', 'quest.showMe': 'Göster', 'quest.reward': 'Ödül: {n} EMWK', 'quest.help': 'Şimdi ne yapmalıyım?',
+  'quest.meet.title': 'Muhtar Rowan ile tanış', 'quest.meet.text': 'Köy kapısına yürü ve muhtarın söyleyeceklerini dinle.',
+  'quest.gather.title': 'İlk işin', 'quest.gather.text': 'Şurada iki kez çalış: {spot}.',
+  'quest.sell.title': 'İlk satışını yap', 'quest.sell.text': 'Topladıklarını şuraya sat: {shop}.',
+  'quest.peak.title': 'Tehlikeyi tanı', 'quest.peak.text': 'Köyün ne kadar hazır olduğunu görmek için Ejderha Dağı\'na bak.',
+  'quest.earn.title': 'Kendi ayakların üstünde dur', 'quest.earn.text': 'Ticaretten 40 EMWK kazan.',
+  'quest.supply.title': 'Köyü besle', 'quest.supply.text': 'Esnafa toplam 15 mal sat.',
+  'quest.done.title': 'Gerçek bir köylü', 'quest.done.text': 'İşler, evler ve köy meclisi bir sonraki güncellemede açılıyor. Ticarete devam et ve fiyatları takip et.',
+
+  'elder.title': 'Muhtar Rowan', 'elder.ok': 'Hazırım',
+  'elder.text': 'Emberwick\'e hoş geldin, {name}. Közler yeniden yandı ama bu köy hâlâ zayıf. İşin şurada başlıyor: {spot}. Orada çalış, sonra topladığını şuraya sat: {shop}. Her satış esnafı besler ve küçük bir vergi hazinemize gider. Ejderha Dağı\'na göz kulak ol: duman yükseldiğinde muhafızların kılıca ve ekmeğe ihtiyacı olur, hem de hemen.',
+
+  'panel.purse': '{place} · kesesinde {n} EMWK · yapay zeka esnaf', 'panel.closed': 'Ejderha saldırısından sonra onarım için kapalı.',
+  'panel.buysFromYou': 'Senden alır', 'panel.sells': 'Satar', 'panel.youHave': 'sende {n} var', 'panel.left': '{n} kaldı',
+  'panel.sellAll': '{n} tanesini sat', 'panel.sell': 'Sat', 'panel.buy': 'Al',
+  'panel.pricesNote': 'Fiyatlar arz ve talebe göre değişir. Pazarlık ve çıraklık işleri bir sonraki güncellemede geliyor.',
+  'panel.meal': 'Sıcak yemek ye: +5 enerji ({p} EMWK)', 'panel.full': 'Şu an enerjin dolu.', 'panel.mealsReady': 'Mutfakta {n} porsiyon hazır.',
+  'panel.breadHint': 'Ekmeği yediğinde <b>+3 enerji</b> verir. Biraz al ve yorulduğunda yemek için çantanda tut.',
+
+  'gather.forest': 'Burada odun kes. Balta her seferinde +2 verir.', 'gather.fields': 'Burada buğday hasat et. Saban +2 verir. Kuraklıkta hasat yarıya iner.',
+  'gather.mine': 'Burada demir cevheri çıkar. Kazma +2 verir.', 'gather.cost': '{n} enerji harcar.', 'gather.youHave': 'Sende {n} var.',
+  'gather.carry': 'Çantanda <b>{n} {good}</b> var.', 'gather.btn.wood': 'Odun kes ({n} enerji)', 'gather.btn.wheat': 'Buğday hasat et ({n} enerji)', 'gather.btn.ore': 'Cevher çıkar ({n} enerji)',
+  'gather.best': 'Şu an en iyi fiyat: <b>{name}</b>, tanesine <b>{p} EMWK</b> veriyor.', 'go.to': 'Git: {place}',
+
+  'tired.body': '<b>Yoruldun.</b> Enerjini geri kazanmak için bir şeyler ye ya da bekle: enerji kendiliğinden de yavaşça dolar.',
+  'tired.eat': 'Çantandaki ekmeği ye (+3 enerji)', 'tired.buyBread': 'Fırında ekmek: {p} EMWK, +3 enerji', 'tired.meal': 'Handa sıcak yemek: {p} EMWK, +5 enerji',
+
+  'market.title': 'Pazar', 'market.sub': 'Köydeki ortalama fiyatlar.',
+  'market.note': 'Kırmızı çizgi: pahalanıyor. Yeşil: ucuzluyor. Her satıştan %3 vergi köy hazinesine gider.',
+  'dragon.warn': 'Ejderha {day}. günde saldırabilir.', 'dragon.quiet': 'Dağ şimdilik sessiz.', 'dragon.ready': 'Köyün hazırlığı: <b>%{n}</b>.',
+  'dragon.rule': 'Hazırlık %60 veya üstündeyse muhafızlar ejderhayı püskürtür ve her köylü ödül alır. Altındaysa köyün bir kısmı yanar.',
+  'dragon.tip': 'Hazırlık, muhafız kulesindeki kılıç ve ekmekle artar. Demirci kılıç dövebilsin diye ona cevher, fırıncı ekmek yapabilsin diye değirmenciye buğday götür.',
+  'treasury.text': 'Köyün ortak kesesi: <b>{n} EMWK</b>.', 'treasury.note': 'Pazar vergisini ve zengin dükkanların kâr vergisini toplar; muhafız kaptanının maaşını ve ejderha ödüllerini öder. Kimse tek başına para çekemez. Harcamalara meclis oylamasıyla karar verilecek.',
+  'council.text': 'Ev kiralayan köylüler vergi, yapı projeleri ve savunma bütçesi için burada öneri getirip oy kullanacak.', 'council.soon': 'Bir sonraki güncellemede açılıyor.',
+  'gate.text': 'Muhtar Rowan yeni gelenleri burada karşılar; yolcular da handa para harcamak için buradan gelir.', 'gate.talk': 'Muhtar Rowan ile konuş', 'gate.pop': 'Nüfus: {n}',
+  'expansion.text': 'Gelecekteki mahalleler ve yeni dükkanlar için ayrıldı. Yeni binalar, bugün var olan hiçbir şeyi yerinden oynatmadan buraya kurulacak.',
+  'house.text': 'Emberwick\'te bir ev. Depozitoyla kiralama ve burada oturmanın getirdiği meclis oyu bir sonraki güncellemede açılıyor.',
+
+  'status.walking': 'Yürüyor: {place}…', 'status.working': 'Çalışıyor…', 'status.here': 'Buradasın: {place}.',
+  'result.done': 'Tamam!', 'result.gathered': '{n} {good} topladın. Çantanda {have} tane var.', 'result.sellAt': 'Sat: {place} (tanesi {p} EMWK)',
+  'result.sold': '{total} EMWK\'ye sattın (tanesi {unit}). Köy vergisi: {tax}. Eline geçen: {got} EMWK.', 'result.next': 'Sıradaki: {text}',
+  'result.bought': '1 {good} aldın, {total} EMWK ödedin.', 'result.meal': '{total} EMWK\'ye sıcak bir yemek yedin. +5 enerji. Haydi işe!',
+  'fx.energy': '+{n} enerji', 'toast.goal': 'Hedef tamamlandı: {title}', 'toast.join': 'Önce köye katıl.',
+
+  'talk.farmer.0': 'Değirmen bugün buğdaya {p} EMWK veriyor.', 'talk.farmer.1': 'Bu yıl toprak iyi. Ama belim ağrıyor.',
+  'talk.farmer.1d': 'Bu kuraklık mahsulümü mahvediyor. Ekmek pahalanacak.', 'talk.farmer.2': 'Sabanla her seferinde iki buğday fazla toplarsın.',
+  'talk.miner.0': 'Demirci Doran şu an cevherin tanesine {p} EMWK veriyor.', 'talk.miner.1': 'Madenin dibi soğuk ve karanlık. Ama iyi para kazandırıyor.',
+  'talk.miner.1d': 'Dağda duman var! Demircinin kılıç için her parça cevhere ihtiyacı var.', 'talk.miner.2': 'Fiyat nerede yüksekse oraya sat. Gün boyu değişiyor.',
+  'talk.woodcutter.0': 'Bram odunu {p} EMWK\'den alıyor. Fırıncının da fırını için oduna ihtiyacı var.', 'talk.woodcutter.1': 'Baltayla iş iki kat hızlı gider.',
+  'talk.woodcutter.1d': 'Kış geldi. Şimdi herkes yakacak odun istiyor.', 'talk.woodcutter.2': 'Bir dükkanın malı azalınca fiyatı yükselir. Satma zamanı o zamandır.',
+  'talk.traveller.0': 'Üç gün yol yürüdüm. Handaki yahniye değdi.', 'talk.traveller.1': 'Burada yemek {p} EMWK. Şehre göre çok ucuz!',
+  'talk.traveller.2': 'Ejderhanın o dağın altında uyuduğunu söylüyorlar. Umarım muhafızlarınız hazırdır.',
+  'talk.note': 'Ne bildiklerini duymak için yoldaki diğer köylülere tıkla. Söyledikleri köyün o anki durumundan geliyor.',
+
+  'guide.title': 'Şimdi ne yapmalıyım?', 'guide.sentence': 'Oyun tek cümlede: çalış, en iyi fiyatı veren esnafa sat, paranı büyüt ve köyü ejderhayı yenecek kadar güçlü tut.',
+  'guide.carry': 'Çantanda <b>{n} {good}</b> var. Bunu <b>{name}</b> adlı esnafa sat ({place}). Tanesine <b>{p} EMWK</b> veriyor.',
+  'guide.empty': 'Çantan boş. Şuraya git: <b>{place}</b> ve toplamak için büyük düğmeye bas.',
+  'guide.tiredBread': 'Yoruldun (enerji {n}/10). Çantanda ekmek var: ye ve +3 enerji kazan.',
+  'guide.tiredNoBread': 'Yoruldun (enerji {n}/10). Fırından ekmek al (<b>{bread} EMWK</b>, +3 enerji) ya da handa sıcak yemek ye (<b>{meal} EMWK</b>, +5 enerji). Enerji kendiliğinden de yavaşça dolar.',
+  'guide.goal': 'Şu anki hedefin: <b>{title}</b>. {text}',
+  'guide.dragon': 'Ejderha <b>{day}. günde</b> saldırabilir (bugün {today}. gün). Hazırlık %{ready}, %60 gerekiyor. Demirciye cevher ve değirmenciye buğday götürmek muhafızlara kılıç ve ekmek sağlar.',
+  'guide.eat': 'Ekmek ye', 'guide.seePeak': 'Ejderha Dağı\'na bak', 'guide.join': 'Önce köye katıl.',
+  'banner.attack': 'Ejderha Dağı\'nda duman var! Ejderha {day}. günde saldırabilir. Hazırlık %{ready}: muhafızların kılıca ve ekmeğe ihtiyacı var.',
+  'banner.drought': 'Kuraklık: buğday hasadı yarıya indi ve ekmek pahalanıyor.',
+
+  'log.day': '{n}. gün', 'log.start': 'Emberwick\'in közleri yeniden yandı. Yeni gelenler kapıda hoş karşılanıyor.',
+  'log.join': '{name} köy kapısına geldi ({path}).', 'log.settler': '{name} artık Emberwick\'in yerleşik bir köylüsü.',
+  'log.rain': 'Tarlalara yağmur geri döndü. Kuraklık bitti.', 'log.winter': 'Kış geldi. Yakacak odun aranıyor.',
+  'log.drought': 'Tarlaları kuraklık vurdu. Buğday hasadı yarıya indi.', 'log.smoke': 'Ejderha Dağı\'nda duman yükseliyor. Ejderha {days} gün içinde saldırabilir.',
+  'log.repelled': 'Ejderha saldırdı ve püskürtüldü! Hazırlık %{ready} idi. Her köylü {reward} EMWK kazanıyor.',
+  'log.burned': 'Ejderha köyün bir kısmını yaktı. Hazırlık sadece %{ready} idi. Bir dükkan onarım için kapalı.',
+
+  'err.notBuying': 'Bu dükkan bunu almıyor.', 'err.notEnough': 'Yeterince yok.', 'err.shopBroke': 'Esnafın şu an buna parası yetmiyor.',
+  'err.notSelling': 'Bu dükkan bunu satmıyor.', 'err.outOfStock': 'Stokta yok.', 'err.noMoney': 'Yeterli EMWK\'n yok.',
+  'err.unknownPath': 'Bilinmeyen başlangıç yolu.', 'err.enterName': 'Bir ad yaz.', 'err.unknownPlayer': 'Bilinmeyen oyuncu. Önce köye katıl.',
+  'err.unknownPlace': 'Bilinmeyen yer.', 'err.cannotGather': 'Orada toplama yapamazsın.', 'err.tired': 'Çok yorgunsun. Bir şeyler ye ya da dinlen.',
+  'err.noBread': 'Ekmeğin yok. Fırından alabilirsin.', 'err.notHungry': 'Henüz aç değilsin.',
+  'err.kitchenEmpty': 'Mutfakta yemek kalmadı. Birazdan tekrar dene ya da ekmek ye.', 'err.unknownAction': 'Bilinmeyen işlem.',
+};
+
+const fr = {
+  'lang.name': 'Français',
+  'ui.day': 'Jour {n}', 'ui.winter': 'Hiver', 'ui.night': 'Nuit',
+  'ui.pop': '{n} villageois · Trésor {t} EMWK', 'ui.readiness': 'Préparation face au dragon',
+  'ui.hint': 'Cliquez sur un bâtiment pour le visiter. Cliquez sur un villageois pour lui parler.', 'ui.news': 'Nouvelles du village', 'ui.close': 'Fermer',
+  'ui.youHere': 'Vous êtes ici', 'ui.closedTag': '(fermé)', 'ui.language': 'Langue', 'ui.mapLabel': 'Carte du village d\'Emberwick',
+
+  'join.story': 'Le dragon a réduit ce village en cendres. Des années plus tard, quelques artisans sont revenus et ont ranimé les braises. Emberwick a maintenant besoin de monde : fermiers, mineurs, bûcherons et apprentis qui travailleront, commerceront et prépareront le village avant le retour du dragon.',
+  'join.name': 'Votre nom', 'join.who': 'Qui êtes-vous ?', 'join.enter': 'Entrer dans le village', 'join.errName': 'Indiquez d\'abord un nom.',
+  'path.farmer': 'Fermier', 'path.miner': 'Mineur', 'path.woodcutter': 'Bûcheron', 'path.apprentice': 'Apprenti',
+  'blurb.farmer': 'Cultive le blé pour le meunier.', 'blurb.miner': 'Extrait le minerai pour le forgeron.', 'blurb.woodcutter': 'Coupe du bois pour le village.', 'blurb.apprentice': 'Pas d\'outils, plus de pièces. Apprend tous les métiers.',
+
+  'b.forest': 'Forêt', 'b.fields': 'Champs', 'b.mine': 'Mine', 'b.dragonpeak': 'Pic du dragon', 'b.woodcutter': 'Bûcheron', 'b.mill': 'Moulin',
+  'b.smithy': 'Forge', 'b.carpenter': 'Charpentier', 'b.bakery': 'Boulangerie', 'b.inn': 'Auberge', 'b.tower': 'Tour de garde', 'b.market': 'Marché',
+  'b.council': 'Salle du conseil', 'b.treasury': 'Trésor', 'b.house-1': 'Chambre', 'b.house-2': 'Petite maison', 'b.house-3': 'Grande maison',
+  'b.gate': 'Porte du village', 'b.expansion': 'Terrain à bâtir',
+
+  'g.wheat': 'Blé', 'g.wood': 'Bois', 'g.ore': 'Minerai de fer', 'g.lumber': 'Planches', 'g.flour': 'Farine', 'g.bread': 'Pain', 'g.sword': 'Épée',
+  'g.pickaxe': 'Pioche', 'g.axe': 'Hache', 'g.plow': 'Charrue', 'g.cart': 'Charrette', 'g.meal': 'Repas',
+
+  'npc.woodcutter': 'Bram le bûcheron', 'npc.mill': 'Ilsa la meunière', 'npc.bakery': 'Tobin le boulanger', 'npc.smithy': 'Doran le forgeron',
+  'npc.carpenter': 'Wren le charpentier', 'npc.inn': 'Marta l\'aubergiste', 'npc.tower': 'Capitaine Hale',
+  'line.woodcutter.0': 'Un bon bois garde un village debout.', 'line.woodcutter.1': 'Bois sec, prix juste. C\'est ma règle.',
+  'line.mill.0': 'Les meules tournent, que vous apportiez du blé ou non.', 'line.mill.1': 'Apportez-moi du grain, je vous ferai de la farine.',
+  'line.bakery.0': 'Pain chaud, village chaleureux.', 'line.bakery.1': 'Pas de farine, pas de pain. C\'est aussi simple que ça.',
+  'line.smithy.0': 'Le fer entre, l\'acier sort.', 'line.smithy.1': 'Je l\'avoue, les rumeurs de dragon sont bonnes pour les affaires.',
+  'line.carpenter.0': 'Mesurer deux fois, couper une fois.', 'line.carpenter.1': 'Une bonne charrette fait passer l\'hiver à une famille.',
+  'line.inn.0': 'Les voyageurs apportent des pièces et des histoires.', 'line.inn.1': 'Tables pleines, bourse pleine.',
+  'line.tower.0': 'Le pic est calme. Pour l\'instant.', 'line.tower.1': 'Une lame dans chaque main quand le dragon viendra.',
+
+  'role.farmer': 'Fermier', 'role.miner': 'Mineur', 'role.woodcutter': 'Bûcheron', 'role.traveller': 'Voyageur', 'role.elder': 'Ancien du village',
+  'rank.newcomer': 'Nouveau venu', 'rank.settler': 'Habitant',
+
+  'me.energy': 'Énergie', 'me.bagEmpty': 'Votre sac est vide.', 'me.eat': 'Manger', 'me.join': 'Rejoignez le village pour jouer.',
+  'quest.step': 'Objectif {n} sur {total}', 'quest.allDone': 'Tous les objectifs sont atteints', 'quest.showMe': 'Montrer', 'quest.reward': 'Récompense : {n} EMWK', 'quest.help': 'Que dois-je faire maintenant ?',
+  'quest.meet.title': 'Rencontrer l\'ancien Rowan', 'quest.meet.text': 'Allez à la porte du village et écoutez ce que l\'ancien a à dire.',
+  'quest.gather.title': 'Votre premier travail', 'quest.gather.text': 'Récoltez deux fois ici : {spot}.',
+  'quest.sell.title': 'Faire une vente', 'quest.sell.text': 'Vendez votre récolte ici : {shop}.',
+  'quest.peak.title': 'Connaître le danger', 'quest.peak.text': 'Regardez le pic du dragon pour voir si le village est prêt.',
+  'quest.earn.title': 'Voler de ses propres ailes', 'quest.earn.text': 'Gagnez 40 EMWK grâce au commerce.',
+  'quest.supply.title': 'Nourrir le village', 'quest.supply.text': 'Vendez 15 marchandises au total aux artisans.',
+  'quest.done.title': 'Un vrai villageois', 'quest.done.text': 'Les emplois, les maisons et le conseil du village arrivent dans la prochaine mise à jour. Continuez à commercer et surveillez les prix.',
+
+  'elder.title': 'L\'ancien Rowan', 'elder.ok': 'Je suis prêt',
+  'elder.text': 'Bienvenue à Emberwick, {name}. Les braises brûlent à nouveau, mais ce village est encore fragile. Votre travail commence ici : {spot}. Récoltez-y, puis vendez votre récolte ici : {shop}. Chaque vente fait vivre les artisans, et un petit impôt va à notre trésor. Gardez un œil sur le pic du dragon : quand la fumée monte, les gardes ont besoin d\'épées et de pain, et vite.',
+
+  'panel.purse': '{place} · bourse {n} EMWK · artisan IA', 'panel.closed': 'Fermé pour réparations après l\'attaque du dragon.',
+  'panel.buysFromYou': 'Vous achète', 'panel.sells': 'Vend', 'panel.youHave': 'vous en avez {n}', 'panel.left': 'reste {n}',
+  'panel.sellAll': 'Tout vendre ({n})', 'panel.sell': 'Vendre', 'panel.buy': 'Acheter',
+  'panel.pricesNote': 'Les prix suivent l\'offre et la demande. Le marchandage et les emplois d\'apprenti arrivent dans la prochaine mise à jour.',
+  'panel.meal': 'Prendre un repas chaud : +5 énergie ({p} EMWK)', 'panel.full': 'Vous êtes plein d\'énergie.', 'panel.mealsReady': '{n} repas prêts en cuisine.',
+  'panel.breadHint': 'Le pain donne <b>+3 énergie</b> quand vous le mangez. Achetez-en et gardez-le dans votre sac pour quand vous serez fatigué.',
+
+  'gather.forest': 'Coupez du bois ici. Une hache donne +2 à chaque fois.', 'gather.fields': 'Récoltez du blé ici. Une charrue donne +2. La sécheresse divise la récolte par deux.',
+  'gather.mine': 'Extrayez du minerai de fer ici. Une pioche donne +2.', 'gather.cost': 'Coûte {n} énergie.', 'gather.youHave': 'Vous en avez {n}.',
+  'gather.carry': 'Vous portez <b>{n} {good}</b>.', 'gather.btn.wood': 'Couper du bois ({n} énergie)', 'gather.btn.wheat': 'Récolter le blé ({n} énergie)', 'gather.btn.ore': 'Extraire du minerai ({n} énergie)',
+  'gather.best': 'Meilleur prix actuel : <b>{name}</b> paie <b>{p} EMWK</b>.', 'go.to': 'Aller à : {place}',
+
+  'tired.body': '<b>Vous êtes fatigué.</b> Mangez quelque chose pour retrouver de l\'énergie, ou attendez : elle revient aussi lentement d\'elle-même.',
+  'tired.eat': 'Manger le pain de votre sac (+3 énergie)', 'tired.buyBread': 'Pain à la boulangerie : {p} EMWK, +3 énergie', 'tired.meal': 'Repas chaud à l\'auberge : {p} EMWK, +5 énergie',
+
+  'market.title': 'Marché', 'market.sub': 'Prix moyens dans le village.',
+  'market.note': 'Ligne rouge : de plus en plus cher. Verte : de moins en moins cher. Chaque vente verse un impôt de 3 % au trésor du village.',
+  'dragon.warn': 'Le dragon pourrait attaquer le jour {day}.', 'dragon.quiet': 'Le pic est calme pour l\'instant.', 'dragon.ready': 'Préparation du village : <b>{n} %</b>.',
+  'dragon.rule': 'À 60 % ou plus, les gardes repoussent le dragon et chaque villageois est récompensé. En dessous, une partie du village brûle.',
+  'dragon.tip': 'La préparation augmente avec les épées et le pain de la tour de garde. Apportez du minerai au forgeron pour qu\'il forge des épées, et du blé au meunier pour que le boulanger puisse cuire.',
+  'treasury.text': 'La bourse commune du village : <b>{n} EMWK</b>.', 'treasury.note': 'Il perçoit l\'impôt du marché et un impôt sur les bénéfices des boutiques riches, et paie le capitaine de la garde et les récompenses contre le dragon. Personne ne peut retirer d\'argent seul. Les dépenses seront votées par le conseil.',
+  'council.text': 'Les villageois qui louent un logement proposeront et voteront ici les impôts, les projets de construction et le budget de défense.', 'council.soon': 'Ouvre dans la prochaine mise à jour.',
+  'gate.text': 'L\'ancien Rowan accueille ici les nouveaux venus, et les voyageurs arrivent pour dépenser leurs pièces à l\'auberge.', 'gate.talk': 'Parler à l\'ancien Rowan', 'gate.pop': 'Population : {n}',
+  'expansion.text': 'Réservé aux futurs quartiers et aux nouvelles boutiques. Les nouveaux bâtiments viendront ici sans rien déplacer de ce qui existe aujourd\'hui.',
+  'house.text': 'Un logement à Emberwick. La location avec caution, et le droit de vote au conseil qui l\'accompagne, arrivent dans la prochaine mise à jour.',
+
+  'status.walking': 'En route vers : {place}…', 'status.working': 'Au travail…', 'status.here': 'Vous êtes ici : {place}.',
+  'result.done': 'Fait !', 'result.gathered': 'Vous avez récolté {n} {good}. Vous en portez maintenant {have}.', 'result.sellAt': 'Vendre à : {place} ({p} EMWK pièce)',
+  'result.sold': 'Vendu pour {total} EMWK ({unit} pièce). Impôt du village : {tax}. Vous avez reçu {got} EMWK.', 'result.next': 'Ensuite : {text}',
+  'result.bought': 'Vous avez acheté 1 {good} pour {total} EMWK.', 'result.meal': 'Vous avez pris un repas chaud pour {total} EMWK. +5 énergie. Au travail !',
+  'fx.energy': '+{n} énergie', 'toast.goal': 'Objectif atteint : {title}', 'toast.join': 'Rejoignez d\'abord le village.',
+
+  'talk.farmer.0': 'Le moulin paie le blé {p} EMWK aujourd\'hui.', 'talk.farmer.1': 'Bonne terre cette année. Mais j\'ai mal au dos.',
+  'talk.farmer.1d': 'Cette sécheresse ruine ma récolte. Le pain va devenir cher.', 'talk.farmer.2': 'Avec une charrue, vous récoltez deux blés de plus à chaque fois.',
+  'talk.miner.0': 'Doran le forgeron paie {p} EMWK le minerai en ce moment.', 'talk.miner.1': 'Il fait froid et noir au fond de la mine. Mais ça paie bien.',
+  'talk.miner.1d': 'De la fumée sur le pic ! Le forgeron a besoin de chaque morceau de minerai pour les épées.', 'talk.miner.2': 'Vendez là où le prix est le plus haut. Il change toute la journée.',
+  'talk.woodcutter.0': 'Bram achète le bois {p} EMWK. Le boulanger a aussi besoin de bois pour ses fours.', 'talk.woodcutter.1': 'Avec une hache, le travail va deux fois plus vite.',
+  'talk.woodcutter.1d': 'L\'hiver est là. Tout le monde veut du bois de chauffage.', 'talk.woodcutter.2': 'Quand une boutique manque de quelque chose, son prix monte. C\'est le moment de vendre.',
+  'talk.traveller.0': 'Trois jours de route. Le ragoût de l\'auberge en valait la peine.', 'talk.traveller.1': 'Un repas ici coûte {p} EMWK. Pas cher comparé à la ville !',
+  'talk.traveller.2': 'On dit que le dragon dort sous ce pic. J\'espère que vos gardes sont prêts.',
+  'talk.note': 'Cliquez sur d\'autres villageois pour entendre ce qu\'ils savent. Ce qu\'ils disent vient du village en direct.',
+
+  'guide.title': 'Que dois-je faire maintenant ?', 'guide.sentence': 'Le jeu en une phrase : travaillez, vendez aux artisans au meilleur prix, faites grandir vos pièces et gardez le village assez fort pour vaincre le dragon.',
+  'guide.carry': 'Vous portez <b>{n} {good}</b>. Vendez-le à <b>{name}</b> ({place}). Il paie <b>{p} EMWK</b> pièce.',
+  'guide.empty': 'Votre sac est vide. Allez ici : <b>{place}</b> et appuyez sur le grand bouton pour récolter.',
+  'guide.tiredBread': 'Vous êtes fatigué (énergie {n}/10). Vous avez du pain dans votre sac : mangez-le pour +3 énergie.',
+  'guide.tiredNoBread': 'Vous êtes fatigué (énergie {n}/10). Achetez du pain à la boulangerie (<b>{bread} EMWK</b>, +3 énergie) ou prenez un repas chaud à l\'auberge (<b>{meal} EMWK</b>, +5 énergie). L\'énergie revient aussi lentement d\'elle-même.',
+  'guide.goal': 'Votre objectif actuel : <b>{title}</b>. {text}',
+  'guide.dragon': 'Le dragon pourrait attaquer le <b>jour {day}</b> (nous sommes le jour {today}). La préparation est de {ready} %, il faut 60 %. Le minerai pour le forgeron et le blé pour le meunier aident les gardes à avoir des épées et du pain.',
+  'guide.eat': 'Manger du pain', 'guide.seePeak': 'Voir le pic du dragon', 'guide.join': 'Rejoignez d\'abord le village.',
+  'banner.attack': 'Fumée sur le pic du dragon ! Le dragon pourrait attaquer le jour {day}. Préparation : {ready} % : les gardes ont besoin d\'épées et de pain.',
+  'banner.drought': 'Sécheresse : les récoltes de blé sont divisées par deux et le pain devient cher.',
+
+  'log.day': 'Jour {n}', 'log.start': 'Les braises d\'Emberwick brûlent à nouveau. Les nouveaux venus sont les bienvenus à la porte.',
+  'log.join': '{name} est arrivé à la porte ({path}).', 'log.settler': '{name} est désormais habitant d\'Emberwick.',
+  'log.rain': 'La pluie revient sur les champs. La sécheresse est terminée.', 'log.winter': 'L\'hiver arrive. Le bois de chauffage est recherché.',
+  'log.drought': 'Une sécheresse frappe les champs. Les récoltes de blé sont divisées par deux.', 'log.smoke': 'De la fumée s\'élève du pic du dragon. Le dragon pourrait attaquer dans {days} jours.',
+  'log.repelled': 'Le dragon a attaqué et a été repoussé ! La préparation était de {ready} %. Chaque villageois gagne {reward} EMWK.',
+  'log.burned': 'Le dragon a brûlé une partie du village. La préparation n\'était que de {ready} %. Une boutique est fermée pour réparations.',
+
+  'err.notBuying': 'Cette boutique n\'achète pas cela.', 'err.notEnough': 'Vous n\'en avez pas assez.', 'err.shopBroke': 'L\'artisan n\'a pas les moyens pour l\'instant.',
+  'err.notSelling': 'Cette boutique ne vend pas cela.', 'err.outOfStock': 'Rupture de stock.', 'err.noMoney': 'Vous n\'avez pas assez d\'EMWK.',
+  'err.unknownPath': 'Métier de départ inconnu.', 'err.enterName': 'Indiquez un nom.', 'err.unknownPlayer': 'Joueur inconnu. Rejoignez d\'abord le village.',
+  'err.unknownPlace': 'Lieu inconnu.', 'err.cannotGather': 'Vous ne pouvez pas récolter ici.', 'err.tired': 'Vous êtes trop fatigué. Mangez ou reposez-vous.',
+  'err.noBread': 'Vous n\'avez pas de pain. Achetez-en à la boulangerie.', 'err.notHungry': 'Vous n\'avez pas encore faim.',
+  'err.kitchenEmpty': 'La cuisine n\'a plus rien. Réessayez bientôt, ou mangez du pain.', 'err.unknownAction': 'Action inconnue.',
+};
+
+const de = {
+  'lang.name': 'Deutsch',
+  'ui.day': 'Tag {n}', 'ui.winter': 'Winter', 'ui.night': 'Nacht',
+  'ui.pop': '{n} Dorfbewohner · Schatzkammer {t} EMWK', 'ui.readiness': 'Bereitschaft gegen den Drachen',
+  'ui.hint': 'Klicke auf ein Gebäude, um es zu besuchen. Klicke auf einen Dorfbewohner, um mit ihm zu sprechen.', 'ui.news': 'Neuigkeiten aus dem Dorf', 'ui.close': 'Schließen',
+  'ui.youHere': 'Du bist hier', 'ui.closedTag': '(geschlossen)', 'ui.language': 'Sprache', 'ui.mapLabel': 'Karte des Dorfes Emberwick',
+
+  'join.story': 'Der Drache hat dieses Dorf in Schutt und Asche gelegt. Jahre später kehrten einige Handwerker zurück und entfachten die Glut neu. Jetzt braucht Emberwick Menschen: Bauern, Bergleute, Holzfäller und Lehrlinge, die arbeiten, handeln und das Dorf vorbereiten, bevor der Drache zurückkehrt.',
+  'join.name': 'Dein Name', 'join.who': 'Wer bist du?', 'join.enter': 'Das Dorf betreten', 'join.errName': 'Gib zuerst einen Namen ein.',
+  'path.farmer': 'Bauer', 'path.miner': 'Bergmann', 'path.woodcutter': 'Holzfäller', 'path.apprentice': 'Lehrling',
+  'blurb.farmer': 'Baut Weizen für die Müllerin an.', 'blurb.miner': 'Fördert Erz für den Schmied.', 'blurb.woodcutter': 'Schlägt Holz für das Dorf.', 'blurb.apprentice': 'Kein Werkzeug, mehr Münzen. Lernt jedes Handwerk.',
+
+  'b.forest': 'Wald', 'b.fields': 'Felder', 'b.mine': 'Mine', 'b.dragonpeak': 'Drachengipfel', 'b.woodcutter': 'Holzfäller', 'b.mill': 'Mühle',
+  'b.smithy': 'Schmiede', 'b.carpenter': 'Zimmerei', 'b.bakery': 'Bäckerei', 'b.inn': 'Gasthaus', 'b.tower': 'Wachturm', 'b.market': 'Markt',
+  'b.council': 'Ratshalle', 'b.treasury': 'Schatzkammer', 'b.house-1': 'Zimmer', 'b.house-2': 'Kleines Haus', 'b.house-3': 'Großes Haus',
+  'b.gate': 'Dorftor', 'b.expansion': 'Bauland',
+
+  'g.wheat': 'Weizen', 'g.wood': 'Holz', 'g.ore': 'Eisenerz', 'g.lumber': 'Bretter', 'g.flour': 'Mehl', 'g.bread': 'Brot', 'g.sword': 'Schwert',
+  'g.pickaxe': 'Spitzhacke', 'g.axe': 'Axt', 'g.plow': 'Pflug', 'g.cart': 'Karren', 'g.meal': 'Mahlzeit',
+
+  'npc.woodcutter': 'Bram der Holzfäller', 'npc.mill': 'Ilsa die Müllerin', 'npc.bakery': 'Tobin der Bäcker', 'npc.smithy': 'Doran der Schmied',
+  'npc.carpenter': 'Wren der Zimmermann', 'npc.inn': 'Marta die Wirtin', 'npc.tower': 'Hauptmann Hale',
+  'line.woodcutter.0': 'Gutes Holz hält ein Dorf aufrecht.', 'line.woodcutter.1': 'Trockenes Holz, fairer Preis. Das ist meine Regel.',
+  'line.mill.0': 'Die Steine drehen sich, ob du Weizen bringst oder nicht.', 'line.mill.1': 'Bring mir Korn, und ich mache dir Mehl.',
+  'line.bakery.0': 'Warmes Brot, warmes Dorf.', 'line.bakery.1': 'Kein Mehl, kein Brot. So einfach ist das.',
+  'line.smithy.0': 'Eisen rein, Stahl raus.', 'line.smithy.1': 'Ich gebe zu, das Gerede vom Drachen ist gut fürs Geschäft.',
+  'line.carpenter.0': 'Zweimal messen, einmal schneiden.', 'line.carpenter.1': 'Ein guter Karren bringt eine Familie durch den Winter.',
+  'line.inn.0': 'Reisende bringen Münzen und Geschichten.', 'line.inn.1': 'Volle Tische bedeuten einen vollen Beutel.',
+  'line.tower.0': 'Der Gipfel ist ruhig. Noch.', 'line.tower.1': 'Eine Klinge in jeder Hand, wenn der Drache kommt.',
+
+  'role.farmer': 'Bauer', 'role.miner': 'Bergmann', 'role.woodcutter': 'Holzfäller', 'role.traveller': 'Reisender', 'role.elder': 'Dorfältester',
+  'rank.newcomer': 'Neuankömmling', 'rank.settler': 'Siedler',
+
+  'me.energy': 'Energie', 'me.bagEmpty': 'Deine Tasche ist leer.', 'me.eat': 'Essen', 'me.join': 'Tritt dem Dorf bei, um zu spielen.',
+  'quest.step': 'Ziel {n} von {total}', 'quest.allDone': 'Alle Ziele erreicht', 'quest.showMe': 'Zeigen', 'quest.reward': 'Belohnung: {n} EMWK', 'quest.help': 'Was soll ich jetzt tun?',
+  'quest.meet.title': 'Triff den Ältesten Rowan', 'quest.meet.text': 'Geh zum Dorftor und hör dir an, was der Älteste zu sagen hat.',
+  'quest.gather.title': 'Deine erste Arbeit', 'quest.gather.text': 'Sammle zweimal hier: {spot}.',
+  'quest.sell.title': 'Ein erster Verkauf', 'quest.sell.text': 'Verkaufe, was du gesammelt hast, hier: {shop}.',
+  'quest.peak.title': 'Kenne die Gefahr', 'quest.peak.text': 'Sieh dir den Drachengipfel an, um zu erfahren, wie bereit das Dorf ist.',
+  'quest.earn.title': 'Auf eigenen Beinen stehen', 'quest.earn.text': 'Verdiene 40 EMWK durch Handel.',
+  'quest.supply.title': 'Versorge das Dorf', 'quest.supply.text': 'Verkaufe den Handwerkern insgesamt 15 Waren.',
+  'quest.done.title': 'Ein echter Dorfbewohner', 'quest.done.text': 'Arbeit, Häuser und der Dorfrat kommen mit dem nächsten Update. Handle weiter und behalte die Preise im Blick.',
+
+  'elder.title': 'Der Älteste Rowan', 'elder.ok': 'Ich bin bereit',
+  'elder.text': 'Willkommen in Emberwick, {name}. Die Glut brennt wieder, aber dieses Dorf ist noch schwach. Deine Arbeit beginnt hier: {spot}. Sammle dort und verkaufe dann hier: {shop}. Jeder Verkauf ernährt die Handwerker, und eine kleine Steuer geht an unsere Schatzkammer. Behalte den Drachengipfel im Auge: Wenn Rauch aufsteigt, brauchen die Wachen Schwerter und Brot, und zwar schnell.',
+
+  'panel.purse': '{place} · Geldbeutel {n} EMWK · KI-Handwerker', 'panel.closed': 'Nach dem Drachenangriff wegen Reparatur geschlossen.',
+  'panel.buysFromYou': 'Kauft von dir', 'panel.sells': 'Verkauft', 'panel.youHave': 'du hast {n}', 'panel.left': 'noch {n}',
+  'panel.sellAll': 'Alle {n} verkaufen', 'panel.sell': 'Verkaufen', 'panel.buy': 'Kaufen',
+  'panel.pricesNote': 'Die Preise richten sich nach Angebot und Nachfrage. Feilschen und Lehrstellen kommen mit dem nächsten Update.',
+  'panel.meal': 'Warme Mahlzeit: +5 Energie ({p} EMWK)', 'panel.full': 'Du hast gerade volle Energie.', 'panel.mealsReady': '{n} Mahlzeiten in der Küche bereit.',
+  'panel.breadHint': 'Brot gibt <b>+3 Energie</b>, wenn du es isst. Kauf etwas und bewahre es für müde Momente in deiner Tasche auf.',
+
+  'gather.forest': 'Schlag hier Holz. Eine Axt gibt +2 pro Gang.', 'gather.fields': 'Ernte hier Weizen. Ein Pflug gibt +2. Dürre halbiert die Ernte.',
+  'gather.mine': 'Fördere hier Eisenerz. Eine Spitzhacke gibt +2.', 'gather.cost': 'Kostet {n} Energie.', 'gather.youHave': 'Du hast {n}.',
+  'gather.carry': 'Du trägst <b>{n} {good}</b>.', 'gather.btn.wood': 'Holz schlagen ({n} Energie)', 'gather.btn.wheat': 'Weizen ernten ({n} Energie)', 'gather.btn.ore': 'Erz fördern ({n} Energie)',
+  'gather.best': 'Bester Preis gerade: <b>{name}</b> zahlt <b>{p} EMWK</b>.', 'go.to': 'Gehe zu: {place}',
+
+  'tired.body': '<b>Du bist müde.</b> Iss etwas, um deine Energie zurückzubekommen, oder warte: Sie kommt auch langsam von selbst zurück.',
+  'tired.eat': 'Brot aus deiner Tasche essen (+3 Energie)', 'tired.buyBread': 'Brot in der Bäckerei: {p} EMWK, +3 Energie', 'tired.meal': 'Warme Mahlzeit im Gasthaus: {p} EMWK, +5 Energie',
+
+  'market.title': 'Markt', 'market.sub': 'Durchschnittspreise im Dorf.',
+  'market.note': 'Rote Linie: wird teurer. Grün: wird billiger. Jeder Verkauf zahlt 3 % Steuer an die Schatzkammer des Dorfes.',
+  'dragon.warn': 'Der Drache könnte an Tag {day} angreifen.', 'dragon.quiet': 'Der Gipfel ist vorerst ruhig.', 'dragon.ready': 'Bereitschaft des Dorfes: <b>{n} %</b>.',
+  'dragon.rule': 'Ab 60 % vertreiben die Wachen den Drachen, und jeder Dorfbewohner wird belohnt. Darunter brennt ein Teil des Dorfes.',
+  'dragon.tip': 'Die Bereitschaft steigt mit Schwertern und Brot im Wachturm. Bring dem Schmied Erz, damit er Schwerter schmieden kann, und der Müllerin Weizen, damit der Bäcker backen kann.',
+  'treasury.text': 'Der gemeinsame Geldbeutel des Dorfes: <b>{n} EMWK</b>.', 'treasury.note': 'Sie sammelt die Marktsteuer und eine Gewinnsteuer von reichen Läden und bezahlt den Hauptmann der Wache und die Belohnungen gegen den Drachen. Niemand kann allein Geld entnehmen. Über Ausgaben wird der Rat abstimmen.',
+  'council.text': 'Dorfbewohner, die ein Zuhause mieten, werden hier Steuern, Bauprojekte und das Verteidigungsbudget vorschlagen und abstimmen.', 'council.soon': 'Öffnet mit dem nächsten Update.',
+  'gate.text': 'Der Älteste Rowan begrüßt hier Neuankömmlinge, und Reisende kommen hierher, um ihre Münzen im Gasthaus auszugeben.', 'gate.talk': 'Mit dem Ältesten Rowan sprechen', 'gate.pop': 'Einwohner: {n}',
+  'expansion.text': 'Reserviert für künftige Viertel und neue Läden. Neue Gebäude entstehen hier, ohne dass etwas Bestehendes verschoben wird.',
+  'house.text': 'Ein Zuhause in Emberwick. Mieten mit Kaution und das Stimmrecht im Rat, das damit verbunden ist, kommen mit dem nächsten Update.',
+
+  'status.walking': 'Unterwegs nach: {place}…', 'status.working': 'Bei der Arbeit…', 'status.here': 'Du bist hier: {place}.',
+  'result.done': 'Geschafft!', 'result.gathered': 'Du hast {n} {good} gesammelt. Du trägst jetzt {have}.', 'result.sellAt': 'Verkaufen bei: {place} ({p} EMWK pro Stück)',
+  'result.sold': 'Für {total} EMWK verkauft ({unit} pro Stück). Dorfsteuer: {tax}. Du hast {got} EMWK erhalten.', 'result.next': 'Als Nächstes: {text}',
+  'result.bought': 'Du hast 1 {good} für {total} EMWK gekauft.', 'result.meal': 'Du hast eine warme Mahlzeit für {total} EMWK gegessen. +5 Energie. Zurück an die Arbeit!',
+  'fx.energy': '+{n} Energie', 'toast.goal': 'Ziel erreicht: {title}', 'toast.join': 'Tritt zuerst dem Dorf bei.',
+
+  'talk.farmer.0': 'Die Mühle zahlt heute {p} EMWK für Weizen.', 'talk.farmer.1': 'Guter Boden dieses Jahr. Aber mein Rücken tut weh.',
+  'talk.farmer.1d': 'Diese Dürre ruiniert meine Ernte. Brot wird teuer werden.', 'talk.farmer.2': 'Mit einem Pflug erntest du jedes Mal zwei Weizen mehr.',
+  'talk.miner.0': 'Doran der Schmied zahlt gerade {p} EMWK pro Erz.', 'talk.miner.1': 'Unten in der Mine ist es kalt und dunkel. Aber es zahlt sich aus.',
+  'talk.miner.1d': 'Rauch über dem Gipfel! Der Schmied braucht jeden Brocken Erz für Schwerter.', 'talk.miner.2': 'Verkaufe dort, wo der Preis am höchsten ist. Er ändert sich den ganzen Tag.',
+  'talk.woodcutter.0': 'Bram kauft Holz für {p} EMWK. Der Bäcker braucht auch Holz für seine Öfen.', 'talk.woodcutter.1': 'Mit einer Axt geht die Arbeit doppelt so schnell.',
+  'talk.woodcutter.1d': 'Der Winter ist da. Jetzt will jeder Brennholz.', 'talk.woodcutter.2': 'Wenn einem Laden etwas ausgeht, steigt der Preis. Dann solltest du verkaufen.',
+  'talk.traveller.0': 'Drei Tage auf der Straße. Der Eintopf im Gasthaus ist es wert.', 'talk.traveller.1': 'Eine Mahlzeit kostet hier {p} EMWK. Billig im Vergleich zur Stadt!',
+  'talk.traveller.2': 'Man sagt, der Drache schläft unter diesem Gipfel. Ich hoffe, eure Wachen sind bereit.',
+  'talk.note': 'Klicke auf andere Dorfbewohner, um zu hören, was sie wissen. Was sie sagen, kommt aus dem laufenden Dorfgeschehen.',
+
+  'guide.title': 'Was soll ich jetzt tun?', 'guide.sentence': 'Das Spiel in einem Satz: Arbeite, verkaufe an die Handwerker zum besten Preis, vermehre deine Münzen und halte das Dorf stark genug, um den Drachen zu besiegen.',
+  'guide.carry': 'Du trägst <b>{n} {good}</b>. Verkaufe es an <b>{name}</b> ({place}). Dort gibt es <b>{p} EMWK</b> pro Stück.',
+  'guide.empty': 'Deine Tasche ist leer. Gehe hierhin: <b>{place}</b> und drücke den großen Knopf zum Sammeln.',
+  'guide.tiredBread': 'Du bist müde (Energie {n}/10). Du hast Brot in der Tasche: Iss es für +3 Energie.',
+  'guide.tiredNoBread': 'Du bist müde (Energie {n}/10). Kauf Brot in der Bäckerei (<b>{bread} EMWK</b>, +3 Energie) oder iss eine warme Mahlzeit im Gasthaus (<b>{meal} EMWK</b>, +5 Energie). Energie kommt auch langsam von selbst zurück.',
+  'guide.goal': 'Dein aktuelles Ziel: <b>{title}</b>. {text}',
+  'guide.dragon': 'Der Drache könnte an <b>Tag {day}</b> angreifen (heute ist Tag {today}). Die Bereitschaft liegt bei {ready} %, nötig sind 60 %. Erz für den Schmied und Weizen für die Müllerin helfen den Wachen, an Schwerter und Brot zu kommen.',
+  'guide.eat': 'Brot essen', 'guide.seePeak': 'Drachengipfel ansehen', 'guide.join': 'Tritt zuerst dem Dorf bei.',
+  'banner.attack': 'Rauch über dem Drachengipfel! Der Drache könnte an Tag {day} angreifen. Bereitschaft {ready} %: Die Wachen brauchen Schwerter und Brot.',
+  'banner.drought': 'Dürre: Die Weizenernte ist halbiert, und Brot wird teuer.',
+
+  'log.day': 'Tag {n}', 'log.start': 'Die Glut von Emberwick brennt wieder. Neuankömmlinge sind am Tor willkommen.',
+  'log.join': '{name} ist am Tor angekommen ({path}).', 'log.settler': '{name} ist jetzt ein Siedler von Emberwick.',
+  'log.rain': 'Der Regen kehrt auf die Felder zurück. Die Dürre ist vorbei.', 'log.winter': 'Der Winter kommt. Brennholz ist gefragt.',
+  'log.drought': 'Eine Dürre trifft die Felder. Die Weizenernte ist halbiert.', 'log.smoke': 'Rauch steigt über dem Drachengipfel auf. Der Drache könnte in {days} Tagen angreifen.',
+  'log.repelled': 'Der Drache hat angegriffen und wurde vertrieben! Die Bereitschaft lag bei {ready} %. Jeder Dorfbewohner erhält {reward} EMWK.',
+  'log.burned': 'Der Drache hat einen Teil des Dorfes niedergebrannt. Die Bereitschaft lag nur bei {ready} %. Ein Laden ist wegen Reparatur geschlossen.',
+
+  'err.notBuying': 'Dieser Laden kauft das nicht.', 'err.notEnough': 'Du hast nicht genug davon.', 'err.shopBroke': 'Der Handwerker kann sich das gerade nicht leisten.',
+  'err.notSelling': 'Dieser Laden verkauft das nicht.', 'err.outOfStock': 'Ausverkauft.', 'err.noMoney': 'Du hast nicht genug EMWK.',
+  'err.unknownPath': 'Unbekannter Startberuf.', 'err.enterName': 'Gib einen Namen ein.', 'err.unknownPlayer': 'Unbekannter Spieler. Tritt zuerst dem Dorf bei.',
+  'err.unknownPlace': 'Unbekannter Ort.', 'err.cannotGather': 'Hier kannst du nichts sammeln.', 'err.tired': 'Du bist zu müde. Iss etwas oder ruh dich aus.',
+  'err.noBread': 'Du hast kein Brot. Kauf welches in der Bäckerei.', 'err.notHungry': 'Du hast noch keinen Hunger.',
+  'err.kitchenEmpty': 'Die Küche hat nichts mehr. Versuch es gleich noch einmal oder iss Brot.', 'err.unknownAction': 'Unbekannte Aktion.',
+};
+
+export const LANGS = { en, tr, fr, de };
+
+let lang = 'en';
+try {
+  const saved = localStorage.getItem('emberwick-lang');
+  if (saved && LANGS[saved]) lang = saved;
+  else {
+    const nav = (navigator.language || 'en').slice(0, 2);
+    if (LANGS[nav]) lang = nav;
+  }
+} catch { /* storage unavailable */ }
+
+export function getLang() { return lang; }
+export function setLang(code) {
+  if (!LANGS[code]) return;
+  lang = code;
+  try { localStorage.setItem('emberwick-lang', code); } catch { /* storage unavailable */ }
+  document.documentElement.lang = code;
+}
+
+export function t(key, params = {}) {
+  let s = (LANGS[lang] && LANGS[lang][key]) ?? en[key] ?? key;
+  return s.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined ? params[k] : m));
+}
+export const has = (key) => (LANGS[lang] && LANGS[lang][key] !== undefined) || en[key] !== undefined;

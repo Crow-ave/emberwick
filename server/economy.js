@@ -52,7 +52,7 @@ export function createState(seed = Date.now()) {
     state.balances['bot:' + id] = each;
   });
   for (const g of Object.keys(GOODS)) state.history[g] = [];
-  addLog(state, 'The embers of Emberwick are lit again. Newcomers are welcome at the gate.');
+  addLog(state, 'The embers of Emberwick are lit again. Newcomers are welcome at the gate.', 'info', 'log.start');
   return state;
 }
 
@@ -83,8 +83,8 @@ function rng(state) {
   return state.seed / 2147483648;
 }
 
-function addLog(state, text, kind = 'info') {
-  state.log.unshift({ day: state.day, text, kind });
+function addLog(state, text, kind = 'info', key = null, p = {}) {
+  state.log.unshift({ day: state.day, text, kind, key, p });
   if (state.log.length > 40) state.log.length = 40;
 }
 
@@ -115,11 +115,11 @@ function targetFor(state, npcId, good) {
 // `actor` is { acct, holder } where holder has .inv
 function sellToNpc(state, actor, npcId, good, qty) {
   const npc = state.npcs[npcId];
-  if (!npc || npc.buys[good] === undefined) return { ok: false, error: 'This shop does not buy that.' };
-  if (inv(actor.holder, good) < qty) return { ok: false, error: 'You do not have enough.' };
+  if (!npc || npc.buys[good] === undefined) return { ok: false, error: 'This shop does not buy that.', code: 'err.notBuying' };
+  if (inv(actor.holder, good) < qty) return { ok: false, error: 'You do not have enough.', code: 'err.notEnough' };
   const unit = price(npc.buys[good]);
   const total = unit * qty;
-  if (balance(state, npcAcct(npcId)) < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.' };
+  if (balance(state, npcAcct(npcId)) < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
   const tax = r2(total * RULES.taxRate);
   transfer(state, npcAcct(npcId), actor.acct, total);
   transfer(state, actor.acct, 'treasury', tax);
@@ -130,11 +130,11 @@ function sellToNpc(state, actor, npcId, good, qty) {
 
 function buyFromNpc(state, actor, npcId, good, qty) {
   const npc = state.npcs[npcId];
-  if (!npc || npc.sells[good] === undefined) return { ok: false, error: 'This shop does not sell that.' };
-  if ((npc.stock[good] || 0) < qty) return { ok: false, error: 'Out of stock.' };
+  if (!npc || npc.sells[good] === undefined) return { ok: false, error: 'This shop does not sell that.', code: 'err.notSelling' };
+  if ((npc.stock[good] || 0) < qty) return { ok: false, error: 'Out of stock.', code: 'err.outOfStock' };
   const unit = price(npc.sells[good]);
   const total = unit * qty;
-  if (balance(state, actor.acct) < total) return { ok: false, error: 'You do not have enough EMWK.' };
+  if (balance(state, actor.acct) < total) return { ok: false, error: 'You do not have enough EMWK.', code: 'err.noMoney' };
   const tax = r2(total * RULES.taxRate);
   transfer(state, actor.acct, npcAcct(npcId), total);
   transfer(state, npcAcct(npcId), 'treasury', tax);
@@ -163,9 +163,9 @@ function gatherYield(state, spot, holder) {
 
 export function joinPlayer(state, name, pathKey) {
   const path = START_PATHS[pathKey];
-  if (!path) return { ok: false, error: 'Unknown starting path.' };
+  if (!path) return { ok: false, error: 'Unknown starting path.', code: 'err.unknownPath' };
   name = String(name || '').trim().slice(0, 20);
-  if (!name) return { ok: false, error: 'Enter a name.' };
+  if (!name) return { ok: false, error: 'Enter a name.', code: 'err.enterName' };
   const id = 'p' + state.nextId++;
   state.players[id] = {
     id, name, path: pathKey, rank: 'Newcomer',
@@ -176,13 +176,13 @@ export function joinPlayer(state, name, pathKey) {
   const coins = Math.min(path.coins, balance(state, 'newcomerFund'));
   transfer(state, 'newcomerFund', 'player:' + id, coins);
   state.rev = (state.rev || 0) + 1;
-  addLog(state, `${name} arrived at the gate as a ${path.name.toLowerCase()}.`, 'join');
+  addLog(state, `${name} arrived at the gate as a ${path.name.toLowerCase()}.`, 'join', 'log.join', { name, path: pathKey });
   return { ok: true, id };
 }
 
 export function playerAction(state, playerId, action) {
   const p = state.players[playerId];
-  if (!p) return { ok: false, error: 'Unknown player. Join the village first.' };
+  if (!p) return { ok: false, error: 'Unknown player. Join the village first.', code: 'err.unknownPlayer' };
   const actor = { acct: 'player:' + playerId, holder: p };
   const qty = Math.max(1, Math.min(50, parseInt(action.qty, 10) || 1));
 
@@ -198,14 +198,14 @@ export function playerAction(state, playerId, action) {
 
 function doAction(state, p, actor, action, qty) {
   if (action.type === 'visit') {
-    if (!BUILDINGS.some((b) => b.id === action.place)) return { ok: false, error: 'Unknown place.' };
+    if (!BUILDINGS.some((b) => b.id === action.place)) return { ok: false, error: 'Unknown place.', code: 'err.unknownPlace' };
     p.stats.visited[action.place] = true;
     return { ok: true, silent: true };
   }
   if (action.type === 'gather') {
     const spot = GATHER_SPOTS[action.spot];
-    if (!spot) return { ok: false, error: 'You cannot gather there.' };
-    if (p.energy < spot.energy) return { ok: false, error: 'You are too tired. Rest a little.' };
+    if (!spot) return { ok: false, error: 'You cannot gather there.', code: 'err.cannotGather' };
+    if (p.energy < spot.energy) return { ok: false, error: 'You are too tired. Rest a little.', code: 'err.tired' };
     p.energy = r2(p.energy - spot.energy);
     const got = gatherYield(state, action.spot, p);
     addInv(p, spot.good, got);
@@ -214,16 +214,16 @@ function doAction(state, p, actor, action, qty) {
     return { ok: true, got, good: spot.good, message: `You gathered ${got} ${GOODS[spot.good].name.toLowerCase()}.` };
   }
   if (action.type === 'eat') {
-    if (inv(p, 'bread') < 1) return { ok: false, error: 'You have no bread. Buy some at the bakery.' };
-    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.' };
+    if (inv(p, 'bread') < 1) return { ok: false, error: 'You have no bread. Buy some at the bakery.', code: 'err.noBread' };
+    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.', code: 'err.notHungry' };
     addInv(p, 'bread', -1);
     p.energy = Math.min(RULES.energyMax, r2(p.energy + RULES.breadEnergy));
     return { ok: true, energy: RULES.breadEnergy, message: `You ate bread. +${RULES.breadEnergy} energy.` };
   }
   if (action.type === 'meal') {
-    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.' };
+    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.', code: 'err.notHungry' };
     const res = buyFromNpc(state, actor, 'inn', 'meal', 1);
-    if (!res.ok) return res.error === 'Out of stock.' ? { ok: false, error: 'The kitchen is out of food. Try again soon, or eat bread.' } : res;
+    if (!res.ok) return res.code === 'err.outOfStock' ? { ok: false, error: 'The kitchen is out of food. Try again soon, or eat bread.', code: 'err.kitchenEmpty' } : res;
     addInv(p, 'meal', -1);
     p.energy = Math.min(RULES.energyMax, r2(p.energy + RULES.mealEnergy));
     return { ok: true, energy: RULES.mealEnergy, total: res.total, message: `You had a hot meal for ${res.total} EMWK. +${RULES.mealEnergy} energy.` };
@@ -239,7 +239,7 @@ function doAction(state, p, actor, action, qty) {
     if (res.ok) res.message = `Bought ${qty} ${GOODS[action.good].name.toLowerCase()} for ${res.total} EMWK.`;
     return res;
   }
-  return { ok: false, error: 'Unknown action.' };
+  return { ok: false, error: 'Unknown action.', code: 'err.unknownAction' };
 }
 
 export function questFor(p) {
@@ -250,7 +250,7 @@ export function questFor(p) {
   const fillText = (t) => t.replace('{spot}', name(route.spot).toLowerCase()).replace('{shop}', name(route.shop).toLowerCase());
   const st = p.stats || { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} };
   const progress = { gather: [st.gathers, 2], earn: [Math.floor(st.earned), 40], supply: [st.sold, 15] }[q.id] || null;
-  return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target: fill(q.target), reward: q.reward, progress };
+  return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target: fill(q.target), reward: q.reward, progress, spot: route.spot, shop: route.shop };
 }
 
 function questDone(p, q) {
@@ -272,8 +272,8 @@ function advanceQuest(state, p) {
   const reward = Math.min(q.reward, balance(state, 'newcomerFund'));
   transfer(state, 'newcomerFund', 'player:' + p.id, reward);
   p.quest = (p.quest || 0) + 1;
-  if (p.quest >= 4 && p.rank === 'Newcomer') { p.rank = 'Settler'; addLog(state, `${p.name} is now a settler of Emberwick.`, 'good'); }
-  return { title: q.title, reward };
+  if (p.quest >= 4 && p.rank === 'Newcomer') { p.rank = 'Settler'; addLog(state, `${p.name} is now a settler of Emberwick.`, 'good', 'log.settler', { name: p.name }); }
+  return { id: q.id, title: q.title, reward };
 }
 
 // ---------- the simulation tick ----------
@@ -403,12 +403,12 @@ function recordHistory(state) {
 function startNewDay(state) {
   state.day++;
   const ev = state.events;
-  if (ev.drought > 0 && --ev.drought === 0) addLog(state, 'Rain returns to the fields. The drought is over.', 'good');
+  if (ev.drought > 0 && --ev.drought === 0) addLog(state, 'Rain returns to the fields. The drought is over.', 'good', 'log.rain');
 
   // seasons: every 8 days, the last 2 are winter
   const wasWinter = ev.winter;
   ev.winter = state.day % 8 === 0 || state.day % 8 === 7;
-  if (ev.winter && !wasWinter) addLog(state, 'Winter arrives. Firewood is in demand.', 'warn');
+  if (ev.winter && !wasWinter) addLog(state, 'Winter arrives. Firewood is in demand.', 'warn', 'log.winter');
 
   // treasury pays the guard captain when his purse runs low
   const spare = balance(state, 'treasury') - RULES.treasuryReserve;
@@ -433,13 +433,13 @@ function startNewDay(state) {
   // random events
   if (ev.drought === 0 && rng(state) < RULES.droughtChance) {
     ev.drought = 2;
-    addLog(state, 'A drought hits the fields. Wheat harvests are halved.', 'warn');
+    addLog(state, 'A drought hits the fields. Wheat harvests are halved.', 'warn', 'log.drought');
   }
   const rested = state.day - (ev.lastAttack || 0) >= RULES.daysBetweenAttacks;
   if (ev.dragon === 0 && ev.attackDay === null && state.day > 2 && rested && rng(state) < RULES.dragonChance) {
     ev.dragon = RULES.dragonWarningDays;
     ev.attackDay = state.day + RULES.dragonWarningDays;
-    addLog(state, `Smoke rises over Dragon peak. The dragon may attack in ${RULES.dragonWarningDays} days.`, 'danger');
+    addLog(state, `Smoke rises over Dragon peak. The dragon may attack in ${RULES.dragonWarningDays} days.`, 'danger', 'log.smoke', { days: RULES.dragonWarningDays });
   } else if (ev.dragon > 0) {
     ev.dragon--;
   }
@@ -460,13 +460,13 @@ function resolveAttack(state) {
     for (const id of players) {
       if (balance(state, 'treasury') - reward >= RULES.treasuryReserve) transfer(state, 'treasury', 'player:' + id, reward);
     }
-    addLog(state, `The dragon attacked and was driven back! Readiness was ${state.readiness}%. Every villager earns ${reward} EMWK.`, 'good');
+    addLog(state, `The dragon attacked and was driven back! Readiness was ${state.readiness}%. Every villager earns ${reward} EMWK.`, 'good', 'log.repelled', { ready: state.readiness, reward });
   } else {
     const victims = Object.keys(state.npcs).filter((id) => id !== 'tower');
     const hit = victims[Math.floor(rng(state) * victims.length)];
     state.npcs[hit].damagedUntil = state.day + 1;
     tower.stock.sword = 0;
-    addLog(state, `The dragon burned part of the village. Readiness was only ${state.readiness}%. One shop is closed for repairs.`, 'danger');
+    addLog(state, `The dragon burned part of the village. Readiness was only ${state.readiness}%. One shop is closed for repairs.`, 'danger', 'log.burned', { ready: state.readiness });
   }
 }
 
@@ -485,6 +485,7 @@ export function publicView(state, playerId) {
       stock: n.stock,
       closed: n.damagedUntil > state.day,
       line: def.lines[(state.day + def.id.length) % def.lines.length],
+      lineKey: `${def.id}.${(state.day + def.id.length) % def.lines.length}`,
     };
   }
   const p = playerId && state.players[playerId];

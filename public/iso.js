@@ -189,10 +189,9 @@ export function workCellOf(id, k = 0) {
 export const isOpenArea = (id) => OPEN_AREAS.has(id);
 
 // a little sign over a building showing who is inside
-export function insideBadge(x, y, count, youName) {
-  const text = youName ? (count > 1 ? `${youName} + ${count - 1} inside` : `${youName} is inside`) : `${count} inside`;
+export function hereBadge(x, y, text) {
   const w = text.length * 7 + 26;
-  return `<g><rect x="${x - w / 2}" y="${y - 12}" width="${w}" height="22" rx="11" fill="${youName ? '#d9622b' : '#2f2418'}" opacity=".9"/>` +
+  return `<g><rect x="${x - w / 2}" y="${y - 12}" width="${w}" height="22" rx="11" fill="#d9622b" opacity=".95"/>` +
     `<circle cx="${x - w / 2 + 12}" cy="${y - 3}" r="3" fill="#fff"/><rect x="${x - w / 2 + 8}" y="${y + 1}" width="8" height="6" rx="3" fill="#fff"/>` +
     `<text x="${x - w / 2 + 21}" y="${y + 4}" font-size="12" fill="#fff">${text}</text></g>`;
 }
@@ -282,11 +281,12 @@ export function renderMap(svg, world, view, ui) {
     if (!draw) continue;
     const npc = view.npcs[b.id];
     const closed = npc && npc.closed;
-    s += `<g class="bld" data-id="${b.id}" tabindex="0" role="button" aria-label="${b.name}"${closed ? ' opacity=".55"' : ''}>` +
-      `<title>${b.name}</title><g transform="translate(${cx} ${cy}) scale(${K}) translate(${-cx} ${-cy})">${draw(cx, cy, view)}</g></g>`;
+    const nm = ui.nameOf ? ui.nameOf(b.id) : b.name;
+    s += `<g class="bld" data-id="${b.id}" tabindex="0" role="button" aria-label="${nm}"${closed ? ' opacity=".55"' : ''}>` +
+      `<title>${nm}</title><g transform="translate(${cx} ${cy}) scale(${K}) translate(${-cx} ${-cy})">${draw(cx, cy, view)}</g></g>`;
     const show = ui.hover === b.id || ui.selected === b.id || ui.target === b.id || ui.showAll;
     if (show) {
-      const label = b.name + (closed ? ' (closed)' : '');
+      const label = nm + (closed ? ' ' + (ui.closedTag || '(closed)') : '');
       const ly = cy + (b.w > 1 ? TH * 1.25 : TH * 0.85), lw = label.length * 7.4 + 16;
       labels += `<g class="lbl${ui.selected === b.id ? ' sel' : ''}" pointer-events="none"><rect x="${cx - lw / 2}" y="${ly - 14}" width="${lw}" height="20" rx="10" fill="rgba(255,250,242,.92)" stroke="rgba(120,90,60,.3)"/>` +
         `<text class="tag" x="${cx}" y="${ly}" text-anchor="middle">${label}</text></g>`;

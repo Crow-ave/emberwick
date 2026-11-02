@@ -16,6 +16,7 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - Village treasury with a fixed reserve, profit tax on rich shops and a guard salary
 - Random events: droughts, winters, dragon warnings and attacks, judged by village readiness
 - Twelve villager bots that keep the economy moving
+- Four languages: English, Türkçe, Français, Deutsch (menu in the top bar; add more in `public/i18n.js`)
 - A fixed supply of 25,000 EMWK. Money only moves between accounts and never appears from nowhere (checked by `npm test`)
 
 ## Coming next

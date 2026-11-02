@@ -11,8 +11,9 @@
     <div class="brand"><span class="ember"></span>Emberwick</div>
     <div class="stat" id="day">Day 1</div>
     <div class="stat muted" id="pop"></div>
+    <select id="lang" class="lang"></select>
     <div class="readiness" title="How ready the village is for a dragon attack">
-      <span>Dragon readiness</span><div class="bar"><div id="ready-fill"></div></div><span id="ready-num">0%</span>
+      <span data-i18n="ui.readiness">Dragon readiness</span><div class="bar"><div id="ready-fill"></div></div><span id="ready-num">0%</span>
     </div>
   </header>
 
@@ -28,21 +29,21 @@
 
     <aside class="card panel" id="panel" hidden></aside>
 
-    <div class="hint" id="hint">Click a building to visit it. Click a villager on the road to talk.</div>
+    <div class="hint" id="hint" data-i18n="ui.hint"></div>
   </main>
 
-  <section class="log"><h3>Village news</h3><ul id="log"></ul></section>
+  <section class="log"><h3 data-i18n="ui.news">Village news</h3><ul id="log"></ul></section>
 
   <div class="overlay" id="join" hidden>
     <form class="dialog" id="join-form" novalidate>
       <h1>Emberwick</h1>
-      <p class="story">The dragon burned this village to ash. Years later, a few craftsmen came back and relit the embers. Now Emberwick needs people: farmers, miners, woodcutters and apprentices who will work, trade and get the village ready before the dragon returns.</p>
-      <label for="join-name">Your name</label>
+      <p class="story" data-i18n="join.story"></p>
+      <label for="join-name" data-i18n="join.name">Your name</label>
       <input id="join-name" maxlength="20" placeholder="Rustem" autocomplete="off">
       <div class="error" id="join-error"></div>
-      <p class="label">Who are you?</p>
+      <p class="label" data-i18n="join.who">Who are you?</p>
       <div class="paths" id="paths"></div>
-      <button type="submit" class="primary">Enter the village</button>
+      <button type="submit" class="primary" data-i18n="join.enter">Enter the village</button>
     </form>
   </div>
 
@@ -51,7 +52,7 @@
       <div class="elder-row">
         <svg class="elder-face" viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="38" fill="#f3e8d6"/><rect x="22" y="48" width="36" height="30" rx="12" fill="#6b5a8a"/><circle cx="40" cy="34" r="15" fill="#f0c8a0"/><path d="M25 32 Q40 14 55 32 Z" fill="#e8e2d6"/><path d="M30 40 Q40 60 50 40 Z" fill="#efe9df"/><circle cx="34" cy="33" r="1.8" fill="#2a2a2a"/><circle cx="46" cy="33" r="1.8" fill="#2a2a2a"/></svg>
         <div>
-          <h2>Elder Rowan</h2>
+          <h2 id="elder-title">Elder Rowan</h2>
           <p id="elder-text"></p>
         </div>
       </div>

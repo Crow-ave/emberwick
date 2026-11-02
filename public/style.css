@@ -126,3 +126,5 @@ ol.guide button { margin-top: 6px; font-size: 13px; padding: 7px 12px; }
 .tired div { margin-top: 7px; }
 .tired button { width: 100%; text-align: left; }
 button.eat { font-size: 11px; padding: 1px 7px; margin-left: 4px; border-radius: 999px; background: var(--ember); color: #fff; border-color: var(--ember-dark); }
+
+.lang { font: inherit; font-size: 13px; background: #4a3a2a; color: #f6efe3; border: 1px solid #7a6a58; border-radius: 7px; padding: 4px 8px; }
