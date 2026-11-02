@@ -1,14 +1,17 @@
 {
   "name": "emberwick",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A living village economy on NEAR",
   "main": "server/index.js",
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
     "demo": "EMBERWICK_DEMO=1 node server/index.js",
-    "test": "node server/selftest.js"
+    "test": "node server/selftest.js && node server/neartest.js"
   },
-  "engines": { "node": ">=18" },
+  "dependencies": {
+    "near-api-js": "7.4.0"
+  },
+  "engines": { "node": ">=22" },
   "license": "MIT"
 }

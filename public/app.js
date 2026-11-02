@@ -280,6 +280,7 @@ function panelCraftsman(b) {
   let h = `<h2>${esc(npcName(b.id))}</h2><div class="muted">${esc(t('panel.purse', { place: placeName(b.id), n: n.wallet }))}</div>`;
   if (n.closed) h += `<p class="closed">${t('panel.closed')}</p>`;
   h += `<div class="quote">"${esc(t('line.' + n.lineKey))}"</div>`;
+  if (chainOk()) h += `<p class="small">${exLink('address/' + view.chain.accounts.npcs[b.id], t('near.view') + ' · ' + esc(view.chain.accounts.npcs[b.id]))}</p>`;
   if (b.id === 'inn') {
     const full = me && me.energy >= me.maxEnergy;
     h += `<button class="primary big" data-act="meal" ${!me || n.closed || full ? 'disabled' : ''}>${t('panel.meal', { p: n.sells.meal })}</button>` +
@@ -428,6 +429,9 @@ const closeBtn = () => `<button class="close" data-act="close" aria-label="${t('
 
 function renderPanel() {
   const panel = $('panel');
+  const typing = document.activeElement && panel.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+  if (typing) return; // keep what the player is typing
+  if (ui.selected === 'near') { panel.innerHTML = closeBtn() + panelNear(); panel.hidden = false; return; }
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
   const b = world.buildings.find((x) => x.id === ui.selected);
@@ -447,6 +451,84 @@ function renderPanel() {
   } else if (you && you.inside === b.id) top = `<div class="status">${esc(t('status.here', { place: placeName(b.id) }))}</div>`;
   panel.innerHTML = closeBtn() + top + h;
   panel.hidden = false;
+}
+
+
+// ---------- NEAR ----------
+
+const chainOk = () => view.chain && view.chain.status === 'ready';
+const shortId = (id) => (id && id.length > 48 ? id.slice(0, 12) + '…' + id.slice(-8) : id);
+function chainName(id) {
+  const a = view.chain && view.chain.accounts;
+  if (!a) return shortId(id);
+  if (id === a.bank) return t('near.bank');
+  if (id === a.treasury) return placeName('treasury');
+  for (const [npc, acct] of Object.entries(a.npcs)) if (acct === id) return npcName(npc);
+  return shortId(id);
+}
+const exLink = (path, text, cls = 'near-link') => `<a class="${cls}" href="${view.chain.explorer}/${path}" target="_blank" rel="noopener">${text}</a>`;
+function timeAgo(at) {
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
+  return s < 60 ? s + 's' : Math.round(s / 60) + 'm';
+}
+
+function panelNear() {
+  const c = view.chain || { status: 'off' };
+  const me = view.player;
+  let h = `<h2>${t('near.title')}</h2><p class="muted small">${t('near.intro')}</p>`;
+  const st = c.status;
+  if (st === 'setup') h += `<div class="status">${t('near.st.setup', { step: t('near.step.' + ((c.detail && c.detail.step) || 'root')) })}</div>`;
+  else if (st === 'need-funds') {
+    h += `<div class="near-box warn"><p>${t('near.st.need-funds', { n: c.detail.amount })}</p>` +
+      `<code class="addr">${esc(c.detail.address)}</code>` +
+      `<div class="row"><button data-act="near-copy" data-copy="${esc(c.detail.address)}">${t('near.copy')}</button>` +
+      `<a class="btnlink" href="${c.wallet}" target="_blank" rel="noopener">${t('near.openWallet')}</a></div></div>`;
+  } else if (st === 'ready') h += `<div class="status live">${t('near.st.ready', { n: c.txCount })}</div>`;
+  else h += `<div class="status">${t('near.st.' + (st in { off: 1, starting: 1, error: 1 } ? st : 'starting'))}</div>`;
+
+  if (c.accounts && st === 'ready') {
+    const a = c.accounts, bal = c.balances || {};
+    const row = (id) => `<tr><td>${esc(chainName(id))}<br>${exLink('address/' + id, esc(shortId(id)), 'near-link small')}</td><td class="n">${bal[id] !== undefined ? Math.round(bal[id]) + ' EMWK' : ''}</td></tr>`;
+    h += `<p class="sub2">${t('near.token')}</p><p>${exLink('token/' + a.token, esc(a.token))}</p>`;
+    h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, ...Object.values(a.npcs)].map(row).join('')}</table>`;
+    h += `<p class="sub2">${t('near.feed')}${c.pending ? ` <span class="muted small">· ${t('near.pending', { n: c.pending })}</span>` : ''}</p>`;
+    h += c.feed.length ? `<ul class="near-feed">${c.feed.map((f) => {
+      const items = f.items.map((it) => `${esc(chainName(f.from))} → ${esc(chainName(it.to))} <b>${it.amount} EMWK</b>${it.label === 'balance sync' ? ` <span class="muted">(${t('near.sync')})</span>` : ''}`).join('<br>');
+      const link = f.hash ? exLink('txns/' + f.hash, '↗') : '';
+      return `<li class="${f.ok ? '' : 'bad'}"><span class="muted small">${timeAgo(f.at)}</span> ${items} ${f.ok ? link : `<span class="bad small">${t('near.failed')}</span>`}</li>`;
+    }).join('')}</ul>` : `<p class="muted small">${t('near.noFeed')}</p>`;
+  }
+
+  h += `<p class="sub2">${t('near.wallet')}</p>`;
+  if (!me) h += `<p class="muted small">${t('near.joinFirst')}</p>`;
+  else if (me.near) {
+    h += `<p>${t('near.linked', { id: '' })}${c.explorer ? exLink('address/' + me.near, esc(me.near)) : esc(me.near)}</p>`;
+    h += `<p class="muted small">${t('near.cashHelp', { n: me.coins })}</p>`;
+    if (me.withdrawn) h += `<p class="muted small">${t('near.withdrawn', { n: me.withdrawn })}</p>`;
+    h += chainOk()
+      ? `<div class="row"><input id="near-amount" type="number" min="1" step="1" max="${Math.floor(me.coins)}" value="${Math.min(10, Math.floor(me.coins))}"><button class="primary" data-act="near-withdraw" ${me.coins < 1 ? 'disabled' : ''}>${t('near.cashout')}</button></div>`
+      : `<p class="muted small">${t('near.needReady')}</p>`;
+  } else {
+    h += `<p class="muted small">${t('near.orType')}</p><div class="row"><input id="near-account" placeholder="name.testnet" autocomplete="off" spellcheck="false"><button class="primary" data-act="near-link">${t('near.link')}</button></div>`;
+  }
+  return h;
+}
+
+async function nearLink(account) {
+  const r = await post('/api/near/link', { player: playerId, account });
+  if (r.state) { view = r.state; render(); }
+  if (r.ok) toast(t('toast.linked', { id: r.near }), 'win'); else toast(errText(r), 'bad');
+}
+async function nearWithdraw(amount) {
+  const r = await post('/api/near/withdraw', { player: playerId, amount });
+  if (r.state) { view = r.state; render(); }
+  if (r.ok) toast(t('toast.withdrew', { n: r.amount, id: r.wallet }), 'win'); else toast(errText(r), 'bad');
+}
+function renderNearPill() {
+  const c = view.chain || { status: 'off' };
+  const pill = $('near-pill');
+  pill.className = 'near-pill st-' + c.status;
+  $('near-text').textContent = t('near.pill.' + c.status);
 }
 
 // ---------- character card and goal ----------
@@ -548,6 +630,7 @@ function renderChrome() {
   $('pop').textContent = t('ui.pop', { n: view.population, t: view.treasury });
   $('ready-fill').style.width = view.readiness + '%';
   $('ready-num').textContent = view.readiness + '%';
+  renderNearPill();
   $('log').innerHTML = view.log.map((l) => `<li class="${l.kind}">${t('log.day', { n: l.day })}: ${esc(logText(l))}</li>`).join('');
   const e = view.events, banner = $('banner');
   if (e.attackDay) { banner.className = 'banner danger'; banner.textContent = t('banner.attack', { day: e.attackDay, ready: view.readiness }); banner.hidden = false; }
@@ -706,9 +789,17 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
+  if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); return; }
   const btn = e.target.closest('#panel button[data-act], #dock button[data-act], #scene-bar button[data-act]');
   if (!btn) return;
   const a = btn.dataset.act;
+  if (a.startsWith('near-')) {
+    if (a === 'near-copy') navigator.clipboard?.writeText(btn.dataset.copy).then(() => toast(t('toast.copied'), 'win')).catch(() => {});
+    else if (!playerId) toast(t('toast.join'), 'bad');
+    else if (a === 'near-link') nearLink($('near-account').value);
+    else if (a === 'near-withdraw') nearWithdraw($('near-amount').value);
+    return;
+  }
   if (a === 'close') { ui.selected = null; renderMapNow(); renderPanel(); renderDock(); }
   else if (a === 'elder') openElder();
   else if (a === 'meal') { delete result.inn; goAndDo('inn', 'meal', () => act('meal')); }

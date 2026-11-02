@@ -62,13 +62,52 @@ export function balance(state, acct) {
   return state.balances[acct] || 0;
 }
 
+// Something outside the game (the NEAR bridge) can watch every money move.
+const watchers = [];
+export function onTransfer(fn) { watchers.push(fn); }
+
 function transfer(state, from, to, amount) {
   amount = r2(amount);
   if (amount <= 0) return true;
   if (balance(state, from) + 1e-9 < amount) return false;
   state.balances[from] = r2(balance(state, from) - amount);
   state.balances[to] = r2(balance(state, to) + amount);
+  for (const w of watchers) w(from, to, amount);
   return true;
+}
+
+// ---------- NEAR wallet link and cash-out ----------
+
+const NEAR_ID = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+export function validNearId(id) { return NEAR_ID.test(String(id || '')); }
+
+export function linkWallet(state, playerId, accountId) {
+  const p = state.players[playerId];
+  if (!p) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };
+  accountId = String(accountId || '').trim().toLowerCase();
+  if (!validNearId(accountId) || !accountId.endsWith('.testnet') && !/^[0-9a-f]{64}$/.test(accountId)) {
+    return { ok: false, error: 'That is not a NEAR testnet account.', code: 'err.badWallet' };
+  }
+  p.near = accountId;
+  state.rev = (state.rev || 0) + 1;
+  addLog(state, `${p.name} linked a NEAR wallet.`, 'info', 'log.linked', { name: p.name });
+  return { ok: true, near: accountId };
+}
+
+// Moves coins out of the game to the player's own NEAR wallet. They are kept in
+// the 'withdrawn' bucket so the game's total stays exactly the fixed supply.
+export function withdraw(state, playerId, amount) {
+  const p = state.players[playerId];
+  if (!p) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };
+  if (!p.near) return { ok: false, error: 'Link a NEAR wallet first.', code: 'err.noWallet' };
+  amount = Math.floor(Number(amount) * 100) / 100;
+  if (!(amount >= 1)) return { ok: false, error: 'Cash out at least 1 EMWK.', code: 'err.minWithdraw' };
+  if (balance(state, 'player:' + playerId) + 1e-9 < amount) return { ok: false, error: 'You do not have that much.', code: 'err.noMoney' };
+  transfer(state, 'player:' + playerId, 'withdrawn', amount);
+  p.withdrawn = r2((p.withdrawn || 0) + amount);
+  state.rev = (state.rev || 0) + 1;
+  addLog(state, `${p.name} cashed out ${amount} EMWK to NEAR.`, 'trade', 'log.withdrew', { name: p.name, n: amount });
+  return { ok: true, amount, wallet: p.near };
 }
 
 export function totalMoney(state) {

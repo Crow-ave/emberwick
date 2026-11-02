@@ -1,10 +1,13 @@
-// Emberwick game server. No external packages needed: run `npm start`.
+// Emberwick game server. Run `npm install` once, then `npm start`.
+// The NEAR bridge is optional: without it (or offline) the game still runs.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, tick, joinPlayer, playerAction, publicView } from './economy.js';
-import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE } from './world.js';
+import { createState, tick, joinPlayer, playerAction, publicView, onTransfer, linkWallet, withdraw } from './economy.js';
+import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
+import { Bridge, makeNearAdapter, fileStore } from './near.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(root, 'public');
@@ -20,6 +23,54 @@ try {
   console.log('Started a new village.');
 }
 
+// ---------- NEAR bridge ----------
+let bridge = null;
+// Secret keys live outside the project folder, so they can never end up on GitHub.
+const KEYS = process.env.EMBERWICK_KEYS || path.join(os.homedir(), '.emberwick', 'near-keys.json');
+async function startNear() {
+  if (process.env.EMBERWICK_NEAR === '0') return console.log('NEAR bridge is off (EMBERWICK_NEAR=0).');
+  const store = process.env.EMBERWICK_NEAR === 'fake' ? { load: () => null, save: () => {} } : fileStore(KEYS);
+  let adapter;
+  try {
+    if (process.env.EMBERWICK_NEAR === 'fake') { adapter = (await import('./fakechain.js')).fakeChain({ faucetWorks: true }); adapter.pollMs = 0; adapter.acc.set('emberwick.testnet', { near: 5 }); }
+    else adapter = await makeNearAdapter(() => bridge.keys.secretKey);
+  } catch {
+    return console.log('NEAR bridge is off: run `npm install` once to turn it on.');
+  }
+  const names = (h) => {
+    if (h.startsWith('npc:')) return CRAFTSMEN.find((c) => c.id === h.slice(4))?.name || h;
+    if (h.startsWith('player:')) return state.players[h.slice(7)]?.name || 'player';
+    if (h.startsWith('bot:')) return state.bots[h.slice(4)]?.name || 'villager';
+    return { treasury: 'Treasury', newcomerFund: 'Newcomer fund', adventurerFund: 'Adventurer fund', botFund: 'Villagers', withdrawn: 'NEAR wallet' }[h] || h;
+  };
+  bridge = new Bridge({
+    adapter, store, names,
+    npcIds: CRAFTSMEN.map((c) => c.id),
+    totalSupply: TOKEN.totalSupply,
+    balances: () => state.balances,
+    wasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_token.wasm')),
+    say: (m) => console.log('[NEAR] ' + m),
+  });
+  onTransfer((from, to, amount) => bridge.onTransfer(from, to, amount));
+  let lastStatus = '';
+  const loop = async () => {
+    await bridge.step();
+    if (bridge.status !== lastStatus) {
+      lastStatus = bridge.status;
+      if (bridge.status === 'need-funds') {
+        const d = bridge.detail;
+        console.log(`[NEAR] Needs ${d.amount} testnet NEAR to set up. Send it from your wallet to:\n[NEAR]   ${d.address}`);
+      }
+      broadcast();
+    }
+  };
+  loop();
+  setInterval(loop, RULES.demo ? 8000 : 12000);
+  setInterval(() => { if (bridge.status === 'ready') bridge.needReconcile = true; }, 5 * 60 * 1000);
+}
+const chainView = () => (bridge ? bridge.view() : { status: 'off' });
+const view = (pid) => ({ ...publicView(state, pid), chain: chainView() });
+
 function save() {
   fs.mkdirSync(path.dirname(SAVE), { recursive: true });
   fs.writeFileSync(SAVE + '.tmp', JSON.stringify(state));
@@ -29,7 +80,7 @@ function save() {
 // live updates to every open browser
 const clients = new Map(); // res -> playerId
 function broadcast() {
-  for (const [res, pid] of clients) res.write(`data: ${JSON.stringify(publicView(state, pid))}\n\n`);
+  for (const [res, pid] of clients) res.write(`data: ${JSON.stringify(view(pid))}\n\n`);
 }
 
 setInterval(() => {
@@ -57,12 +108,12 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
   if (url.pathname === '/api/world') return sendJson(res, 200, { buildings: BUILDINGS, goods: GOODS, paths: START_PATHS, routes: PATH_ROUTE, token: TOKEN, rules: { ticksPerDay: RULES.ticksPerDay, tickMs: RULES.tickMs } });
-  if (url.pathname === '/api/state') return sendJson(res, 200, publicView(state, url.searchParams.get('player')));
+  if (url.pathname === '/api/state') return sendJson(res, 200, view(url.searchParams.get('player')));
 
   if (url.pathname === '/api/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     clients.set(res, url.searchParams.get('player'));
-    res.write(`data: ${JSON.stringify(publicView(state, url.searchParams.get('player')))}\n\n`);
+    res.write(`data: ${JSON.stringify(view(url.searchParams.get('player')))}\n\n`);
     req.on('close', () => clients.delete(res));
     return;
   }
@@ -78,7 +129,26 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const r = playerAction(state, body.player, body);
     if (r.ok) broadcast();
-    return sendJson(res, r.ok ? 200 : 400, { ...r, state: publicView(state, body.player) });
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/near/link') {
+    const body = await readBody(req);
+    if (bridge && bridge.status === 'ready') {
+      const exists = await bridge.adapter.exists(String(body.account || '').trim().toLowerCase()).catch(() => null);
+      if (exists === false) return sendJson(res, 400, { ok: false, code: 'err.walletMissing', error: 'No such NEAR testnet account.' });
+    }
+    const r = linkWallet(state, body.player, body.account);
+    if (r.ok) { save(); broadcast(); }
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/near/withdraw') {
+    const body = await readBody(req);
+    if (!bridge || !bridge.canWithdraw()) return sendJson(res, 400, { ok: false, code: 'err.chainOff', error: 'NEAR is not connected yet.' });
+    const r = withdraw(state, body.player, body.amount);
+    if (r.ok) { bridge.withdraw(r.wallet, r.amount, state.players[body.player].name); save(); broadcast(); }
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 
   // static files
@@ -91,5 +161,8 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => console.log(`Emberwick is running${RULES.demo ? ' in DEMO speed' : ''}: open http://localhost:${PORT} in your browser.`));
+server.listen(PORT, () => {
+  console.log(`Emberwick is running${RULES.demo ? ' in DEMO speed' : ''}: open http://localhost:${PORT} in your browser.`);
+  startNear();
+});
 process.on('SIGINT', () => { save(); process.exit(0); });

@@ -192,3 +192,31 @@ button.eat { font-size: 11px; padding: 1px 7px; margin-left: 4px; border-radius:
 @keyframes sway { 50% { transform: rotate(4deg); } }
 @keyframes saw { 50% { transform: translateX(-24px); } }
 #map[hidden] { display: none; }
+
+/* ---------- NEAR ---------- */
+.near-pill { display: inline-flex; align-items: center; gap: 7px; background: rgba(255,255,255,.08); color: #f3e6d4; border: 1px solid rgba(255,255,255,.18); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.near-pill:hover { background: rgba(255,255,255,.16); }
+.near-pill .dot { width: 9px; height: 9px; border-radius: 50%; background: #9a9088; }
+.near-pill.st-ready .dot { background: #4cc46a; box-shadow: 0 0 0 3px rgba(76,196,106,.25); }
+.near-pill.st-setup .dot, .near-pill.st-starting .dot { background: #f0b43c; animation: nearblink 1s infinite; }
+.near-pill.st-need-funds .dot { background: #f0b43c; }
+.near-pill.st-error .dot { background: #e05a3c; }
+@keyframes nearblink { 50% { opacity: .3; } }
+.status.live { background: #e3f3e4; color: #24582f; }
+.near-box { border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.near-box.warn { background: #fff4dc; border: 1px solid #f0d08a; }
+.near-box p { margin: 0 0 8px; }
+.addr { display: block; word-break: break-all; background: #fff; border: 1px solid #e6d7bd; border-radius: 6px; padding: 6px 8px; font-size: 12px; margin-bottom: 8px; }
+#panel .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+#panel .row input { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid #d9c7a8; border-radius: 8px; font: inherit; }
+.btnlink { font-size: 13px; color: #b5501e; }
+.near-link { color: #b5501e; text-decoration: none; word-break: break-all; }
+.near-link:hover { text-decoration: underline; }
+.near-link.small { font-size: 11px; }
+.near-acc { width: 100%; border-collapse: collapse; font-size: 13px; }
+.near-acc td { padding: 5px 0; border-bottom: 1px solid #efe4d2; vertical-align: top; }
+.near-acc td.n { text-align: right; white-space: nowrap; }
+.near-feed { list-style: none; padding: 0; margin: 0; font-size: 12.5px; max-height: 220px; overflow: auto; }
+.near-feed li { padding: 6px 0; border-bottom: 1px solid #efe4d2; }
+.near-feed li.bad { opacity: .7; }
+.bad.small { color: #b23b22; }
