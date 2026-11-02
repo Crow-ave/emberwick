@@ -3,7 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
-import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS } from './world.js';
+import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -99,6 +99,37 @@ function addInv(holder, good, qty) {
   if (holder.inv[good] <= 0) delete holder.inv[good];
 }
 
+// ---------- skills and levels ----------
+
+export function levelFromXp(xp) {
+  let lvl = 1;
+  RULES.levelXp.forEach((need, k) => { if (xp >= need) lvl = k + 1; });
+  return lvl;
+}
+function ensurePlayer(p) {
+  if (!p.xp) p.xp = { farming: 0, woodcutting: 0, mining: 0, trading: 0 };
+  if (!p.wear) p.wear = {};
+  if (!p.stats) p.stats = { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} };
+  if (p.stats.spent === undefined) { p.stats.spent = 0; p.stats.taxes = 0; }
+  if (p.startCoins === undefined) p.startCoins = (START_PATHS[p.path] || { coins: 50 }).coins;
+}
+const skillLevel = (p, skill) => levelFromXp((p.xp && p.xp[skill]) || 0);
+export function maxEnergy(p) {
+  if (!p.xp) return RULES.energyMax;
+  const total = SKILLS.reduce((a, s) => a + skillLevel(p, s), 0);
+  return Math.min(RULES.energyCap, RULES.energyMax + total - SKILLS.length);
+}
+function energyCost(p, spotKey) {
+  const s = GATHER_SPOTS[spotKey], lvl = skillLevel(p, SKILL_OF[s.good]);
+  return Math.max(1, s.energy - (lvl >= 3 ? 1 : 0) - (lvl >= 5 ? 1 : 0));
+}
+function gainXp(p, skill, n = 1) {
+  const before = skillLevel(p, skill);
+  p.xp[skill] = (p.xp[skill] || 0) + n;
+  const after = skillLevel(p, skill);
+  return after > before ? { skill, level: after } : null;
+}
+
 function targetFor(state, npcId, good) {
   const def = CRAFTSMEN.find((c) => c.id === npcId);
   let t = def.target[good] || 0;
@@ -117,7 +148,7 @@ function sellToNpc(state, actor, npcId, good, qty) {
   const npc = state.npcs[npcId];
   if (!npc || npc.buys[good] === undefined) return { ok: false, error: 'This shop does not buy that.', code: 'err.notBuying' };
   if (inv(actor.holder, good) < qty) return { ok: false, error: 'You do not have enough.', code: 'err.notEnough' };
-  const unit = price(npc.buys[good]);
+  const unit = price(npc.buys[good] * (1 + (actor.bonus || 0)));
   const total = unit * qty;
   if (balance(state, npcAcct(npcId)) < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
   const tax = r2(total * RULES.taxRate);
@@ -153,6 +184,7 @@ function npcTrade(state, buyerId, sellerId, good, qty) {
 function gatherYield(state, spot, holder) {
   const s = GATHER_SPOTS[spot];
   let amount = s.base + Math.floor(rng(state) * 2);
+  if (holder.xp) amount += skillLevel(holder, SKILL_OF[s.good]) - 1;
   const tool = Object.entries(GOODS).find(([k, g]) => g.boosts === s.good && inv(holder, k) > 0);
   if (tool) amount += 2;
   if (s.good === 'wheat' && state.events.drought > 0) amount = Math.max(1, Math.floor(amount / 2));
@@ -170,7 +202,8 @@ export function joinPlayer(state, name, pathKey) {
   state.players[id] = {
     id, name, path: pathKey, rank: 'Newcomer',
     energy: RULES.energyMax, inv: { ...path.items }, skills: { wood: 0, wheat: 0, ore: 0 },
-    joinedDay: state.day, quest: 0, stats: { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} },
+    joinedDay: state.day, quest: 0, stats: { gathers: 0, sells: 0, sold: 0, earned: 0, spent: 0, taxes: 0, visited: {} },
+    xp: { farming: 0, woodcutting: 0, mining: 0, trading: 0 }, wear: {}, startCoins: path.coins,
   };
   state.balances['player:' + id] = 0;
   const coins = Math.min(path.coins, balance(state, 'newcomerFund'));
@@ -186,7 +219,9 @@ export function playerAction(state, playerId, action) {
   const actor = { acct: 'player:' + playerId, holder: p };
   const qty = Math.max(1, Math.min(50, parseInt(action.qty, 10) || 1));
 
-  if (!p.stats) { p.stats = { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} }; p.quest = p.quest || 0; }
+  ensurePlayer(p);
+  p.quest = p.quest || 0;
+  actor.bonus = (skillLevel(p, 'trading') - 1) * RULES.tradeBonus;
   const res = doAction(state, p, actor, action, qty);
   if (res.ok) {
     state.rev = (state.rev || 0) + 1;
@@ -205,37 +240,51 @@ function doAction(state, p, actor, action, qty) {
   if (action.type === 'gather') {
     const spot = GATHER_SPOTS[action.spot];
     if (!spot) return { ok: false, error: 'You cannot gather there.', code: 'err.cannotGather' };
-    if (p.energy < spot.energy) return { ok: false, error: 'You are too tired. Rest a little.', code: 'err.tired' };
-    p.energy = r2(p.energy - spot.energy);
+    const cost = energyCost(p, action.spot);
+    if (p.energy < cost) return { ok: false, error: 'You are too tired. Rest a little.', code: 'err.tired' };
+    p.energy = r2(p.energy - cost);
     const got = gatherYield(state, action.spot, p);
     addInv(p, spot.good, got);
     p.skills[spot.good] = (p.skills[spot.good] || 0) + 1;
     p.stats.gathers++;
-    return { ok: true, got, good: spot.good, message: `You gathered ${got} ${GOODS[spot.good].name.toLowerCase()}.` };
+    const levelUp = gainXp(p, SKILL_OF[spot.good]);
+    // the tool for this work wears out
+    let toolBroke = null;
+    const tool = Object.keys(GOODS).find((k) => GOODS[k].boosts === spot.good && inv(p, k) > 0);
+    if (tool) {
+      p.wear[tool] = (p.wear[tool] || 0) + 1;
+      if (p.wear[tool] >= RULES.toolUses) { addInv(p, tool, -1); p.wear[tool] = 0; toolBroke = tool; }
+    }
+    return { ok: true, got, good: spot.good, cost, levelUp, toolBroke, message: `You gathered ${got} ${GOODS[spot.good].name.toLowerCase()}.` };
   }
   if (action.type === 'eat') {
     if (inv(p, 'bread') < 1) return { ok: false, error: 'You have no bread. Buy some at the bakery.', code: 'err.noBread' };
-    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.', code: 'err.notHungry' };
+    if (p.energy >= maxEnergy(p)) return { ok: false, error: 'You are not hungry yet.', code: 'err.notHungry' };
     addInv(p, 'bread', -1);
-    p.energy = Math.min(RULES.energyMax, r2(p.energy + RULES.breadEnergy));
+    p.energy = Math.min(maxEnergy(p), r2(p.energy + RULES.breadEnergy));
     return { ok: true, energy: RULES.breadEnergy, message: `You ate bread. +${RULES.breadEnergy} energy.` };
   }
   if (action.type === 'meal') {
-    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.', code: 'err.notHungry' };
+    if (p.energy >= maxEnergy(p)) return { ok: false, error: 'You are not hungry yet.', code: 'err.notHungry' };
     const res = buyFromNpc(state, actor, 'inn', 'meal', 1);
     if (!res.ok) return res.code === 'err.outOfStock' ? { ok: false, error: 'The kitchen is out of food. Try again soon, or eat bread.', code: 'err.kitchenEmpty' } : res;
     addInv(p, 'meal', -1);
-    p.energy = Math.min(RULES.energyMax, r2(p.energy + RULES.mealEnergy));
+    p.stats.spent = r2(p.stats.spent + res.total);
+    p.energy = Math.min(maxEnergy(p), r2(p.energy + RULES.mealEnergy));
     return { ok: true, energy: RULES.mealEnergy, total: res.total, message: `You had a hot meal for ${res.total} EMWK. +${RULES.mealEnergy} energy.` };
   }
   if (action.type === 'sell') {
     const res = sellToNpc(state, actor, action.npc, action.good, qty);
-    if (res.ok) { p.stats.sells++; p.stats.sold += qty; p.stats.earned = r2(p.stats.earned + res.total - res.tax); }
+    if (res.ok) {
+      p.stats.sells++; p.stats.sold += qty; p.stats.earned = r2(p.stats.earned + res.total - res.tax); p.stats.taxes = r2(p.stats.taxes + res.tax);
+      res.levelUp = gainXp(p, 'trading');
+    }
     if (res.ok) res.message = `Sold ${qty} ${GOODS[action.good].name.toLowerCase()} for ${res.total} EMWK (tax ${res.tax}).`;
     return res;
   }
   if (action.type === 'buy') {
     const res = buyFromNpc(state, actor, action.npc, action.good, qty);
+    if (res.ok) p.stats.spent = r2(p.stats.spent + res.total);
     if (res.ok) res.message = `Bought ${qty} ${GOODS[action.good].name.toLowerCase()} for ${res.total} EMWK.`;
     return res;
   }
@@ -284,7 +333,7 @@ export function tick(state) {
   const newDay = state.tick % RULES.ticksPerDay === 0;
 
   // energy recovers for everyone
-  for (const p of Object.values(state.players)) p.energy = Math.min(RULES.energyMax, r2(p.energy + RULES.energyPerTick));
+  for (const p of Object.values(state.players)) p.energy = Math.min(maxEnergy(p), r2(p.energy + RULES.energyPerTick));
   for (const b of Object.values(state.bots)) b.energy = Math.min(RULES.energyMax, r2(b.energy + RULES.energyPerTick));
 
   runBots(state);
@@ -472,6 +521,20 @@ function resolveAttack(state) {
 
 // ---------- public view ----------
 
+function playerView(state, p) {
+  ensurePlayer(p);
+  const skills = {};
+  for (const s of SKILLS) {
+    const xp = p.xp[s] || 0, level = levelFromXp(xp);
+    skills[s] = { xp, level, from: RULES.levelXp[level - 1], to: RULES.levelXp[level] ?? null };
+  }
+  const costs = Object.fromEntries(Object.keys(GATHER_SPOTS).map((k) => [k, energyCost(p, k)]));
+  return {
+    ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p),
+    skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,
+  };
+}
+
 export function publicView(state, playerId) {
   const npcs = {};
   for (const def of CRAFTSMEN) {
@@ -502,7 +565,7 @@ export function publicView(state, playerId) {
     npcs,
     history: state.history,
     log: state.log.slice(0, 12),
-    player: p ? { ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p) } : null,
+    player: p ? playerView(state, p) : null,
     bots: Object.values(state.bots).map((b) => ({ id: b.id, name: b.name, path: b.path })),
   };
 }

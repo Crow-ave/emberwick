@@ -2,7 +2,7 @@
 // game data and draws it. Swapping this file for a pixel-art renderer later does
 // not touch anyone's coins, items, houses or contracts.
 
-export const N = 12, TW = 88, TH = 44, OX = 690, OY = 70, VW = 1230, VH = 640;
+export const N = 12, TW = 88, TH = 44, OX = 556, OY = 64, VW = 1112, VH = 616;
 const K = 1.45; // building scale relative to the original 60px tile art
 const BT = 60, BH = 30; // tile size the building art was drawn for
 

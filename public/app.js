@@ -223,7 +223,7 @@ function panelCraftsman(b) {
   if (n.closed) h += `<p class="closed">${t('panel.closed')}</p>`;
   h += `<div class="quote">"${esc(t('line.' + n.lineKey))}"</div>`;
   if (b.id === 'inn') {
-    const full = me && me.energy >= 10;
+    const full = me && me.energy >= me.maxEnergy;
     h += `<button class="primary big" data-act="meal" ${!me || n.closed || full ? 'disabled' : ''}>${t('panel.meal', { p: n.sells.meal })}</button>` +
       `<p class="muted" style="font-size:12px">${full ? t('panel.full') : t('panel.mealsReady', { n: n.stock.meal || 0 })}</p>`;
   }
@@ -243,7 +243,7 @@ function panelCraftsman(b) {
     h += `<h4>${t('panel.sells')}</h4><table>`;
     for (const [g, p] of sells) {
       const stock = n.stock[g] || 0;
-      h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.left', { n: stock })})</span></td><td class="n">${p} EMWK ${spark(view.history[g])}</td>` +
+      h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.left', { n: stock })})</span></td><td class="n">${p} EMWK</td>` +
         `<td class="n"><button data-act="buy" data-good="${g}" ${!me || !stock || n.closed ? 'disabled' : ''}>${t('panel.buy')}</button></td></tr>`;
     }
     h += `</table>`;
@@ -260,8 +260,8 @@ function tiredHelp(me) {
 }
 
 function panelGather(b) {
-  const good = SPOT_GOOD[b.id], energy = SPOT_COST[b.id];
   const me = view.player;
+  const good = SPOT_GOOD[b.id], energy = me ? me.costs[b.id] : SPOT_COST[b.id];
   const best = bestBuyer(good);
   return `<h2>${esc(placeName(b.id))}</h2><p>${t('gather.' + b.id)}</p><p class="muted">${t('gather.cost', { n: energy })}${me ? ' ' + t('gather.youHave', { n: Math.floor(me.energy) }) : ''}</p>` +
     (me ? `<p>${t('gather.carry', { n: me.inv[good] || 0, good: goodWord(good) })}</p>` : '') +
@@ -349,7 +349,7 @@ function panelGuide() {
       const best = bestBuyer(g);
       if (best) steps.push({ text: t('guide.carry', { n: me.inv[g], good: goodWord(g), name: esc(npcName(best.id)), place: placeName(best.id), p: best.buys[g] }), go: best.id, label: t('go.to', { place: placeName(best.id) }) });
     }
-  } else if (me.energy >= SPOT_COST[route.spot]) {
+  } else if (me.energy >= me.costs[route.spot]) {
     steps.push({ text: t('guide.empty', { place: placeName(route.spot) }), go: route.spot, label: t('go.to', { place: placeName(route.spot) }) });
   } else if ((me.inv.bread || 0) > 0) {
     steps.push({ text: t('guide.tiredBread', { n: Math.floor(me.energy) }), eat: true });
@@ -373,7 +373,7 @@ function renderPanel() {
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
   const b = world.buildings.find((x) => x.id === ui.selected);
-  if (!b) { panel.hidden = true; return; }
+  if (!b) { panel.innerHTML = panelGuide(); panel.hidden = false; return; }
   let h;
   if (b.type === 'craftsman') h = panelCraftsman(b);
   else if (b.type === 'gather') h = panelGather(b);
@@ -401,11 +401,9 @@ function avatarSvg(path) {
 function renderHud() {
   const me = view.player;
   if (!me) { $('me').innerHTML = `<p class="muted" style="margin:0">${t('me.join')}</p>`; $('quest').hidden = true; return; }
-  const bag = Object.entries(me.inv).map(([g, q]) => `<span class="chip">${goodName(g)} × ${q}${g === 'bread' ? ` <button class="eat" data-eat="1">${t('me.eat')}</button>` : ''}</span>`).join('') || `<span class="muted">${t('me.bagEmpty')}</span>`;
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('rank.' + String(me.rank).toLowerCase())}</div></div></div>` +
     `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
-    `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${me.energy * 10}%"></div></div>${Math.floor(me.energy)}/10</div>` +
-    `<div class="bag">${bag}</div>`;
+    `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>`;
   const q = me.questInfo;
   ui.target = q.target;
   const qt = questTexts(q);
@@ -415,6 +413,69 @@ function renderHud() {
     (q.reward ? ` <span class="reward">${t('quest.reward', { n: q.reward })}</span>` : '') +
     `<button class="helpbtn" data-guide="1">${t('quest.help')}</button>`;
   $('quest').hidden = false;
+}
+
+// ---------- the bottom panel: bag, wealth, skills, this shop ----------
+
+const TOOL_SHOP = { pickaxe: 'smithy', axe: 'woodcutter', plow: 'mill' };
+
+function goodValue(g) {
+  const b = bestBuyer(g);
+  if (b) return b.buys[g];
+  const s = view.history[g];
+  return s && s.length ? Math.round(s[s.length - 1] * 0.6) : 0;
+}
+
+function renderDock() {
+  const me = view.player;
+  const dock = $('dock');
+  if (!me) { dock.hidden = true; return; }
+  dock.hidden = false;
+  // bag
+  let goodsValue = 0;
+  const rows = Object.entries(me.inv).map(([g, q]) => {
+    const v = goodValue(g);
+    goodsValue += v * q;
+    const tool = world.goods[g] && world.goods[g].kind === 'tool' && TOOL_SHOP[g];
+    const left = tool ? me.toolUses - ((me.wear || {})[g] || 0) : null;
+    return `<tr><td><b>${goodName(g)}</b> × ${q}` +
+      (tool ? `<div class="wear"><div style="width:${(left / me.toolUses) * 100}%"></div></div><span class="muted small">${t('dock.uses', { n: left, max: me.toolUses })}</span>` : '') +
+      `</td><td class="n muted small">${v ? t('dock.worth', { p: v }) : ''}</td><td class="n">${v ? t('dock.total', { p: v * q }) : ''}` +
+      (g === 'bread' ? ` <button class="eat" data-eat="1">${t('me.eat')}</button>` : '') + `</td></tr>`;
+  }).join('');
+  const bag = `<div class="dcard bagcard"><h4>${t('dock.bag')}</h4>${rows ? `<table>${rows}</table>` : `<p class="muted small">${t('dock.empty')}</p>`}</div>`;
+  // wealth
+  const coins = me.coins, total = coins + goodsValue, profit = total - me.startCoins, st = me.stats || {};
+  const line = (k, v, cls = '') => `<tr><td>${t(k)}</td><td class="n ${cls}">${v}</td></tr>`;
+  const wealth = `<div class="dcard"><h4>${t('dock.wealth')}</h4><table>` +
+    line('w.coins', `${coins.toFixed(0)} EMWK`) + line('w.goods', `${goodsValue.toFixed(0)} EMWK`) +
+    `<tr class="sum"><td>${t('w.total')}</td><td class="n">${total.toFixed(0)} EMWK</td></tr>` +
+    line('w.start', `${me.startCoins} EMWK`) + line('w.profit', `${profit >= 0 ? '+' : ''}${profit.toFixed(0)} EMWK`, profit >= 0 ? 'up' : 'down') +
+    line('w.earned', `${(st.earned || 0).toFixed(0)} EMWK`) + line('w.spent', `${(st.spent || 0).toFixed(0)} EMWK`) + line('w.taxes', `${(st.taxes || 0).toFixed(1)} EMWK`) +
+    `</table></div>`;
+  // skills
+  const skillRow = (s) => {
+    const k = me.skills[s];
+    const pct = k.to ? ((k.xp - k.from) / (k.to - k.from)) * 100 : 100;
+    const spot = { farming: 'fields', woodcutting: 'forest', mining: 'mine' }[s];
+    const eff = s === 'trading' ? t('skill.tradeEffect', { p: Math.round(me.tradeBonus * 100) }) : t('skill.effect', { n: k.level - 1, e: me.costs[spot] });
+    return `<div class="skill"><div class="srow"><b>${t('skill.' + s)}</b><span>${t('skill.level', { n: k.level })}</span></div>` +
+      `<div class="xp"><div style="width:${pct}%"></div></div><div class="srow muted small"><span>${eff}</span><span>${k.to ? t('skill.next', { a: k.xp, b: k.to }) : t('skill.max')}</span></div></div>`;
+  };
+  const skills = `<div class="dcard skills"><h4>${t('dock.skills')}</h4>${['farming', 'woodcutting', 'mining', 'trading'].map(skillRow).join('')}</div>`;
+  // this shop
+  const b = world.buildings.find((x) => x.id === ui.selected);
+  let here = `<div class="dcard"><h4>${t('dock.here')}</h4>`;
+  if (b && b.type === 'craftsman') {
+    const n = view.npcs[b.id];
+    const sellable = Object.keys(n.buys).filter((g) => (me.inv[g] || 0) > 0);
+    here += `<div class="muted small">${esc(npcName(b.id))}</div><p class="sub2">${t('here.sell')}</p>` +
+      (sellable.length ? sellable.map((g) => `<div class="trow"><span>${goodName(g)} × ${me.inv[g]} · ${n.buys[g]} EMWK</span><button class="sellbtn" data-act="sell" data-npc="${b.id}" data-good="${g}" ${n.closed ? 'disabled' : ''}>${t('panel.sellAll', { n: me.inv[g] })}</button></div>`).join('') : `<p class="muted small">${t('here.nothing')}</p>`);
+    const buyable = Object.keys(n.sells).filter((g) => g !== 'meal' && (n.stock[g] || 0) > 0);
+    if (buyable.length) here += `<p class="sub2">${t('here.buy')}</p>` + buyable.map((g) => `<div class="trow"><span>${goodName(g)} · ${n.sells[g]} EMWK</span><button data-act="buy" data-npc="${b.id}" data-good="${g}" ${n.closed || me.coins < n.sells[g] ? 'disabled' : ''}>${t('panel.buy')}</button></div>`).join('');
+  } else here += `<p class="muted small">${t('here.hint')}</p>`;
+  here += `</div>`;
+  dock.innerHTML = bag + wealth + skills + here;
 }
 
 function logText(l) {
@@ -437,7 +498,7 @@ function renderChrome() {
 }
 
 function renderMapNow() { ui.closedTag = t('ui.closedTag'); renderMap($('map'), world, view, ui); }
-function render() { renderHud(); renderMapNow(); renderChrome(); renderPanel(); }
+function render() { renderHud(); renderMapNow(); renderChrome(); renderPanel(); renderDock(); }
 
 // ---------- static page text and the language menu ----------
 
@@ -471,6 +532,13 @@ async function act(type, extra = {}) {
   const r = await post('/api/action', body);
   if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
   if (r.ok && type !== 'visit') explain(type, extra, r);
+  if (r.ok && r.levelUp) {
+    const msg = t('toast.level', { skill: t('skill.' + r.levelUp.skill), n: r.levelUp.level });
+    popupYou(msg, '#7a3b8a');
+    flash('skills');
+    setTimeout(() => toast(msg, 'win'), r.quest ? 3200 : 0);
+  }
+  if (r.ok && r.toolBroke) toast(t('toast.toolBroke', { tool: goodName(r.toolBroke), place: placeName(TOOL_SHOP[r.toolBroke]) }), 'bad');
   if (r.quest) {
     toast(t('toast.goal', { title: t(`quest.${r.quest.id}.title`) }) + (r.quest.reward ? ` · +${r.quest.reward} EMWK` : ''), 'win');
   } else if (!r.ok) toast(errText(r), 'bad');
@@ -511,7 +579,7 @@ function explain(type, extra, r) {
 }
 
 function flash(what) {
-  const el = what === 'coins' ? document.querySelector('#me .coins') : what === 'energy' ? document.querySelector('#energy-row') : document.querySelector('#me .bag');
+  const el = what === 'coins' ? document.querySelector('#me .coins') : what === 'energy' ? document.querySelector('#energy-row') : what === 'skills' ? document.querySelector('#dock .skills') : document.querySelector('#dock .bagcard');
   if (!el) return;
   el.classList.remove('flash');
   void el.offsetWidth;
@@ -561,6 +629,9 @@ $('map').addEventListener('click', (e) => {
   const g = e.target.closest('.bld');
   if (g) select(g.dataset.id);
 });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && ui.selected) { ui.selected = null; renderMapNow(); renderPanel(); renderDock(); }
+});
 $('map').addEventListener('keydown', (e) => {
   const g = e.target.closest('.bld');
   if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); select(g.dataset.id); }
@@ -575,14 +646,14 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
-  const btn = e.target.closest('#panel button[data-act]');
+  const btn = e.target.closest('#panel button[data-act], #dock button[data-act]');
   if (!btn) return;
   const a = btn.dataset.act;
-  if (a === 'close') { ui.selected = null; renderMapNow(); renderPanel(); }
+  if (a === 'close') { ui.selected = null; renderMapNow(); renderPanel(); renderDock(); }
   else if (a === 'elder') openElder();
   else if (a === 'meal') { delete result.inn; goAndDo('inn', 'meal', () => act('meal')); }
   else if (a === 'gather') { const spot = ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
-  else { const npc = ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
+  else { const npc = btn.dataset.npc || ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
 });
 
 // ---------- joining ----------

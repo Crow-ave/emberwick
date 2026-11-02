@@ -3,6 +3,17 @@
 
 const en = {
   'lang.name': 'English',
+  'dock.bag': 'My bag', 'dock.wealth': 'My wealth', 'dock.skills': 'My skills', 'dock.here': 'At this shop',
+  'dock.worth': '{p} each', 'dock.total': '= {p}', 'dock.uses': '{n}/{max} uses left', 'dock.empty': 'Empty. Go and gather something!',
+  'w.coins': 'Coins', 'w.goods': 'Goods and tools', 'w.total': 'Total wealth', 'w.start': 'You started with', 'w.profit': 'Profit so far',
+  'w.earned': 'Earned from sales', 'w.spent': 'Spent', 'w.taxes': 'Tax paid to the village',
+  'skill.farming': 'Farming', 'skill.woodcutting': 'Woodcutting', 'skill.mining': 'Mining', 'skill.trading': 'Trading',
+  'skill.level': 'Level {n}', 'skill.next': '{a}/{b} XP', 'skill.max': 'Max level',
+  'skill.effect': '+{n} per trip · {e} energy', 'skill.tradeEffect': '+{p}% on every sale',
+  'here.hint': 'Click a craftsman\'s shop on the map to trade here.', 'here.sell': 'You can sell', 'here.buy': 'You can buy',
+  'here.nothing': 'Nothing in your bag that this shop buys.',
+  'toast.level': '{skill}: level {n}!', 'toast.toolBroke': 'Your {tool} broke. You can buy a new one here: {place}.',
+
   'ui.day': 'Day {n}', 'ui.winter': 'Winter', 'ui.night': 'Night',
   'ui.pop': '{n} villagers · Treasury {t} EMWK', 'ui.readiness': 'Dragon readiness',
   'ui.hint': 'Click a building to visit it. Click a villager on the road to talk.', 'ui.news': 'Village news', 'ui.close': 'Close',
@@ -117,6 +128,17 @@ const en = {
 
 const tr = {
   'lang.name': 'Türkçe',
+  'dock.bag': 'Çantam', 'dock.wealth': 'Servetim', 'dock.skills': 'Becerilerim', 'dock.here': 'Bu dükkanda',
+  'dock.worth': 'tanesi {p}', 'dock.total': '= {p}', 'dock.uses': '{n}/{max} kullanım kaldı', 'dock.empty': 'Boş. Git bir şeyler topla!',
+  'w.coins': 'Para', 'w.goods': 'Mallar ve aletler', 'w.total': 'Toplam servet', 'w.start': 'Başlangıçtaki paran', 'w.profit': 'Şu ana kadarki kâr',
+  'w.earned': 'Satışlardan kazanılan', 'w.spent': 'Harcanan', 'w.taxes': 'Köye ödenen vergi',
+  'skill.farming': 'Çiftçilik', 'skill.woodcutting': 'Odunculuk', 'skill.mining': 'Madencilik', 'skill.trading': 'Ticaret',
+  'skill.level': '{n}. seviye', 'skill.next': '{a}/{b} deneyim', 'skill.max': 'En yüksek seviye',
+  'skill.effect': 'Her seferinde +{n} · {e} enerji', 'skill.tradeEffect': 'Her satışta +%{p}',
+  'here.hint': 'Burada ticaret yapmak için haritada bir esnafın dükkanına tıkla.', 'here.sell': 'Satabileceklerin', 'here.buy': 'Alabileceklerin',
+  'here.nothing': 'Çantanda bu dükkanın aldığı bir şey yok.',
+  'toast.level': '{skill}: {n}. seviye!', 'toast.toolBroke': '{tool} kırıldı. Yenisini buradan alabilirsin: {place}.',
+
   'ui.day': '{n}. gün', 'ui.winter': 'Kış', 'ui.night': 'Gece',
   'ui.pop': '{n} köylü · Hazine {t} EMWK', 'ui.readiness': 'Ejderhaya hazırlık',
   'ui.hint': 'Ziyaret etmek için bir binaya, konuşmak için yoldaki bir köylüye tıkla.', 'ui.news': 'Köy haberleri', 'ui.close': 'Kapat',
@@ -231,6 +253,17 @@ const tr = {
 
 const fr = {
   'lang.name': 'Français',
+  'dock.bag': 'Mon sac', 'dock.wealth': 'Ma fortune', 'dock.skills': 'Mes compétences', 'dock.here': 'Dans cette boutique',
+  'dock.worth': '{p} pièce', 'dock.total': '= {p}', 'dock.uses': '{n}/{max} utilisations restantes', 'dock.empty': 'Vide. Allez récolter quelque chose !',
+  'w.coins': 'Pièces', 'w.goods': 'Marchandises et outils', 'w.total': 'Fortune totale', 'w.start': 'Au départ, vous aviez', 'w.profit': 'Bénéfice jusqu\'ici',
+  'w.earned': 'Gagné en ventes', 'w.spent': 'Dépensé', 'w.taxes': 'Impôt payé au village',
+  'skill.farming': 'Agriculture', 'skill.woodcutting': 'Bûcheronnage', 'skill.mining': 'Minage', 'skill.trading': 'Commerce',
+  'skill.level': 'Niveau {n}', 'skill.next': '{a}/{b} XP', 'skill.max': 'Niveau maximal',
+  'skill.effect': '+{n} par récolte · {e} énergie', 'skill.tradeEffect': '+{p} % sur chaque vente',
+  'here.hint': 'Cliquez sur la boutique d\'un artisan sur la carte pour commercer ici.', 'here.sell': 'Vous pouvez vendre', 'here.buy': 'Vous pouvez acheter',
+  'here.nothing': 'Rien dans votre sac que cette boutique achète.',
+  'toast.level': '{skill} : niveau {n} !', 'toast.toolBroke': 'Votre outil ({tool}) s\'est cassé. Vous pouvez en acheter un nouveau ici : {place}.',
+
   'ui.day': 'Jour {n}', 'ui.winter': 'Hiver', 'ui.night': 'Nuit',
   'ui.pop': '{n} villageois · Trésor {t} EMWK', 'ui.readiness': 'Préparation face au dragon',
   'ui.hint': 'Cliquez sur un bâtiment pour le visiter. Cliquez sur un villageois pour lui parler.', 'ui.news': 'Nouvelles du village', 'ui.close': 'Fermer',
@@ -345,6 +378,17 @@ const fr = {
 
 const de = {
   'lang.name': 'Deutsch',
+  'dock.bag': 'Meine Tasche', 'dock.wealth': 'Mein Vermögen', 'dock.skills': 'Meine Fähigkeiten', 'dock.here': 'In diesem Laden',
+  'dock.worth': '{p} pro Stück', 'dock.total': '= {p}', 'dock.uses': 'noch {n}/{max} Einsätze', 'dock.empty': 'Leer. Geh und sammle etwas!',
+  'w.coins': 'Münzen', 'w.goods': 'Waren und Werkzeuge', 'w.total': 'Gesamtvermögen', 'w.start': 'Dein Startgeld', 'w.profit': 'Bisheriger Gewinn',
+  'w.earned': 'Aus Verkäufen verdient', 'w.spent': 'Ausgegeben', 'w.taxes': 'An das Dorf gezahlte Steuer',
+  'skill.farming': 'Landwirtschaft', 'skill.woodcutting': 'Holzfällen', 'skill.mining': 'Bergbau', 'skill.trading': 'Handel',
+  'skill.level': 'Stufe {n}', 'skill.next': '{a}/{b} EP', 'skill.max': 'Höchste Stufe',
+  'skill.effect': '+{n} pro Gang · {e} Energie', 'skill.tradeEffect': '+{p} % bei jedem Verkauf',
+  'here.hint': 'Klicke auf der Karte auf den Laden eines Handwerkers, um hier zu handeln.', 'here.sell': 'Das kannst du verkaufen', 'here.buy': 'Das kannst du kaufen',
+  'here.nothing': 'In deiner Tasche ist nichts, was dieser Laden kauft.',
+  'toast.level': '{skill}: Stufe {n}!', 'toast.toolBroke': 'Dein Werkzeug ({tool}) ist zerbrochen. Ein neues bekommst du hier: {place}.',
+
   'ui.day': 'Tag {n}', 'ui.winter': 'Winter', 'ui.night': 'Nacht',
   'ui.pop': '{n} Dorfbewohner · Schatzkammer {t} EMWK', 'ui.readiness': 'Bereitschaft gegen den Drachen',
   'ui.hint': 'Klicke auf ein Gebäude, um es zu besuchen. Klicke auf einen Dorfbewohner, um mit ihm zu sprechen.', 'ui.news': 'Neuigkeiten aus dem Dorf', 'ui.close': 'Schließen',

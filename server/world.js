@@ -137,6 +137,10 @@ export const RULES = {
   taxRate: 0.03,         // market tax to the treasury
   energyMax: 10,
   breadEnergy: 3,
+  energyCap: 20,          // max energy grows with level, up to this
+  levelXp: [0, 5, 12, 22, 35, 50], // xp needed for level 1..6
+  tradeBonus: 0.03,       // craftsmen pay 3% more per trading level above 1
+  toolUses: 25,           // a tool breaks after this many uses
   mealEnergy: 5,
   energyPerTick: DEMO ? 0.25 : 0.25,
   guardSalaryPerDay: 25, // paid from the treasury
@@ -166,3 +170,7 @@ export const QUESTS = [
   { id: 'supply', title: 'Feed the village', text: 'Sell 15 goods in total to the craftsmen.', target: 'market', reward: 15 },
   { id: 'done',   title: 'A true villager', text: 'Jobs, homes and the village council open in the next update. Keep trading and watch the prices.', target: null, reward: 0 },
 ];
+
+// Which skill each raw good trains.
+export const SKILL_OF = { wheat: 'farming', wood: 'woodcutting', ore: 'mining' };
+export const SKILLS = ['farming', 'woodcutting', 'mining', 'trading'];
