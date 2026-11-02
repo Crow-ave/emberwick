@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
+    "demo": "EMBERWICK_DEMO=1 node server/index.js",
     "test": "node server/selftest.js"
   },
   "engines": { "node": ">=18" },

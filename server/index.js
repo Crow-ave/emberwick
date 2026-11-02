@@ -91,5 +91,5 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => console.log(`Emberwick is running: open http://localhost:${PORT} in your browser.`));
+server.listen(PORT, () => console.log(`Emberwick is running${RULES.demo ? ' in DEMO speed' : ''}: open http://localhost:${PORT} in your browser.`));
 process.on('SIGINT', () => { save(); process.exit(0); });

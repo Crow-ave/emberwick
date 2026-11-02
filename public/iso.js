@@ -2,7 +2,7 @@
 // game data and draws it. Swapping this file for a pixel-art renderer later does
 // not touch anyone's coins, items, houses or contracts.
 
-export const N = 12, TW = 88, TH = 44, OX = 640, OY = 70, VW = 1180, VH = 640;
+export const N = 12, TW = 88, TH = 44, OX = 690, OY = 70, VW = 1230, VH = 640;
 const K = 1.45; // building scale relative to the original 60px tile art
 const BT = 60, BH = 30; // tile size the building art was drawn for
 
@@ -158,11 +158,17 @@ for (let i = 0; i <= 11; i++) ROAD.add(`${i},4`);
 for (let j = 5; j <= 8; j++) ROAD.add(`7,${j}`);
 const WATER = new Set(['8,7', '9,7', '8,8']);
 
-let blocked = null, entrances = {};
+let blocked = null, entrances = {}, workCells = {};
+const OPEN_AREAS = new Set(['gate', 'expansion', 'fields', 'forest']); // people can walk inside these
 export function buildGrid(buildings) {
   blocked = new Set(WATER);
   for (const b of buildings) {
-    if (b.id === 'gate' || b.id === 'expansion') continue;
+    if (OPEN_AREAS.has(b.id)) {
+      const cells = [];
+      for (let i = b.i; i < b.i + b.w; i++) for (let j = b.j; j < b.j + b.w; j++) cells.push([i, j]);
+      workCells[b.id] = cells;
+      continue;
+    }
     for (let i = b.i; i < b.i + b.w; i++) for (let j = b.j; j < b.j + b.w; j++) blocked.add(`${i},${j}`);
   }
   for (const b of buildings) {
@@ -174,6 +180,34 @@ export function buildGrid(buildings) {
   }
 }
 export const entranceOf = (id) => entrances[id];
+// where a person stands to work: inside fields and forest, at the door elsewhere
+export function workCellOf(id, k = 0) {
+  const cells = workCells[id];
+  if (cells && (id === 'fields' || id === 'forest')) return cells[Math.abs(k) % cells.length];
+  return entrances[id];
+}
+export const isOpenArea = (id) => OPEN_AREAS.has(id);
+
+// a little sign over a building showing who is inside
+export function insideBadge(x, y, count, youName) {
+  const text = youName ? (count > 1 ? `${youName} + ${count - 1} inside` : `${youName} is inside`) : `${count} inside`;
+  const w = text.length * 7 + 26;
+  return `<g><rect x="${x - w / 2}" y="${y - 12}" width="${w}" height="22" rx="11" fill="${youName ? '#d9622b' : '#2f2418'}" opacity=".9"/>` +
+    `<circle cx="${x - w / 2 + 12}" cy="${y - 3}" r="3" fill="#fff"/><rect x="${x - w / 2 + 8}" y="${y + 1}" width="8" height="6" rx="3" fill="#fff"/>` +
+    `<text x="${x - w / 2 + 21}" y="${y + 4}" font-size="12" fill="#fff">${text}</text></g>`;
+}
+
+export function speech(x, y, text) {
+  const words = text.split(' '), lines = [];
+  let line = '';
+  for (const w of words) { if ((line + ' ' + w).trim().length > 30) { lines.push(line.trim()); line = w; } else line += ' ' + w; }
+  if (line.trim()) lines.push(line.trim());
+  const w = Math.max(...lines.map((l) => l.length)) * 7 + 22, h = lines.length * 17 + 12;
+  const bx = Math.min(VW - w - 6, Math.max(6, x - w / 2)), by = y - 52 - h;
+  return `<g><rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="10" fill="#fffaf2" stroke="#7a6a58" stroke-width="1"/>` +
+    `<polygon points="${x - 7},${by + h - 1} ${x + 7},${by + h - 1} ${x},${by + h + 10}" fill="#fffaf2" stroke="#7a6a58" stroke-width="1"/><rect x="${x - 6}" y="${by + h - 3}" width="12" height="4" fill="#fffaf2"/>` +
+    lines.map((l, k) => `<text x="${bx + 11}" y="${by + 21 + k * 17}" font-size="13" fill="#2f2418">${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`).join('') + `</g>`;
+}
 
 export function findPath(from, to) {
   const key = (c) => `${c[0]},${c[1]}`;
@@ -198,6 +232,9 @@ export function findPath(from, to) {
 // ---------- people ----------
 
 export function person(x, y, look, t) {
+  return `<g transform="translate(${x} ${y}) scale(1.3) translate(${-x} ${-y})">${personInner(x, y, look, t)}</g>`;
+}
+function personInner(x, y, look, t) {
   const bob = Math.sin(t * 10) * (look.moving ? 1.2 : 0);
   const step = look.moving ? Math.sin(t * 10) * 2 : 0;
   let s = `<ellipse cx="${x}" cy="${y}" rx="7" ry="3" fill="rgba(0,0,0,.22)"/>`;

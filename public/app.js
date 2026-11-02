@@ -1,4 +1,4 @@
-import { setupMap, renderMap, buildGrid, entranceOf, findPath, cellCenter, person } from './iso.js';
+import { setupMap, renderMap, buildGrid, entranceOf, findPath, cellCenter, person, workCellOf, isOpenArea, insideBadge, speech } from './iso.js';
 
 const $ = (id) => document.getElementById(id);
 let world, view, playerId = null, pathChoice = 'farmer';
@@ -45,6 +45,11 @@ const walkers = [];
 let you = null;
 const fx = []; // floating "+4 Wheat" texts
 
+function popupYou(text, color) {
+  if (!you) return;
+  const [x, y] = walkerPos(you);
+  fx.push({ x, y: y - 50, text, color, t0: performance.now() });
+}
 function popup(placeId, text, color) {
   const b = world.buildings.find((x) => x.id === placeId);
   if (!b) return;
@@ -67,15 +72,18 @@ function setupWalkers() {
     const w = makeWalker(look, [spotFor[b.path], shopFor[b.path], 'market', home], entranceOf(home));
     w.good = PATH_GOOD[b.path];
     w.wait = n * 0.7;
+    w.name = b.name; w.role = b.path; w.k = n;
     walkers.push(w);
   });
+  const travellers = ['Sir Odo', 'Mira the bard', 'Old Tam'];
   for (let k = 0; k < 3; k++) {
     const w = makeWalker({ color: '#7a3b8a', hair: '#3a2a1a' }, ['inn', 'market', 'gate'], entranceOf('gate'));
     w.wait = 2 + k * 4;
+    w.name = travellers[k]; w.role = 'traveller'; w.k = k;
     walkers.push(w);
   }
   // the elder waits at the gate
-  walkers.push({ look: { color: '#6b5a8a', hair: '#e8e2d6', beard: true }, route: [], cell: entranceOf('gate'), path: [], prog: 0, wait: 1e9, fixed: [-14, -4] });
+  walkers.push({ look: { color: '#6b5a8a', hair: '#e8e2d6', beard: true }, route: [], cell: entranceOf('gate'), path: [], prog: 0, wait: 1e9, fixed: [-14, -4], name: 'Elder Rowan', role: 'elder' });
 }
 
 function stepWalker(w, dt) {
@@ -92,11 +100,20 @@ function stepWalker(w, dt) {
   }
   w.look.moving = false;
   if (!w.route.length) return;
-  if ((w.wait -= dt) > 0) return;
+  if ((w.wait -= dt) > 0) {
+    if (w.atWork) w.look.work = Math.min(1, 1 - w.wait / 3);
+    return;
+  }
+  w.look.work = null; w.atWork = false; w.inside = null;
   const dest = w.route[w.idx];
   if (w.good) w.carry = dest === w.route[1] ? CARRY[w.good] : null;
-  w.path = findPath(w.cell, entranceOf(dest));
+  w.path = findPath(w.cell, workCellOf(dest, (w.k || 0) * 3 + 1));
+  w.dest = dest;
   w.idx = (w.idx + 1) % w.route.length;
+  w.arrived = () => {
+    if (isOpenArea(w.dest)) { if (w.dest !== 'gate') { w.atWork = true; w.wait = 3; } }
+    else { w.inside = w.dest; w.wait = 2 + Math.random() * 3; }
+  };
 }
 
 function walkerPos(w) {
@@ -115,27 +132,46 @@ function animate(now) {
   last = now;
   if (!still) for (const w of walkers) stepWalker(w, dt);
   if (you) stepWalker(you, dt);
-  const all = [...walkers, ...(you ? [you] : [])].map((w) => [w, walkerPos(w)]).sort((a, b) => a[1][1] - b[1][1]);
+  const everyone = [...walkers, ...(you ? [you] : [])];
+  const all = everyone.filter((w) => !w.inside).map((w) => [w, walkerPos(w)]).sort((a, b) => a[1][1] - b[1][1]);
   const t = now / 1000;
   $('map').querySelector('#walkers').innerHTML = all.map(([w, [x, y]]) => person(x, y, w.look, t + (w.cell[0] * 0.3))).join('');
+  const inside = {};
+  for (const w of everyone) if (w.inside) (inside[w.inside] = inside[w.inside] || []).push(w);
+  let over = '';
+  for (const [id, list] of Object.entries(inside)) {
+    const b = world.buildings.find((x) => x.id === id);
+    if (!b) continue;
+    const [bx, by] = cellCenter(b.i + (b.w - 1) / 2, b.j + (b.w - 1) / 2);
+    over += insideBadge(bx, by - (b.w > 1 ? 70 : 62), list.length, list.includes(you) ? you.look.name : null);
+  }
+  for (const [w, [x, y]] of all) if (w.say && w.say.until > now) over += speech(x, y - 12, w.say.text);
+  fxTexts(now);
+  over += fxMarkup;
   for (let k = fx.length - 1; k >= 0; k--) if (now - fx[k].t0 > 1800) fx.splice(k, 1);
-  $('map').querySelector('#fx').innerHTML = fx.map((f) => {
+  $('map').querySelector('#fx').innerHTML = over;
+  requestAnimationFrame(animate);
+}
+let fxMarkup = '';
+function fxTexts(now) {
+  fxMarkup = fx.map((f) => {
     const p = (now - f.t0) / 1800;
     return `<text x="${f.x}" y="${f.y - p * 50}" text-anchor="middle" font-size="22" font-weight="bold" fill="${f.color}" stroke="#fffaf2" stroke-width="4" paint-order="stroke" opacity="${1 - p * p}">${f.text}</text>`;
   }).join('');
-  requestAnimationFrame(animate);
 }
 
 function walkYouTo(id, then) {
   if (!you) { if (then) then(); return; }
-  const dest = entranceOf(id);
+  const dest = workCellOf(id, 4);
   if (!dest) return;
+  const enter = () => { you.inside = isOpenArea(id) ? null : id; renderPanel(); if (then) then(); };
   const atDest = you.cell[0] === dest[0] && you.cell[1] === dest[1] && you.path.length <= 1;
-  you.path = atDest ? [] : findPath(you.cell, dest);
+  if (atDest) { you.path = []; enter(); return; }
+  you.inside = null;
+  you.path = findPath(you.cell, dest);
   you.prog = 0;
-  you.arrived = null;
-  if (atDest || you.path.length <= 1) { you.path = []; if (then) then(); }
-  else you.arrived = then || null;
+  if (you.path.length <= 1) { you.path = []; enter(); }
+  else you.arrived = enter;
 }
 
 // walk to a place, do the work there, then tell the server
@@ -168,6 +204,12 @@ function panelCraftsman(b) {
   let h = `<h2>${esc(n.name)}</h2><div class="muted">${esc(b.name)} · purse ${n.wallet} EMWK · AI craftsman</div>`;
   if (n.closed) h += `<p class="closed">Closed for repairs after the dragon attack.</p>`;
   h += `<div class="quote">"${esc(n.line)}"</div>`;
+  if (b.id === 'inn') {
+    const full = me && me.energy >= 10;
+    h += `<button class="primary big" data-act="meal" ${!me || n.closed || full ? 'disabled' : ''}>Have a hot meal: +5 energy (${n.sells.meal} EMWK)</button>` +
+      (full ? `<p class="muted" style="font-size:12px">You are full of energy right now.</p>` : `<p class="muted" style="font-size:12px">${n.stock.meal || 0} meals ready in the kitchen.</p>`);
+  }
+  if (b.id === 'bakery') h += `<p style="font-size:13px">Bread gives <b>+3 energy</b> when you eat it. Buy some and keep it in your bag for when you get tired.</p>`;
   const buys = Object.entries(n.buys);
   if (buys.length) {
     h += `<h4>Buys from you</h4><table>`;
@@ -178,7 +220,7 @@ function panelCraftsman(b) {
     }
     h += `</table>`;
   }
-  const sells = Object.entries(n.sells);
+  const sells = Object.entries(n.sells).filter(([g]) => g !== 'meal');
   if (sells.length) {
     h += `<h4>Sells</h4><table>`;
     for (const [g, p] of sells) {
@@ -202,6 +244,15 @@ function buyersOf(good) {
   return Object.values(view.npcs).filter((n) => n.buys[good] !== undefined).sort((a, b) => b.buys[good] - a.buys[good]);
 }
 
+function tiredHelp(me) {
+  const bread = view.npcs.bakery, inn = view.npcs.inn;
+  const opts = [];
+  if ((me.inv.bread || 0) > 0) opts.push(`<button class="primary" data-eat="1">Eat bread from your bag (+3 energy)</button>`);
+  else opts.push(`<button data-go="bakery">Buy bread at the bakery: ${bread.sells.bread} EMWK, +3 energy</button>`);
+  opts.push(`<button data-go="inn">Hot meal at the inn: ${inn.sells.meal} EMWK, +5 energy</button>`);
+  return `<div class="tired"><b>You are tired.</b> Eat something to get your energy back, or wait: it also comes back slowly by itself.${opts.map((o) => `<div>${o}</div>`).join('')}</div>`;
+}
+
 function panelGather(b) {
   const [good, energy, text] = GATHER_INFO[b.id];
   const me = view.player;
@@ -209,7 +260,7 @@ function panelGather(b) {
   return `<h2>${esc(b.name)}</h2><p>${text}</p><p class="muted">Costs ${energy} energy.${me ? ` You have ${Math.floor(me.energy)}.` : ''}</p>` +
     (me ? `<p>You carry <b>${me.inv[good] || 0} ${goodName(good).toLowerCase()}</b>.</p>` : '') +
     `<button class="primary big" data-act="gather" ${!me || me.energy < energy ? 'disabled' : ''}>${{ wood: 'Chop wood', wheat: 'Harvest wheat', ore: 'Dig ore' }[good]} (${energy} energy)</button>` +
-    (me && me.energy < energy ? `<p class="closed" style="font-size:13px">You are tired. Energy comes back by itself in a minute.</p>` : '') +
+    (me && me.energy < energy ? tiredHelp(me) : '') +
     (best ? `<p style="font-size:13px;margin-top:14px">Best price right now: <b>${best.name}</b> pays <b>${best.buys[good]} EMWK</b>.</p><button data-go="${best.id}">Go to ${esc(placeName(best.id))}</button>` : '');
 }
 
@@ -242,9 +293,91 @@ function panelSimple(b) {
   return `<h2>${esc(b.name)}</h2>`;
 }
 
+// ---------- talking to villagers ----------
+
+const ROLE_SHOP = { farmer: 'mill', miner: 'smithy', woodcutter: 'woodcutter', traveller: 'inn' };
+const ROLE_NAME = { farmer: 'Farmer', miner: 'Miner', woodcutter: 'Woodcutter', traveller: 'Traveller', elder: 'Village elder' };
+
+function lineFor(w) {
+  const e = view.events, npcs = view.npcs;
+  const opts = {
+    farmer: [
+      `The mill pays ${npcs.mill.buys.wheat} EMWK for wheat today.`,
+      e.drought ? 'This drought is ruining my crop. Bread will get expensive.' : 'Good soil this year. My back hurts though.',
+      'With a plow you harvest two more wheat every time.',
+    ],
+    miner: [
+      `Doran the smith pays ${npcs.smithy.buys.ore} EMWK per ore right now.`,
+      e.attackDay ? 'Smoke on the peak! The smith needs every lump of ore for swords.' : 'It is cold and dark down in the mine. Pays well though.',
+      'Sell where the price is highest. It changes all day.',
+    ],
+    woodcutter: [
+      `Bram buys wood at ${npcs.woodcutter.buys.wood} EMWK. The baker needs wood for his ovens too.`,
+      e.winter ? 'Winter is here. Everyone wants firewood now.' : 'An axe makes the work go twice as fast.',
+      'When a shop runs short, its price goes up. That is when you sell.',
+    ],
+    traveller: [
+      'Three days on the road. The stew at the inn is worth it.',
+      `A meal here costs ${npcs.inn.sells.meal} EMWK. Cheap compared to the city!`,
+      'They say the dragon sleeps under that peak. I hope your guards are ready.',
+    ],
+  }[w.role] || ['Good day to you.'];
+  w.talkN = ((w.talkN || 0) + 1) % opts.length;
+  return opts[w.talkN];
+}
+
+function talk(w) {
+  if (w.role === 'elder') { openElder(); return; }
+  const text = lineFor(w);
+  w.say = { text, until: performance.now() + 5000 };
+  ui.selected = 'talk';
+  ui.talk = { name: w.name, role: w.role, text, go: ROLE_SHOP[w.role] };
+  renderMapNow();
+  renderPanel();
+}
+
+function panelTalk() {
+  const t = ui.talk;
+  return `<h2>${esc(t.name)}</h2><div class="muted">${ROLE_NAME[t.role] || ''}</div><div class="quote">"${esc(t.text)}"</div>` +
+    (t.go ? `<button data-go="${t.go}">Go to the ${esc(placeName(t.go).toLowerCase())}</button>` : '') +
+    `<p class="muted" style="font-size:12px;margin-top:12px">Click other villagers on the road to hear what they know. What they say comes from the live village.</p>`;
+}
+
+// ---------- "what should I do now?" ----------
+
+const SPOT_GOOD = { fields: 'wheat', forest: 'wood', mine: 'ore' };
+const SPOT_COST = { fields: 2, forest: 2, mine: 3 };
+
+function panelGuide() {
+  const me = view.player;
+  if (!me) return `<h2>What should I do now?</h2><p>Join the village first.</p>`;
+  const route = world.routes[me.path];
+  const steps = [];
+  const carried = ['wheat', 'wood', 'ore'].filter((g) => (me.inv[g] || 0) > 0);
+  if (carried.length) {
+    for (const g of carried) {
+      const best = bestBuyer(g);
+      if (best) steps.push({ text: `You are carrying <b>${me.inv[g]} ${goodName(g).toLowerCase()}</b>. Sell it to <b>${esc(best.name)}</b> at the ${esc(placeName(best.id).toLowerCase())}. They pay <b>${best.buys[g]} EMWK</b> each.`, go: best.id, label: `Go to the ${placeName(best.id).toLowerCase()}` });
+    }
+  } else if (me.energy >= SPOT_COST[route.spot]) {
+    steps.push({ text: `Your bag is empty. Go to the <b>${placeName(route.spot).toLowerCase()}</b> and press the big button to gather ${goodName(SPOT_GOOD[route.spot]).toLowerCase()}.`, go: route.spot, label: `Go to the ${placeName(route.spot).toLowerCase()}` });
+  } else {
+    if ((me.inv.bread || 0) > 0) steps.push({ text: `You are tired (energy ${Math.floor(me.energy)}/10). You have bread in your bag: eat it for +3 energy.`, eat: true });
+    else steps.push({ text: `You are tired (energy ${Math.floor(me.energy)}/10). Buy bread at the bakery (<b>${view.npcs.bakery.sells.bread} EMWK</b>, +3 energy) or have a hot meal at the inn (<b>${view.npcs.inn.sells.meal} EMWK</b>, +5 energy). Energy also comes back slowly by itself.`, go: 'bakery', label: 'Go to the bakery' });
+  }
+  const q = me.questInfo;
+  if (q.target && q.id !== 'done') steps.push({ text: `Your current goal: <b>${esc(q.title)}</b>. ${esc(q.text)}`, go: q.target, label: 'Show me' });
+  if (view.events.attackDay) steps.push({ text: `The dragon may attack on <b>day ${view.events.attackDay}</b> (today is day ${view.day}). Readiness is ${view.readiness}%, it needs 60%. Ore for the smith and wheat for the miller help the guards get swords and bread.`, go: 'dragonpeak', label: 'See Dragon peak' });
+  return `<h2>What should I do now?</h2>` +
+    `<p class="muted" style="font-size:13px;margin-top:2px">The game in one sentence: work, sell to the craftsmen for the best price, grow your coins and keep the village strong enough to beat the dragon.</p>` +
+    `<ol class="guide">${steps.map((st) => `<li>${st.text}${st.go ? `<br><button class="primary" data-go="${st.go}">${esc(st.label)} →</button>` : ''}${st.eat ? `<br><button class="primary" data-eat="1">Eat bread</button>` : ''}</li>`).join('')}</ol>`;
+}
+
 function renderPanel() {
-  const b = world.buildings.find((x) => x.id === ui.selected);
   const panel = $('panel');
+  if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = `<button class="close" data-act="close" aria-label="Close">×</button>` + panelTalk(); panel.hidden = false; return; }
+  if (ui.selected === 'guide') { panel.innerHTML = `<button class="close" data-act="close" aria-label="Close">×</button>` + panelGuide(); panel.hidden = false; return; }
+  const b = world.buildings.find((x) => x.id === ui.selected);
   if (!b) { panel.hidden = true; return; }
   let h;
   if (b.type === 'craftsman') h = panelCraftsman(b);
@@ -253,6 +386,7 @@ function renderPanel() {
   else if (b.id === 'dragonpeak') h = panelDragon();
   else h = panelSimple(b);
   let top = '';
+  if (you && you.inside === b.id && !status[b.id] && !result[b.id]) top = `<div class="status">You are inside the ${esc(b.name.toLowerCase())}.</div>`;
   if (status[b.id]) top = `<div class="status">${esc(status[b.id])}</div>`;
   else if (result[b.id]) {
     const r = result[b.id];
@@ -273,17 +407,18 @@ function renderHud() {
   const me = view.player;
   if (!me) { $('me').innerHTML = `<p class="muted" style="margin:0">Join the village to play.</p>`; $('quest').hidden = true; return; }
   const look = PATH_LOOK[me.path];
-  const bag = Object.entries(me.inv).map(([g, q]) => `<span class="chip">${goodName(g)} × ${q}</span>`).join('') || '<span class="muted">Your bag is empty.</span>';
+  const bag = Object.entries(me.inv).map(([g, q]) => `<span class="chip">${goodName(g)} × ${q}${g === 'bread' ? ' <button class="eat" data-eat="1">Eat</button>' : ''}</span>`).join('') || '<span class="muted">Your bag is empty.</span>';
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div><h3>${esc(me.name)}</h3><div class="sub">${look.label} · ${me.rank}</div></div></div>` +
     `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
-    `<div class="energy">Energy <div class="bar"><div class="fill" style="width:${me.energy * 10}%"></div></div>${Math.floor(me.energy)}/10</div>` +
+    `<div class="energy" id="energy-row">Energy <div class="bar"><div class="fill" style="width:${me.energy * 10}%"></div></div>${Math.floor(me.energy)}/10</div>` +
     `<div class="bag">${bag}</div>`;
   const q = me.questInfo;
   ui.target = q.target;
   const prog = q.progress ? `<div class="prog"><div style="width:${Math.min(100, (q.progress[0] / q.progress[1]) * 100)}%"></div></div><div class="reward" style="margin:-4px 0 8px">${Math.min(q.progress[0], q.progress[1])} / ${q.progress[1]}</div>` : '';
   $('quest').innerHTML = `<div class="step">${q.id === 'done' ? 'All goals done' : `Goal ${q.index + 1} of ${q.total}`}</div><h4>${esc(q.title)}</h4><p>${esc(q.text)}</p>${prog}` +
     (q.target ? `<button class="primary" data-go="${q.target}">Show me</button>` : '') +
-    (q.reward ? ` <span class="reward">Reward: ${q.reward} EMWK</span>` : '');
+    (q.reward ? ` <span class="reward">Reward: ${q.reward} EMWK</span>` : '') +
+    `<button class="helpbtn" data-guide="1">What should I do now?</button>`;
   $('quest').hidden = false;
 }
 
@@ -315,8 +450,8 @@ async function act(type, extra = {}) {
   if (type === 'sell') body.qty = view.player.inv[extra.good] || 0;
   const before = view.player ? view.player.coins : 0;
   const r = await post('/api/action', body);
-  if (r.ok && type !== 'visit') explain(type, extra, r, before);
   if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
+  if (r.ok && type !== 'visit') explain(type, extra, r, before);
   if (r.quest) toast(`Goal complete: ${r.quest.title}${r.quest.reward ? ` · +${r.quest.reward} EMWK` : ''}`, 'win');
   else if (!r.ok) toast(r.error, 'bad');
 }
@@ -343,6 +478,10 @@ function explain(type, extra, r, before) {
       text: `Sold for ${r.total} EMWK (${r.unit} each). Village tax: ${r.tax}. You received ${got} EMWK.`,
       next: view.player && view.player.questInfo.target && view.player.questInfo.target !== place ? { label: `Next: ${view.player.questInfo.text}`, go: view.player.questInfo.target } : null,
     };
+  } else if (type === 'eat' || type === 'meal') {
+    popupYou(`+${r.energy} energy`, '#b07a12');
+    flash('energy');
+    if (type === 'meal') result.inn = { text: `You had a hot meal for ${r.total} EMWK. +5 energy. Back to work!`, next: view.player ? { label: `Go to the ${placeName(world.routes[view.player.path].spot).toLowerCase()}`, go: world.routes[view.player.path].spot } : null };
   } else if (type === 'buy') {
     popup(place, `+1 ${goodName(extra.good)}`, '#3a5fa0');
     flash('bag');
@@ -352,7 +491,7 @@ function explain(type, extra, r, before) {
 }
 
 function flash(what) {
-  const el = what === 'coins' ? document.querySelector('#me .coins') : document.querySelector('#me .bag');
+  const el = what === 'coins' ? document.querySelector('#me .coins') : what === 'energy' ? document.querySelector('#energy-row') : document.querySelector('#me .bag');
   if (!el) return;
   el.classList.remove('flash');
   void el.offsetWidth;
@@ -374,12 +513,31 @@ function elderText() {
     `Every sale feeds the craftsmen, and a little tax goes to our treasury. Keep an eye on Dragon peak: when smoke rises, the guards need swords and bread, and fast.`;
 }
 function openElder() { $('elder-text').innerHTML = elderText(); $('elder').hidden = false; }
-$('elder-ok').addEventListener('click', () => {
+$('elder-ok').addEventListener('click', async () => {
   $('elder').hidden = true;
-  if (playerId) act('visit', { place: 'gate' });
+  if (playerId) await act('visit', { place: 'gate' });
+  ui.selected = 'guide';
+  renderMapNow();
+  renderPanel();
 });
 
+let ignoreClick = false;
+$('map').addEventListener('pointerdown', (e) => {
+  const svg = $('map');
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  let best = null, bestD = 1e9;
+  for (const w of walkers) {
+    if (w.inside) continue;
+    const [x, y] = walkerPos(w);
+    const dx = Math.abs(p.x - x), dy = y - p.y;
+    if (dx < 13 && dy > -6 && dy < 52 && dx + Math.abs(dy - 24) < bestD) { best = w; bestD = dx + Math.abs(dy - 24); }
+  }
+  if (best) { ignoreClick = true; talk(best); }
+});
 $('map').addEventListener('click', (e) => {
+  if (ignoreClick) { ignoreClick = false; return; }
   const g = e.target.closest('.bld');
   if (g) select(g.dataset.id);
 });
@@ -393,6 +551,8 @@ $('map').addEventListener('mousemove', (e) => {
   if (id !== ui.hover) { ui.hover = id; renderMapNow(); $('hint').hidden = true; }
 });
 document.body.addEventListener('click', (e) => {
+  if (e.target.closest('[data-eat]')) { act('eat'); return; }
+  if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
   const btn = e.target.closest('#panel button[data-act]');
@@ -400,6 +560,7 @@ document.body.addEventListener('click', (e) => {
   const a = btn.dataset.act;
   if (a === 'close') { ui.selected = null; renderMapNow(); renderPanel(); }
   else if (a === 'elder') openElder();
+  else if (a === 'meal') { delete result.inn; goAndDo('inn', 'meal', () => act('meal')); }
   else if (a === 'gather') { const spot = ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
   else { const npc = ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
 });

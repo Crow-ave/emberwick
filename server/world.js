@@ -122,15 +122,26 @@ export const START_PATHS = {
   apprentice: { name: 'Apprentice', coins: 80, items: {} },
 };
 
+// Normal speed: one game day lasts 8 real minutes.
+// Demo speed (npm run demo): one game day lasts 2 minutes, for recording videos.
+const DEMO = process.env.EMBERWICK_DEMO === '1';
+
 export const RULES = {
-  tickMs: 4000,          // one tick every 4 real seconds
-  ticksPerDay: 30,       // one game day = 2 real minutes
+  demo: DEMO,
+  tickMs: DEMO ? 4000 : 5000,      // time between simulation steps
+  ticksPerDay: DEMO ? 30 : 96,     // steps in one game day
+  droughtChance: DEMO ? 0.12 : 0.08, // chance per day
+  dragonChance: DEMO ? 0.15 : 0.1,   // chance per day
+  dragonWarningDays: DEMO ? 3 : 2,   // days between the warning and the attack
+  daysBetweenAttacks: DEMO ? 1 : 3,
   taxRate: 0.03,         // market tax to the treasury
   energyMax: 10,
-  energyPerTick: 0.25,
+  breadEnergy: 3,
+  mealEnergy: 5,
+  energyPerTick: DEMO ? 0.25 : 0.25,
   guardSalaryPerDay: 25, // paid from the treasury
   treasuryReserve: 2000, // treasury never goes below this
-  priceStep: 0.06,       // how fast prices react
+  priceStep: DEMO ? 0.06 : 0.025, // how fast prices react
   profitTaxAbove: 800,   // shops richer than this pay a profit tax
   profitTaxRate: 0.2,
   minPrice: 1,

@@ -34,7 +34,11 @@ You need [Node.js](https://nodejs.org) 18 or newer. No other packages are requir
 npm start
 ```
 
-Then open http://localhost:3000.
+Then open http://localhost:3000. One game day lasts 8 minutes.
+
+```bash
+npm run demo   # fast mode for recording: one game day lasts 2 minutes
+```
 
 ```bash
 npm test   # runs the economy for 100 game days and checks the money supply

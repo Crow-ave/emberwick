@@ -115,3 +115,14 @@ button.sellbtn { background: var(--ember); color: #fff; border-color: var(--embe
 button.sellbtn:hover { background: var(--ember-dark); }
 .flash { animation: flash 1s ease-out; }
 @keyframes flash { 0% { background: #ffe08a; transform: scale(1.06); } 100% { background: transparent; transform: scale(1); } }
+
+.helpbtn { display: block; width: 100%; margin-top: 8px; background: #fff6ee; border-color: var(--ember); color: var(--ember-dark); font-weight: bold; }
+ol.guide { padding-left: 20px; margin: 10px 0 0; }
+ol.guide li { margin-bottom: 14px; font-size: 14px; line-height: 1.5; }
+ol.guide button { margin-top: 6px; font-size: 13px; padding: 7px 12px; }
+#map { cursor: default; }
+
+.tired { background: #fbf0d9; border: 1px solid #ecd39a; border-radius: 8px; padding: 10px 11px; margin-top: 12px; font-size: 13px; line-height: 1.45; }
+.tired div { margin-top: 7px; }
+.tired button { width: 100%; text-align: left; }
+button.eat { font-size: 11px; padding: 1px 7px; margin-left: 4px; border-radius: 999px; background: var(--ember); color: #fff; border-color: var(--ember-dark); }

@@ -213,6 +213,21 @@ function doAction(state, p, actor, action, qty) {
     p.stats.gathers++;
     return { ok: true, got, good: spot.good, message: `You gathered ${got} ${GOODS[spot.good].name.toLowerCase()}.` };
   }
+  if (action.type === 'eat') {
+    if (inv(p, 'bread') < 1) return { ok: false, error: 'You have no bread. Buy some at the bakery.' };
+    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.' };
+    addInv(p, 'bread', -1);
+    p.energy = Math.min(RULES.energyMax, r2(p.energy + RULES.breadEnergy));
+    return { ok: true, energy: RULES.breadEnergy, message: `You ate bread. +${RULES.breadEnergy} energy.` };
+  }
+  if (action.type === 'meal') {
+    if (p.energy >= RULES.energyMax) return { ok: false, error: 'You are not hungry yet.' };
+    const res = buyFromNpc(state, actor, 'inn', 'meal', 1);
+    if (!res.ok) return res.error === 'Out of stock.' ? { ok: false, error: 'The kitchen is out of food. Try again soon, or eat bread.' } : res;
+    addInv(p, 'meal', -1);
+    p.energy = Math.min(RULES.energyMax, r2(p.energy + RULES.mealEnergy));
+    return { ok: true, energy: RULES.mealEnergy, total: res.total, message: `You had a hot meal for ${res.total} EMWK. +${RULES.mealEnergy} energy.` };
+  }
   if (action.type === 'sell') {
     const res = sellToNpc(state, actor, action.npc, action.good, qty);
     if (res.ok) { p.stats.sells++; p.stats.sold += qty; p.stats.earned = r2(p.stats.earned + res.total - res.tax); }
@@ -416,14 +431,15 @@ function startNewDay(state) {
   if (innBal > 600) transfer(state, npcAcct('inn'), 'adventurerFund', (innBal - 600) * 0.5);
 
   // random events
-  if (ev.drought === 0 && rng(state) < 0.12) {
+  if (ev.drought === 0 && rng(state) < RULES.droughtChance) {
     ev.drought = 2;
     addLog(state, 'A drought hits the fields. Wheat harvests are halved.', 'warn');
   }
-  if (ev.dragon === 0 && ev.attackDay === null && state.day > 2 && rng(state) < 0.15) {
-    ev.dragon = 3;
-    ev.attackDay = state.day + 3;
-    addLog(state, 'Smoke rises over Dragon peak. The dragon may attack in 3 days.', 'danger');
+  const rested = state.day - (ev.lastAttack || 0) >= RULES.daysBetweenAttacks;
+  if (ev.dragon === 0 && ev.attackDay === null && state.day > 2 && rested && rng(state) < RULES.dragonChance) {
+    ev.dragon = RULES.dragonWarningDays;
+    ev.attackDay = state.day + RULES.dragonWarningDays;
+    addLog(state, `Smoke rises over Dragon peak. The dragon may attack in ${RULES.dragonWarningDays} days.`, 'danger');
   } else if (ev.dragon > 0) {
     ev.dragon--;
   }
@@ -434,6 +450,7 @@ function resolveAttack(state) {
   const ev = state.events;
   ev.attackDay = null;
   ev.dragon = 0;
+  ev.lastAttack = state.day;
   const tower = state.npcs.tower;
   if (state.readiness >= 60) {
     tower.stock.sword = Math.max(0, (tower.stock.sword || 0) - 3);
