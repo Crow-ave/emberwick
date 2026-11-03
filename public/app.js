@@ -489,13 +489,13 @@ function jobSection(npc) {
     return `<div class="contract"><b>${t('job.mine')}</b><div class="muted small">${t('job.status', { n: j.wage, days: j.daysLeft })} · ${t('job.today', { a: j.shiftsToday, b: j.maxShifts })}</div>` +
       (j.shiftToday ? `<p class="small">${t('job.shiftDone')}</p>`
         : `<button class="primary big" data-act="shift" ${me.energy < j.energy ? 'disabled' : ''}>${t('job.shift', { e: j.energy, n: j.wage })}</button>` + (me.energy < j.energy ? tiredHelp(me) : '')) +
-      `<p class="muted small">${t('job.severance', { n: j.wage })} ${t('job.quitNote')}</p><button class="linkbtn" data-act="quitJob">${t('job.quit')}</button></div>`;
+      `<p class="muted small">${t('job.severance', { n: j.wage })} ${t('job.quitNote', { n: j.wage })}</p><button class="linkbtn" data-act="quitJob">${t('job.quit')}</button></div>`;
   }
   const o = view.jobOffers.find((x) => x.npc === npc);
   if (!o) return '';
   return `<div class="contract offer"><b>${t('job.offerTitle')}</b><p class="small">${t('job.offer', { n: o.wage, days: o.days, e: 3 })}</p><p class="small">${t('job.exclusive')}</p>` +
     (j ? `<p class="muted small">${t('job.haveOther', { place: placeName(j.npc) })}</p>` : `<button class="primary" data-act="takeJob" ${me ? '' : 'disabled'}>${t('job.take')}</button>`) +
-    `<p class="muted small">${t('job.severance', { n: o.wage })}</p></div>`;
+    `<p class="muted small">${t('job.severance', { n: o.wage })} ${t('job.quitNote', { n: o.wage })}</p></div>`;
 }
 
 function panelHouse(b) {
@@ -820,7 +820,8 @@ function explain(type, extra, r) {
     flash('coins');
     toast(t('result.left', { n: r.deposit }), 'win');
   } else if (type === 'quitJob') {
-    toast(t('result.quit'), '');
+    toast(t('result.quit', { n: r.fee }), '');
+    if (r.fee) { popupYou(`-${r.fee} EMWK`, '#8a2a1a'); flash('coins'); }
   } else if (type === 'rest') {
     popupYou(t('fx.energy', { n: Math.round(r.energy) }), '#b07a12');
     flash('energy');

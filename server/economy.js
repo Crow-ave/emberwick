@@ -589,6 +589,15 @@ function endJob(state, p, reason) {
     transfer(state, payer, 'player:' + p.id, severance);
     p.stats.earned = r2(p.stats.earned + severance);
     addLog(state, `${p.name}'s job ended early. Severance paid: ${severance} EMWK.`, 'warn', 'log.severance', { name: p.name, n: severance, place: { $place: j.npc }, payer: payer === 'treasury' ? 'treasury' : 'npc' });
+  } else if (reason === 'quit') {
+    // quitting early: the apprentice pays the employer a notice fee, as far as they can
+    const fee = r2(Math.min(j.wage * JOBS.noticeShifts, balance(state, 'player:' + p.id)));
+    if (fee > 0) {
+      transfer(state, 'player:' + p.id, npcAcct(j.npc), fee);
+      p.stats.spent = r2(p.stats.spent + fee);
+    }
+    j.fee = fee;
+    addLog(state, `${p.name} quit a job and paid a ${fee} EMWK notice fee.`, 'warn', 'log.quit', { name: p.name, n: fee, place: { $place: j.npc } });
   } else if (reason === 'done') {
     addLog(state, `${p.name} finished an apprenticeship.`, 'good', 'log.jobDone', { name: p.name, place: { $place: j.npc }, n: j.shifts });
   }
@@ -660,8 +669,9 @@ function contractAction(state, p, action) {
   }
   if (action.type === 'quitJob') {
     if (!p.job) return { ok: false, error: 'You have no job.', code: 'err.noJobHere' };
+    const j = p.job;
     endJob(state, p, 'quit');
-    return { ok: true };
+    return { ok: true, fee: j.fee || 0 };
   }
   if (action.type === 'rentHouse') {
     const h = HOUSES[action.house], st = state.houses[action.house];

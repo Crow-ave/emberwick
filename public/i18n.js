@@ -2,6 +2,7 @@
 // {name} style placeholders are filled in by t(key, params).
 
 const en = {
+  "log.quit": "{name} quit a job early and paid a {n} EMWK notice fee ({place}).",
   'lang.name': 'English',
   "quest.gather.jobText": "You are an apprentice: work two shifts at the {shop}.",
   "quest.sell.jobText": "Earn your first wages: work 3 shifts at the {shop}.",
@@ -10,8 +11,8 @@ const en = {
   "guide.jobDone": "All of today's shifts at the <b>{place}</b> are done. Come back tomorrow. Meanwhile you can sell what you carry or buy what you need.",
   "guide.sleepHome": "Sleep at home (<b>{place}</b>) to get your energy back.",
   "guide.tiredHome": "You are too tired for a shift. Sleep at home (<b>{place}</b>) to get your energy back.",
-  "job.quitNote": "If you quit yourself, there is no severance.",
-  "result.quit": "You quit the job. No severance when you leave on your own.",
+  "job.quitNote": "If you quit early, you get no severance and pay the employer a notice fee of {n} EMWK.",
+  "result.quit": "You quit the job and paid the employer a {n} EMWK notice fee.",
   "near.mine": "Your transfers on NEAR",
   "near.mineNote": "Players' coins are kept in the village bank account, so on NEAR your transfers go from or to the bank. Click \"tx\" to see one on the explorer.",
   "near.mineNone": "None of your transfers have been sent yet. Sell something or work a shift: they appear here within a few seconds.",
@@ -256,6 +257,7 @@ const en = {
 };
 
 const tr = {
+  "log.quit": "{name} işi erken bıraktı ve {n} EMWK ihbar tazminatı ödedi ({place}).",
   'lang.name': 'Türkçe',
   "quest.gather.jobText": "Çıraksın: şurada iki vardiya çalış: {shop}.",
   "quest.sell.jobText": "İlk ücretlerini kazan: şurada 3 vardiya çalış: {shop}.",
@@ -264,8 +266,8 @@ const tr = {
   "guide.jobDone": "Bugünkü bütün vardiyaların bitti (<b>{place}</b>). Yarın tekrar gel. Bu arada elindekini satabilir ya da ihtiyacını alabilirsin.",
   "guide.sleepHome": "Enerjini doldurmak için evinde uyu (<b>{place}</b>).",
   "guide.tiredHome": "Vardiya için çok yorgunsun. Enerjini doldurmak için evinde uyu (<b>{place}</b>).",
-  "job.quitNote": "İşi kendin bırakırsan tazminat almazsın.",
-  "result.quit": "İşi bıraktın. Kendi isteğinle ayrıldığın için tazminat yok.",
+  "job.quitNote": "İşi erken bırakırsan tazminat almazsın ve işverene {n} EMWK ihbar tazminatı ödersin.",
+  "result.quit": "İşi bıraktın ve işverene {n} EMWK ihbar tazminatı ödedin.",
   "near.mine": "NEAR'daki senin transferlerin",
   "near.mineNote": "Oyuncuların parası köy bankası hesabında tutulur. Bu yüzden NEAR'da senin transferlerin bankadan çıkar ya da bankaya girer. Kayıt sitesinde görmek için \"tx\" linkine tıkla.",
   "near.mineNone": "Henüz senin bir transferin gönderilmedi. Bir şey sat ya da vardiya çalış: birkaç saniye içinde burada görünür.",
@@ -510,6 +512,7 @@ const tr = {
 };
 
 const fr = {
+  "log.quit": "{name} a démissionné plus tôt et payé {n} EMWK de préavis ({place}).",
   'lang.name': 'Français',
   "quest.gather.jobText": "Vous êtes apprenti : faites deux services ici : {shop}.",
   "quest.sell.jobText": "Gagnez vos premiers salaires : faites 3 services ici : {shop}.",
@@ -518,8 +521,8 @@ const fr = {
   "guide.jobDone": "Tous les services du jour sont faits (<b>{place}</b>). Revenez demain. En attendant, vendez ce que vous portez ou achetez ce qu'il vous faut.",
   "guide.sleepHome": "Dormez chez vous (<b>{place}</b>) pour retrouver votre énergie.",
   "guide.tiredHome": "Vous êtes trop fatigué pour un service. Dormez chez vous (<b>{place}</b>) pour retrouver votre énergie.",
-  "job.quitNote": "Si vous démissionnez, pas d'indemnité.",
-  "result.quit": "Vous avez démissionné. Pas d'indemnité quand on part de soi-même.",
+  "job.quitNote": "Si vous partez plus tôt, pas d'indemnité, et vous payez à l'employeur {n} EMWK de préavis.",
+  "result.quit": "Vous avez démissionné et payé {n} EMWK de préavis à l'employeur.",
   "near.mine": "Vos transferts sur NEAR",
   "near.mineNote": "Les pièces des joueurs sont gardées sur le compte de la banque du village : sur NEAR, vos transferts partent de la banque ou y arrivent. Cliquez sur « tx » pour en voir un sur l'explorateur.",
   "near.mineNone": "Aucun de vos transferts n'a encore été envoyé. Vendez quelque chose ou faites un service : ils apparaissent ici en quelques secondes.",
@@ -764,6 +767,7 @@ const fr = {
 };
 
 const de = {
+  "log.quit": "{name} hat früher gekündigt und {n} EMWK Kündigungsgebühr gezahlt ({place}).",
   'lang.name': 'Deutsch',
   "quest.gather.jobText": "Du bist Lehrling: Arbeite zwei Schichten hier: {shop}.",
   "quest.sell.jobText": "Verdiene deinen ersten Lohn: Arbeite 3 Schichten hier: {shop}.",
@@ -772,8 +776,8 @@ const de = {
   "guide.jobDone": "Alle Schichten für heute sind erledigt (<b>{place}</b>). Komm morgen wieder. Bis dahin kannst du verkaufen, was du trägst, oder kaufen, was du brauchst.",
   "guide.sleepHome": "Schlaf zu Hause (<b>{place}</b>), um deine Energie zurückzubekommen.",
   "guide.tiredHome": "Du bist zu müde für eine Schicht. Schlaf zu Hause (<b>{place}</b>), um deine Energie zurückzubekommen.",
-  "job.quitNote": "Wenn du selbst kündigst, gibt es keine Abfindung.",
-  "result.quit": "Du hast gekündigt. Wer selbst geht, bekommt keine Abfindung.",
+  "job.quitNote": "Kündigst du früher, gibt es keine Abfindung und du zahlst dem Arbeitgeber {n} EMWK Kündigungsgebühr.",
+  "result.quit": "Du hast gekündigt und dem Arbeitgeber {n} EMWK Kündigungsgebühr gezahlt.",
   "near.mine": "Deine Überweisungen auf NEAR",
   "near.mineNote": "Das Geld der Spieler liegt auf dem Konto der Dorfbank. Auf NEAR gehen deine Überweisungen deshalb von der Bank aus oder zu ihr. Klicke auf „tx\", um eine im Explorer zu sehen.",
   "near.mineNone": "Noch keine deiner Überweisungen wurde gesendet. Verkaufe etwas oder arbeite eine Schicht: Sie erscheinen hier in wenigen Sekunden.",

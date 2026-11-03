@@ -160,6 +160,7 @@ export const JOBS = {
   shiftEnergy: 3,        // energy one shift costs
   shiftsPerDay: 3,       // an apprentice works only at their shop, up to this many shifts a day
   severanceDays: 1,      // wages paid if the employer ends the contract early
+  noticeShifts: 1,       // wages the apprentice pays the employer for quitting early
   reserve: 100,          // a craftsman keeps this much before hiring
 };
 
