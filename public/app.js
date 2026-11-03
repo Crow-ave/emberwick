@@ -247,6 +247,7 @@ function placeSceneBar() {
   bar.style.bottom = 'auto';
 }
 addEventListener('resize', placeSceneBar);
+setInterval(() => { if (view && world) $('day-left').textContent = t('ui.dayLeft', { n: dayLeftText() }); }, 1000);
 
 function renderScene() {
   const sc = $('scene'), mini = $('mini'), bar = $('scene-bar');
@@ -720,7 +721,9 @@ function renderHud() {
     `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
     `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     `<div class="shortcuts"><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button></div>` +
-    (me.job || me.home ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}</div>` : '');
+    (me.job || me.home ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}</div>` : '') +
+    (me.job ? `<div class="jobinfo">${t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage })}</div>` : '') +
+    (me.home ? `<div class="jobinfo">${t('me.homeInfo', { r: me.home.rent, left: dayLeftText() })}</div>` : '');
   const q = me.questInfo;
   ui.target = q.target;
   const qt = questTexts(q);
@@ -803,8 +806,19 @@ function logText(l) {
   return t(l.key, p);
 }
 
+// real time left until the next game day (rent, new job offers, vote results...)
+function dayLeftText() {
+  const dayMs = world.rules.ticksPerDay * world.rules.tickMs;
+  // count down smoothly between server updates
+  if (view !== dayLeftText.view) { dayLeftText.view = view; dayLeftText.at = Date.now(); }
+  const ms = Math.max(0, (1 - view.dayProgress) * dayMs - (Date.now() - dayLeftText.at));
+  const m = Math.floor(ms / 60000), sec = Math.round((ms % 60000) / 1000);
+  return m > 0 ? t('ui.minSec', { m, s: String(sec).padStart(2, '0') }) : t('ui.sec', { s: sec });
+}
+
 function renderChrome() {
   $('day').textContent = [t('ui.day', { n: view.day }), view.events.winter ? t('ui.winter') : null, view.dayProgress > 0.8 ? t('ui.night') : null].filter(Boolean).join(' · ');
+  $('day-left').textContent = t('ui.dayLeft', { n: dayLeftText() });
   $('pop').textContent = t('ui.pop', { n: view.population, t: view.treasury });
   $('ready-fill').style.width = view.readiness + '%';
   $('ready-num').textContent = view.readiness + '%';

@@ -253,3 +253,5 @@ details summary { cursor: pointer; color: #8a6a48; }
 details[open] summary { margin-bottom: 4px; }
 #panel > .close + .board-h { border-top: 0; margin-top: 0; padding-top: 0; }
 .result.bad { background: #fbe9e3; border-color: #efc3b4; color: #7a2a16; }
+.jobinfo { font-size: 12px; color: #6b5640; background: #f8f0e3; border-radius: 8px; padding: 6px 9px; margin-top: 6px; line-height: 1.5; }
+#day-left { font-variant-numeric: tabular-nums; }
