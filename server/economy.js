@@ -82,7 +82,7 @@ function transfer(state, from, to, amount, note = null) {
 const NEAR_ID = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
 export function validNearId(id) { return NEAR_ID.test(String(id || '')); }
 
-export function linkWallet(state, playerId, accountId) {
+export function linkWallet(state, playerId, accountId, verified = false) {
   const p = state.players[playerId];
   if (!p) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };
   accountId = String(accountId || '').trim().toLowerCase();
@@ -90,9 +90,32 @@ export function linkWallet(state, playerId, accountId) {
     return { ok: false, error: 'That is not a NEAR testnet account.', code: 'err.badWallet' };
   }
   p.near = accountId;
+  p.nearVerified = !!verified;
   state.rev = (state.rev || 0) + 1;
   addLog(state, `${p.name} linked a NEAR wallet.`, 'info', 'log.linked', { name: p.name });
   return { ok: true, near: accountId };
+}
+
+// EMWK sent from the player's own wallet to the village bank comes back into the
+// game. It first comes out of the 'withdrawn' bucket; anything beyond that (tokens
+// cashed out before a village reset) re-enters through the newcomer fund, so the
+// game's total stays exactly the fixed supply.
+export function depositIn(state, playerId, amount, hash) {
+  const p = state.players[playerId];
+  if (!p) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };
+  state.seenDeposits = state.seenDeposits || [];
+  if (state.seenDeposits.includes(hash)) return { ok: false, error: 'That deposit was already counted.', code: 'err.depositSeen' };
+  amount = Math.floor(Number(amount) * 100) / 100;
+  if (!(amount > 0)) return { ok: false, error: 'Nothing was deposited.', code: 'err.depositEmpty' };
+  state.seenDeposits.push(hash);
+  const fromOut = Math.min(amount, balance(state, 'withdrawn'));
+  transfer(state, 'withdrawn', 'player:' + playerId, fromOut);
+  transfer(state, 'newcomerFund', 'player:' + playerId, r2(amount - fromOut));
+  p.withdrawn = r2(Math.max(0, (p.withdrawn || 0) - amount));
+  p.deposited = r2((p.deposited || 0) + amount);
+  state.rev = (state.rev || 0) + 1;
+  addLog(state, `${p.name} brought ${amount} EMWK into the village from NEAR.`, 'trade', 'log.deposited', { name: p.name, n: amount });
+  return { ok: true, amount };
 }
 
 // Moves coins out of the game to the player's own NEAR wallet. They are kept in
@@ -776,6 +799,9 @@ function runCouncil(state, newDay) {
     else prop.result = enact(state, prop) === 'done' ? 'passed' : 'poor';
     prop.closedDay = state.day;
     delete prop.aiPlan;
+    // the decision goes on NEAR: a 0.01 EMWK record from the treasury carries it in the memo
+    const what = { grant: `grant ${prop.params.amount} to ${prop.params.npc}`, tax: `market tax ${Math.round(prop.params.rate * 100)}%`, welcome: `${prop.params.amount} to newcomer fund`, festival: `festival ${prop.params.amount} per villager` }[prop.kind];
+    transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick council #${prop.id} (${what}): ${prop.result.toUpperCase()}. Yes ${prop.yes} / No ${prop.no}, ${prop.voters} voters.`, council: prop.id });
     c.open = c.open.filter((x) => x !== prop);
     c.closed.unshift(prop);
     c.closed.length = Math.min(c.closed.length, 8);

@@ -1,7 +1,7 @@
 // Tests the NEAR bridge logic against a fake in-memory chain (no network needed).
 // Run: node server/neartest.js
 import { Bridge, toUnits, fromUnits } from './near.js';
-import { createState, tick, joinPlayer, playerAction, onTransfer, linkWallet, withdraw, totalMoney } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, onTransfer, linkWallet, withdraw, depositIn, totalMoney } from './economy.js';
 import { CRAFTSMEN, TOKEN } from './world.js';
 import { fakeChain } from './fakechain.js';
 
@@ -61,12 +61,29 @@ async function run(faucetWorks) {
   check(Math.abs(totalMoney(state) - TOKEN.totalSupply) < 1e-6, 'game total is still exactly the supply');
   compare('after cash-out, chain balances match');
 
+  // the player sends 3 EMWK back from their own wallet to the village bank
+  chain.ft.set('emberwick.testnet', chain.ft.get('emberwick.testnet') - toUnits(3));
+  chain.ft.set(bridge.root, chain.ft.get(bridge.root) + toUnits(3));
+  chain.userTx.set('tx-dep-1', { signer: 'emberwick.testnet', contract: bridge.tokenId, receiver: bridge.root, amount: toUnits(3), memo: 'deposit' });
+  chain.userTx.set('tx-bad', { signer: 'someone.testnet', contract: bridge.tokenId, receiver: bridge.root, amount: toUnits(3) });
+  const amt = (await bridge.checkDeposit('tx-dep-1', 'emberwick.testnet')).amount;
+  check(amt === 3, 'deposit is read from the chain (3 EMWK)');
+  let refused = false; try { await bridge.checkDeposit('tx-bad', 'emberwick.testnet'); } catch { refused = true; }
+  check(refused, 'a transfer signed by someone else is refused');
+  const coins = state.balances['player:' + j.id];
+  check(depositIn(state, j.id, amt, 'tx-dep-1').ok, 'deposit is credited in the game');
+  check(!depositIn(state, j.id, amt, 'tx-dep-1').ok, 'the same transaction cannot be counted twice');
+  check(Math.abs(state.balances['player:' + j.id] - coins - 3) < 1e-6, 'player has 3 more EMWK');
+  check(Math.abs(totalMoney(state) - TOKEN.totalSupply) < 1e-6, 'game total is still exactly the supply');
+  await bridge.step();
+  compare('after the deposit, chain balances match');
+
   // the player wipes the save and starts a fresh village: reconcile fixes the chain
   state = createState(7);
   bridge.needReconcile = true;
   await bridge.step();
   compare('after a fresh village, reconcile resets craftsman and treasury balances', true);
-  check(chain.ft.get('emberwick.testnet') === toUnits(5), 'cashed-out EMWK stays in the wallet');
+  check(chain.ft.get('emberwick.testnet') === toUnits(2), 'cashed-out EMWK stays in the wallet');
 }
 
 await run(true);

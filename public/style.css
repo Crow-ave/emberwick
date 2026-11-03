@@ -255,3 +255,8 @@ details[open] summary { margin-bottom: 4px; }
 .result.bad { background: #fbe9e3; border-color: #efc3b4; color: #7a2a16; }
 .jobinfo { font-size: 12px; color: #6b5640; background: #f8f0e3; border-radius: 8px; padding: 6px 9px; margin-top: 6px; line-height: 1.5; }
 #day-left { font-variant-numeric: tabular-nums; }
+.wallet-btn { display: inline-flex; align-items: center; gap: 7px; background: #e8642c; color: #fff; border: 0; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.wallet-btn:hover { background: #d4541e; }
+.wallet-btn.linked { background: rgba(255,255,255,.1); color: #f3e6d4; border: 1px solid rgba(255,255,255,.22); font-weight: 500; }
+.wallet-btn .wdot { width: 8px; height: 8px; border-radius: 50%; background: #4cc46a; }
+.wallet-btn .muted { color: #c9b8a2; }

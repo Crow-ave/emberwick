@@ -28,6 +28,9 @@ export function fakeChain({ faucetWorks }) {
     },
     async register(_s, _t, ids) { for (const id of ids) if (!ft.has(id)) ft.set(id, 0n); txs++; },
     async sendNear(from, to, n) { need(from).near -= n; need(to).near += n; txs++; },
+    userTx: new Map(),
+    async verifySigned() { return true; },
+    async readFtTransfer(hash) { const t = this.userTx.get(hash); if (!t) throw new Error('unknown transaction'); return t; },
     async ftTransfers(from, _t, items, wallets) {
       for (const w of wallets) if (!ft.has(w)) ft.set(w, 0n);
       // all-or-nothing, like one NEAR transaction failing on its first bad action

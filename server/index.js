@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, tick, joinPlayer, playerAction, publicView, onTransfer, linkWallet, withdraw } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, publicView, onTransfer, linkWallet, withdraw, depositIn } from './economy.js';
+import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
 
@@ -68,6 +69,7 @@ async function startNear() {
   setInterval(loop, RULES.demo ? 8000 : 12000);
   setInterval(() => { if (bridge.status === 'ready') bridge.needReconcile = true; }, 5 * 60 * 1000);
 }
+const challenges = new Map(); // playerId -> one-time wallet sign-in message
 const chainView = () => (bridge ? bridge.view() : { status: 'off' });
 const view = (pid) => ({ ...publicView(state, pid), chain: chainView() });
 
@@ -140,6 +142,66 @@ const server = http.createServer(async (req, res) => {
     }
     const r = linkWallet(state, body.player, body.account);
     if (r.ok) { save(); broadcast(); }
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
+  }
+
+  // the browser reports wallet problems here, so they show up in the terminal
+  if (req.method === 'POST' && url.pathname === '/api/near/clientlog') {
+    const body = await readBody(req);
+    console.log('[NEAR] browser: ' + String(body.msg || '').slice(0, 400));
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // wallet sign-in: the server gives a one-time message, the wallet signs it (NEP-413)
+  if (url.pathname === '/api/near/challenge') {
+    const pid = url.searchParams.get('player'), p = state.players[pid];
+    if (!p) return sendJson(res, 400, { ok: false, code: 'err.unknownPlayer' });
+    const c = { message: `Link this NEAR wallet to ${p.name} in Emberwick (${pid}).`, recipient: 'emberwick', nonce: crypto.randomBytes(32).toString('base64'), at: Date.now() };
+    challenges.set(pid, c);
+    return sendJson(res, 200, { ok: true, ...c });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/near/verify') {
+    const body = await readBody(req);
+    const c = challenges.get(body.player);
+    if (!c || Date.now() - c.at > 10 * 60 * 1000) return sendJson(res, 400, { ok: false, code: 'err.challenge', error: 'Try signing in again.' });
+    if (!bridge || bridge.status !== 'ready') return sendJson(res, 400, { ok: false, code: 'err.chainOff' });
+    let verified = false;
+    try {
+      await bridge.adapter.verifySigned({ accountId: body.accountId, publicKey: body.publicKey, signature: String(body.signature || ''), message: c.message, recipient: c.recipient, nonce: c.nonce, callbackUrls: [body.page, body.origin].filter(Boolean) });
+      verified = true;
+    } catch (e) {
+      // keep the wallet connected so the player can go on; it is shown as not verified
+      console.log(`[NEAR] wallet proof failed (${e.message}). Got: account ${body.accountId}, key ${body.publicKey}, signature ${String(body.signature).slice(0, 16)}… (${String(body.signature).length} chars)`);
+    }
+    challenges.delete(body.player);
+    const r = linkWallet(state, body.player, body.accountId, verified);
+    if (r.ok) r.verified = verified;
+    if (r.ok) { save(); broadcast(); }
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
+  }
+
+  // the player sent EMWK from their wallet to the village bank: verify it, then credit it
+  if (req.method === 'POST' && url.pathname === '/api/near/deposit') {
+    const body = await readBody(req);
+    const p = state.players[body.player];
+    if (!p || !p.near) return sendJson(res, 400, { ok: false, code: 'err.noWallet' });
+    if (!bridge || bridge.status !== 'ready') return sendJson(res, 400, { ok: false, code: 'err.chainOff' });
+    const hash = String(body.hash || '');
+    bridge.keys.seen = bridge.keys.seen || [];
+    if (!hash || bridge.keys.seen.includes(hash)) return sendJson(res, 400, { ok: false, code: 'err.depositSeen' });
+    let amount;
+    try {
+      const d = await bridge.checkDeposit(hash, p.near, `for ${body.player}`);
+      // a transfer without our memo counts only for a player whose wallet link is signature-verified
+      if (!d.memoOk && !p.nearVerified) throw new Error('no memo, and this wallet link is not verified');
+      amount = d.amount;
+    } catch (e) {
+      console.log(`[NEAR] deposit check failed for ${hash}: ${e.message}`);
+      return sendJson(res, 400, { ok: false, code: 'err.depositBad', error: e.message });
+    }
+    const r = depositIn(state, body.player, amount, hash);
+    if (r.ok) { bridge.keys.seen.push(hash); bridge.store.save(bridge.keys); save(); broadcast(); }
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 

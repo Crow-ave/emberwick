@@ -1,3 +1,5 @@
 node_modules/
 data/
 .DS_Store
+tools/wallet/node_modules/
+tools/wallet/package*.json

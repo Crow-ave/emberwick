@@ -48,7 +48,9 @@ EMWK is a real NEP-141 token on NEAR testnet, and the game ledger is mirrored on
 
 - On first start the game creates its own accounts: a village bank (`emberwick-village.testnet`), the token contract (`emwk.emberwick-village.testnet`), the treasury and one account per AI craftsman (for example `smithy.emberwick-village.testnet`). Each craftsman signs its own transfers.
 - Every trade, wage, tax and reward is queued, netted and sent as batched `ft_transfer` calls. The NEAR panel (top bar) shows the accounts, their on-chain balances and the latest transactions with explorer links.
-- Players and bot villagers are held by the village bank. A player can link a NEAR testnet wallet (for example a Meteor Wallet testnet account) and cash EMWK out to it.
+- Players and bot villagers are held by the village bank. A player connects Meteor Wallet (through NEAR Wallet Selector) and signs a one-time NEP-413 message; the server checks the signature against the account's full-access key, so the link proves ownership.
+- Money flows both ways: cash EMWK out to your own wallet, or deposit it back by signing an `ft_transfer` to the village bank in Meteor. The server reads that transaction from the chain (signer, token, receiver, amount) before crediting it, and never counts the same transaction twice.
+- Council decisions are recorded on chain: when a vote closes, the treasury sends a 0.01 EMWK record whose memo holds the proposal, the result and the vote weights.
 - If NEAR is unreachable the game keeps running. A regular balance sync compares the chain with the game and corrects any difference.
 - The game asks the testnet faucet for its first account. If the faucet is busy, the NEAR panel and the terminal show an address to send a few testnet NEAR to.
 - Keys are stored in `~/.emberwick/near-keys.json` on your own computer, outside the project folder, so they never reach GitHub. Never share this file.
@@ -85,7 +87,8 @@ npm test   # 100 game days of economy checks, then the NEAR bridge against an in
 | `server/economy.js` | The economy engine: ledger, trading, craftsmen AI, events |
 | `server/index.js` | Game server and live updates |
 | `server/near.js` | NEAR bridge: account setup, token deploy, batched transfers, balance sync |
-| `contracts/emwk_token.wasm` | Standard NEP-141 fungible token contract (near-contract-standards) |
+| `public/vendor/near-wallet.js` | Meteor Wallet through NEAR Wallet Selector, bundled for the browser (source in `tools/wallet/`) |
+| `contracts/emwk_token.wasm` | Standard NEP-141 fungible token (near-sdk-rs 4.0 example, emits NEP-297 events so explorers and wallets index it) |
 | `public/iso.js` | The visual layer (isometric map). Can be replaced without touching game data |
 | `public/app.js` | Panels, joining, actions |
 

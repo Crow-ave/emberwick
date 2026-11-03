@@ -594,9 +594,17 @@ function panelCouncil() {
   }
 
   if (c.closed.length) {
-    h += `<p class="sub2">${t('council.closed')}</p><ul class="decided">${c.closed.map((x) => `<li><span class="res ${x.result}">${t('council.res.' + x.result)}</span> #${x.id} ${esc(proposalText(x))} <span class="muted small">(${t('council.tally', { y: Math.round(x.yes), n: Math.round(x.no), v: x.voters })})</span></li>`).join('')}</ul>`;
+    h += `<p class="sub2">${t('council.closed')}</p><ul class="decided">${c.closed.map((x) => `<li><span class="res ${x.result}">${t('council.res.' + x.result)}</span> #${x.id} ${esc(proposalText(x))} <span class="muted small">(${t('council.tally', { y: Math.round(x.yes), n: Math.round(x.no), v: x.voters })})</span> ${councilTx(x.id)}</li>`).join('')}</ul>`;
   }
   return h + `<p class="muted small">${t('council.rule', { q: c.rules.quorum })}</p>`;
+}
+
+// link to the council decision's record on NEAR, once it has been sent
+function councilTx(id) {
+  const c = view.chain;
+  if (!c || !c.feed) return '';
+  for (const f of c.feed) if (f.ok && f.hash && f.items.some((it) => it.council === id)) return exLink('txns/' + f.hash, t('council.onNear'));
+  return '';
 }
 
 async function councilAct(type, extra) {
@@ -676,16 +684,29 @@ function panelNear() {
   }
 
   h += `<p class="sub2">${t('near.wallet')}</p>`;
+  const meteor = chainOk() && window.EmberwickWallet;
   if (!me) h += `<p class="muted small">${t('near.joinFirst')}</p>`;
   else if (me.near) {
-    h += `<p>${t('near.linked', { id: '' })}${c.explorer ? exLink('address/' + me.near, esc(me.near)) : esc(me.near)}</p>`;
+    h += `<p>${t('near.linked', { id: '' })}${c.explorer ? exLink('address/' + me.near, esc(me.near)) : esc(me.near)} ` +
+      (me.nearVerified ? `<span class="ok small">${t('near.verified')}</span>` : `<span class="muted small">${t('near.unverified')}</span>`) + `</p>`;
+    if (!me.nearVerified && meteor) h += `<button data-act="near-meteor" class="${ui.challenge ? 'primary' : ''}">${ui.challenge ? t('near.signStep', { id: esc(ui.challenge.account) }) : t('near.verifyBtn')}</button>`;
     h += `<p class="muted small">${t('near.cashHelp', { n: me.coins })}</p>`;
     if (me.withdrawn) h += `<p class="muted small">${t('near.withdrawn', { n: me.withdrawn })}</p>`;
     h += chainOk()
       ? `<div class="row"><input id="near-amount" type="number" min="1" step="1" max="${Math.floor(me.coins)}" value="${Math.min(10, Math.floor(me.coins))}"><button class="primary" data-act="near-withdraw" ${me.coins < 1 ? 'disabled' : ''}>${t('near.cashout')}</button></div>`
       : `<p class="muted small">${t('near.needReady')}</p>`;
+    if ((me.nearVerified || ui.meteorAccount === me.near) && meteor) {
+      h += `<p class="muted small">${t('near.depositHelp', { bank: esc(c.accounts.bank) })}</p>` +
+        `<div class="row"><input id="near-dep" type="number" min="1" step="1" value="5"><button data-act="near-deposit">${t('near.deposit')}</button></div>`;
+      if (me.deposited) h += `<p class="muted small">${t('near.deposited', { n: me.deposited })}</p>`;
+      h += `<details class="small"><summary>${t('near.claimTitle')}</summary><p class="muted small">${t('near.claimHelp', { id: esc(me.near) })}</p>` +
+        `<div class="row"><input id="near-claim" placeholder="Fx3…" autocomplete="off" spellcheck="false"><button data-act="near-claim">${t('near.claim')}</button></div></details>`;
+    }
+    if (ui.nearBusy) h += `<p class="status">${t(ui.nearBusy)}</p>`;
   } else {
-    h += `<p class="muted small">${t('near.orType')}</p><div class="row"><input id="near-account" placeholder="name.testnet" autocomplete="off" spellcheck="false"><button class="primary" data-act="near-link">${t('near.link')}</button></div>`;
+    if (meteor) h += `<button class="primary big" data-act="near-meteor">${ui.challenge ? t('near.signStep', { id: esc(ui.challenge.account) }) : t('near.meteor')}</button><p class="muted small">${t('near.meteorHelp')}</p>`;
+    if (ui.nearBusy) h += `<p class="status">${t(ui.nearBusy)}</p>`;
+    h += `<p class="muted small">${t('near.orType')}</p><div class="row"><input id="near-account" placeholder="name.testnet" autocomplete="off" spellcheck="false"><button data-act="near-link">${t('near.link')}</button></div>`;
   }
   return h;
 }
@@ -695,11 +716,97 @@ async function nearLink(account) {
   if (r.state) { view = r.state; render(); }
   if (r.ok) toast(t('toast.linked', { id: r.near }), 'win'); else toast(errText(r), 'bad');
 }
+// Meteor Wallet sign-in: the wallet signs a one-time message (NEP-413), the server checks it
+async function nearMeteor() {
+  const c = view.chain, W = window.EmberwickWallet;
+  try {
+    // step 1: sign in (opens Meteor). Step 2 is its own click, so the browser lets the wallet open again.
+    if (!ui.challenge) {
+      ui.nearBusy = 'near.busyWallet'; renderPanel();
+      const account = await W.signIn(c.network, c.accounts.token);
+      if (!account) throw new Error('no account');
+      const ch = await (await fetch(`/api/near/challenge?player=${playerId}`)).json();
+      if (!ch.ok) throw new Error(ch.code);
+      ui.challenge = { ...ch, account };
+      renderWalletBtn();
+      return;
+    }
+    ui.nearBusy = 'near.busySign'; renderPanel();
+    const ch = ui.challenge;
+    const signed = await W.signMessage(c.network, ch);
+    const r = await post('/api/near/verify', { player: playerId, accountId: (signed && signed.accountId) || ch.account, publicKey: signed && signed.publicKey, signature: signed && signed.signature, page: location.href, origin: location.origin });
+    ui.challenge = null;
+    ui.meteorAccount = ch.account; // signed in through Meteor in this browser
+    if (r.state) view = r.state;
+    if (r.ok) toast(r.verified ? t('toast.verified', { id: r.near }) : t('toast.connected', { id: r.near }), r.verified ? 'win' : ''); else toast(errText(r), 'bad');
+  } catch (e) {
+    console.log('wallet', e);
+    clientLog('sign-in failed: ' + (e && (e.message || e)));
+    ui.challenge = null;
+    toast(t('err.walletFailed'), 'bad');
+  } finally { ui.nearBusy = null; render(); }
+}
+
+// the player sends EMWK from their own wallet to the village bank, then the server checks the transaction
+const clientLog = (msg) => post('/api/near/clientlog', { msg }).catch(() => {});
+
+// a deposit whose result did not come back (closed tab, slow wallet): claim it with its transaction hash
+async function nearClaim(hash) {
+  hash = String(hash || '').trim();
+  if (!hash) return;
+  ui.nearBusy = 'near.busyCheck'; renderPanel();
+  const r = await post('/api/near/deposit', { player: playerId, hash });
+  ui.nearBusy = null;
+  if (r.state) view = r.state;
+  if (r.ok) { toast(t('toast.deposited', { n: r.amount }), 'win'); popupYou(`+${r.amount} EMWK`, '#a8461a'); flash('coins'); } else toast(errText(r), 'bad');
+  render();
+}
+
+async function nearDeposit(amount) {
+  const c = view.chain, W = window.EmberwickWallet, me = view.player;
+  amount = Math.floor(Number(amount));
+  if (!(amount >= 1)) return toast(t('err.minWithdraw'), 'bad');
+  try {
+    ui.nearBusy = 'near.busyWallet'; renderPanel();
+    const acct = await W.accountId(c.network);
+    if (acct !== me.near) await W.signIn(c.network, c.accounts.token);
+    const hash = await W.ftTransfer(c.network, c.accounts.token, c.accounts.bank, String(amount * 100), `Emberwick deposit for ${playerId}`);
+    if (!hash) { clientLog('deposit: the wallet returned no transaction hash'); toast(t('near.noHash'), 'bad'); return; }
+    ui.nearBusy = 'near.busyCheck'; renderPanel();
+    let r;
+    for (let i = 0; i < 6; i++) { // the chain needs a moment to finalise
+      r = await post('/api/near/deposit', { player: playerId, hash });
+      if (r.ok || r.code !== 'err.depositBad') break;
+      await new Promise((ok) => setTimeout(ok, 2500));
+    }
+    if (r.state) view = r.state;
+    if (r.ok) { toast(t('toast.deposited', { n: r.amount }), 'win'); popupYou(`+${r.amount} EMWK`, '#a8461a'); flash('coins'); } else toast(errText(r), 'bad');
+  } catch (e) {
+    console.log('deposit', e);
+    clientLog('deposit failed: ' + (e && (e.message || e)));
+    toast(t('err.walletFailed'), 'bad');
+  } finally { ui.nearBusy = null; render(); }
+}
+
 async function nearWithdraw(amount) {
   const r = await post('/api/near/withdraw', { player: playerId, amount });
   if (r.state) { view = r.state; render(); }
   if (r.ok) toast(t('toast.withdrew', { n: r.amount, id: r.wallet }), 'win'); else toast(errText(r), 'bad');
 }
+// the wallet is always one click away in the top bar
+function renderWalletBtn() {
+  const btn = $('wallet-btn'), me = view.player;
+  if (!me || !chainOk()) { btn.hidden = true; return; }
+  btn.hidden = false;
+  if (me.near) {
+    btn.className = 'wallet-btn linked';
+    btn.innerHTML = `<span class="wdot"></span>${esc(shortId(me.near))} ${me.nearVerified ? '✓' : `<span class="muted">${t('near.unverifiedShort')}</span>`}`;
+  } else {
+    btn.className = 'wallet-btn';
+    btn.textContent = ui.challenge ? t('near.signStep', { id: shortId(ui.challenge.account) }) : t('near.meteor');
+  }
+}
+
 function renderNearPill() {
   const c = view.chain || { status: 'off' };
   const pill = $('near-pill');
@@ -823,6 +930,7 @@ function renderChrome() {
   $('ready-fill').style.width = view.readiness + '%';
   $('ready-num').textContent = view.readiness + '%';
   renderNearPill();
+  renderWalletBtn();
   $('log').innerHTML = view.log.map((l) => `<li class="${l.kind}">${t('log.day', { n: l.day })}: ${esc(logText(l))}</li>`).join('');
   const e = view.events, banner = $('banner');
   if (e.attackDay) { banner.className = 'banner danger'; banner.textContent = t('banner.attack', { day: e.attackDay, ready: view.readiness }); banner.hidden = false; }
@@ -1017,6 +1125,12 @@ document.body.addEventListener('click', (e) => {
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
   if (e.target.closest('[data-board]')) { ui.selected = 'board'; renderMapNow(); renderPanel(); return; }
+  if (e.target.closest('#wallet-btn')) {
+    ui.selected = 'near'; renderMapNow(); renderPanel();
+    const me = view.player;
+    if (me && window.EmberwickWallet && (!me.near || ui.challenge)) nearMeteor();
+    return;
+  }
   if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); return; }
   const btn = e.target.closest('#panel button[data-act], #dock button[data-act], #scene-bar button[data-act]');
   if (!btn) return;
@@ -1035,6 +1149,9 @@ document.body.addEventListener('click', (e) => {
     if (a === 'near-copy') navigator.clipboard?.writeText(btn.dataset.copy).then(() => toast(t('toast.copied'), 'win')).catch(() => {});
     else if (!playerId) toast(t('toast.join'), 'bad');
     else if (a === 'near-link') nearLink($('near-account').value);
+    else if (a === 'near-meteor') nearMeteor();
+    else if (a === 'near-deposit') nearDeposit($('near-dep').value);
+    else if (a === 'near-claim') nearClaim($('near-claim').value);
     else if (a === 'near-withdraw') nearWithdraw($('near-amount').value);
     return;
   }

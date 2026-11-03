@@ -30,7 +30,7 @@ export const yoctoToNear = (y) => Number((BigInt(y) * 1000n) / YOCTO) / 1000;
 
 const ROOT_NAMES = ['emberwick-village', 'emberwick-village-2', 'emberwick-village-3', 'emberwick-hamlet', 'emberwick-town'];
 const SUB_NEAR = 0.2;      // NEAR given to each craftsman / treasury account for gas
-const TOKEN_NEAR = 2.8;    // NEAR for the token contract storage (~213 KB)
+const TOKEN_NEAR = 2.5;    // NEAR for the token contract storage (~220 KB)
 const ROOT_MIN_SETUP = 4.5; // root needs at least this before it creates everything
 const LOW_GAS = 0.05;       // top an account up below this
 const MAX_ACTIONS = 15;     // ft_transfer actions per transaction
@@ -75,7 +75,7 @@ export class Bridge {
 
   // --- names on chain ---
   get root() { return this.keys && this.keys.root; }
-  get tokenId() { return this.root && 'emwk.' + this.root; }
+  get tokenId() { return this.root && (this.keys.token || 'emwk.' + this.root); }
   subId(name) { return `${name}.${this.root}`; }
   chainOf(holder) {
     if (holder === 'withdrawn') return null;
@@ -92,10 +92,21 @@ export class Bridge {
     const a = this.chainOf(from), b = this.chainOf(to);
     if (!a || !b || a === b || amount <= 0) return;
     const player = from.startsWith('player:') ? from.slice(7) : to.startsWith('player:') ? to.slice(7) : null;
-    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) }, memo: note && note.memo, contract: note && note.contract });
+    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) }, memo: note && note.memo, contract: note && note.contract, council: note && note.council });
   }
 
   canWithdraw() { return this.status === 'ready'; }
+
+  // a player sent EMWK from their own wallet to the village bank: check it on chain
+  async checkDeposit(hash, wallet, expectMemo = null) {
+    const t = await this.adapter.readFtTransfer(hash, wallet);
+    if (t.signer !== wallet) throw new Error('signed by another account');
+    if (t.contract !== this.tokenId) throw new Error('not the EMWK token');
+    if (t.receiver !== this.root) throw new Error('not sent to the village bank');
+    const memo = String(t.memo || '');
+    if (expectMemo && memo && !memo.includes(expectMemo)) throw new Error('memo names another player');
+    return { amount: fromUnits(t.amount), memoOk: !expectMemo || memo.includes(expectMemo) };
+  }
   withdraw(wallet, amount, who, player = null) {
     this.queue.push({ from: this.root, to: wallet, amount: toUnits(amount), label: `${who} → ${wallet}`, withdraw: true, player, who: { from: player ? 'player:' + player : 'bank', to: 'wallet', fromName: who, toName: wallet } });
   }
@@ -153,13 +164,28 @@ export class Bridge {
       this.say(`Village bank on NEAR: ${name}`);
     }
 
+    // The first EMWK contract (near-sdk 3) did not emit NEP-297 events, so explorers
+    // and wallets could not see transfers. Version 2 (near-contract-standards 4) does.
+    // An older village moves to a fresh token account; balances follow by reconcile.
+    if (this.keys.tokenVersion !== 2) {
+      const legacy = await A.exists('emwk.' + this.root) && !this.keys.token;
+      this.keys.token = legacy ? 'token.' + this.root : 'emwk.' + this.root;
+      this.keys.tokenVersion = 2;
+      this.store.save(this.keys);
+      if (legacy) this.say(`Moving EMWK to a new token contract with events: ${this.keys.token}`);
+    }
+
     // 2. enough NEAR for the rest?
     const tokenExists = await A.exists(this.tokenId);
     if (!tokenExists) {
+      // NEAR needed: token storage, plus gas money for any account not created yet
+      let missing = 0;
+      for (const id of this.subAccounts()) if (!(await A.exists(id))) missing++;
+      const need = TOKEN_NEAR + 0.3 + missing * SUB_NEAR;
       const bal = await A.nearBalance(this.root);
-      if (bal < ROOT_MIN_SETUP) {
+      if (bal < need) {
         this.status = 'need-funds';
-        this.detail = { address: this.root, amount: Math.ceil(ROOT_MIN_SETUP + 0.5 - bal), have: bal };
+        this.detail = { address: this.root, amount: Math.ceil(need + 0.2 - bal), have: bal };
         return false;
       }
       this.status = 'setup';
@@ -283,7 +309,7 @@ export class Bridge {
     for (const [from, items] of bySender) {
       for (let i = 0; i < items.length; i += MAX_ACTIONS) {
         const chunk = items.slice(i, i + MAX_ACTIONS);
-        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw, player: c.player || null, n: c.n || 1, who: c.who || null, contract: c.contract || null, memo: c.memo || null })), hash: null, ok: false };
+        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw, player: c.player || null, n: c.n || 1, who: c.who || null, contract: c.contract || null, council: c.council || null, memo: c.memo || null })), hash: null, ok: false };
         try {
           const wallets = chunk.filter((c) => c.withdraw).map((c) => c.to);
           entry.hash = await this.adapter.ftTransfers(from, this.tokenId, chunk.map((c) => ({ to: c.to, amount: c.amount, memo: c.memo || c.label })), wallets);
@@ -410,6 +436,41 @@ export async function makeNearAdapter(secretKeyRef) {
     },
     async sendNear(fromId, toId, nearAmount) {
       await acct(fromId).signAndSendTransaction({ receiverId: toId, actions: [actions.transfer(nearToYocto(nearAmount))] });
+    },
+    // NEP-413: did this account really sign our message? (wallet sign-in proof)
+    // Wallets differ in small details (base64 or base58 signature, a callback URL
+    // inside the signed payload), so every honest variant is tried. Any match is a
+    // real signature by a full-access key of that account.
+    async verifySigned({ accountId, publicKey, signature, message, recipient, nonce, callbackUrls = [] }) {
+      const { verifyMessage } = await import('near-api-js/nep413');
+      const sigs = [];
+      try { sigs.push(new Uint8Array(Buffer.from(signature, 'base64'))); } catch { /* not base64 */ }
+      try { sigs.push(near.baseDecode(signature)); } catch { /* not base58 */ }
+      const nonceBytes = new Uint8Array(Buffer.from(nonce, 'base64'));
+      let last = null;
+      for (const sig of sigs.filter((x) => x.length === 64)) {
+        for (const cb of [undefined, ...callbackUrls]) {
+          try {
+            await verifyMessage({ signerAccountId: accountId, signerPublicKey: publicKey, provider, payload: { message, recipient, nonce: nonceBytes, callbackUrl: cb }, signature: sig });
+            return true;
+          } catch (e) {
+            last = e;
+            if (!/verification failed/i.test(e.message)) throw e; // key missing or not full access
+          }
+        }
+      }
+      throw last || new Error('bad signature');
+    },
+    // read a player's own ft_transfer from the chain: who sent how much to whom
+    async readFtTransfer(hash, senderId) {
+      const r = await provider.viewTransactionStatus({ txHash: hash, accountId: senderId, waitUntil: 'FINAL' });
+      const tx = r.transaction || {};
+      const failed = (st) => st && typeof st === 'object' && 'Failure' in st;
+      if (failed(r.status) || (r.receipts_outcome || []).some((o) => failed(o.outcome && o.outcome.status))) throw new Error('transaction failed');
+      const fc = (tx.actions || []).map((a) => a.FunctionCall || a.functionCall).find((f) => f && (f.method_name || f.methodName) === 'ft_transfer');
+      if (!fc) throw new Error('not an ft_transfer');
+      const args = JSON.parse(Buffer.from(fc.args, 'base64').toString('utf8'));
+      return { signer: tx.signer_id, contract: tx.receiver_id, receiver: args.receiver_id, amount: BigInt(args.amount), memo: args.memo || '' };
     },
     // several ft_transfer calls in one transaction; wallets get registered first
     async ftTransfers(fromId, tokenId, items, wallets = []) {
