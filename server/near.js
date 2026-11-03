@@ -87,12 +87,12 @@ export class Bridge {
   subAccounts() { return ['treasury', 'deposits', ...this.npcIds].map((n) => this.subId(n)); }
 
   // --- game hooks ---
-  onTransfer(from, to, amount) {
+  onTransfer(from, to, amount, note = null) {
     if (this.status !== 'ready') return; // reconcile catches up once the bridge is live
     const a = this.chainOf(from), b = this.chainOf(to);
     if (!a || !b || a === b || amount <= 0) return;
     const player = from.startsWith('player:') ? from.slice(7) : to.startsWith('player:') ? to.slice(7) : null;
-    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) } });
+    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) }, memo: note && note.memo, contract: note && note.contract });
   }
 
   canWithdraw() { return this.status === 'ready'; }
@@ -256,7 +256,7 @@ export class Bridge {
     const pair = new Map();
     const withdrawals = [];
     for (const it of items) {
-      if (it.withdraw) { withdrawals.push(it); continue; }
+      if (it.withdraw || it.memo) { withdrawals.push(it); continue; } // never merge transfers that carry a record
       // a player's own transfers are kept apart, so they can find them on chain
       const [x, y, s] = it.from < it.to ? [it.from, it.to, 1n] : [it.to, it.from, -1n];
       const k = x + '|' + y + '|' + (it.player || '');
@@ -283,10 +283,10 @@ export class Bridge {
     for (const [from, items] of bySender) {
       for (let i = 0; i < items.length; i += MAX_ACTIONS) {
         const chunk = items.slice(i, i + MAX_ACTIONS);
-        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw, player: c.player || null, n: c.n || 1, who: c.who || null })), hash: null, ok: false };
+        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw, player: c.player || null, n: c.n || 1, who: c.who || null, contract: c.contract || null, memo: c.memo || null })), hash: null, ok: false };
         try {
           const wallets = chunk.filter((c) => c.withdraw).map((c) => c.to);
-          entry.hash = await this.adapter.ftTransfers(from, this.tokenId, chunk.map((c) => ({ to: c.to, amount: c.amount, memo: c.label })), wallets);
+          entry.hash = await this.adapter.ftTransfers(from, this.tokenId, chunk.map((c) => ({ to: c.to, amount: c.amount, memo: c.memo || c.label })), wallets);
           entry.ok = true;
           this.txCount++;
           for (const c of chunk) { // keep the shown on-chain balances fresh between syncs
@@ -419,7 +419,7 @@ export async function makeNearAdapter(secretKeyRef) {
       }
       const acts = [
         ...[...new Set(wallets)].map((w) => actions.functionCall('storage_deposit', { account_id: w, registration_only: true }, 10n * 10n ** 12n, bound)),
-        ...items.map((it) => actions.functionCall('ft_transfer', { receiver_id: it.to, amount: it.amount.toString(), memo: String(it.memo || '').slice(0, 60) }, FT_GAS, 1n)),
+        ...items.map((it) => actions.functionCall('ft_transfer', { receiver_id: it.to, amount: it.amount.toString(), memo: String(it.memo || '').slice(0, 240) }, FT_GAS, 1n)),
       ];
       const r = await acct(fromId).signAndSendTransaction({ receiverId: tokenId, actions: acts });
       return (r && r.transaction && r.transaction.hash) || (r && r.transaction_outcome && r.transaction_outcome.id) || null;

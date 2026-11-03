@@ -233,3 +233,23 @@ button.eat { font-size: 11px; padding: 1px 7px; margin-left: 4px; border-radius:
 .chip { background: #f4ead9; border: 1px solid #e3d2b3; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; color: #5a4128; }
 .chip:hover { background: #ecdcc2; }
 .near-feed .mine { background: #fff1c9; border-radius: 4px; padding: 0 3px; }
+
+/* ---------- council ---------- */
+.prop { border: 1px solid #ead9bd; border-radius: 10px; padding: 9px 11px; margin: 8px 0; background: #fffaf1; }
+.votebar { height: 8px; background: #e8b3a3; border-radius: 4px; margin: 6px 0 3px; overflow: hidden; }
+.votebar .y { height: 100%; background: #4f9a5a; }
+.voters { list-style: none; padding: 0; margin: 4px 0; font-size: 12px; }
+.voters li { padding: 2px 0; }
+.propform select, .propform input { font: inherit; padding: 6px 8px; border: 1px solid #d9c7a8; border-radius: 8px; margin: 3px 4px 3px 0; max-width: 100%; }
+.propform input { width: 90px; }
+.decided { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+.decided li { padding: 4px 0; border-bottom: 1px solid #efe4d2; }
+.res { font-size: 11px; font-weight: bold; border-radius: 4px; padding: 1px 5px; margin-right: 3px; }
+.res.passed { background: #dff0e0; color: #24582f; }
+.res.rejected, .res.quorum, .res.poor { background: #f6dfd8; color: #8a2a1a; }
+.shortcuts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.chip.strong { background: #fff1e6; border-color: #e8a37a; color: #8a3b12; font-weight: 600; }
+details summary { cursor: pointer; color: #8a6a48; }
+details[open] summary { margin-bottom: 4px; }
+#panel > .close + .board-h { border-top: 0; margin-top: 0; padding-top: 0; }
+.result.bad { background: #fbe9e3; border-color: #efc3b4; color: #7a2a16; }

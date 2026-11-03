@@ -51,7 +51,7 @@ async function startNear() {
     wasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_token.wasm')),
     say: (m) => console.log('[NEAR] ' + m),
   });
-  onTransfer((from, to, amount) => bridge.onTransfer(from, to, amount));
+  onTransfer((from, to, amount, note) => bridge.onTransfer(from, to, amount, note));
   let lastStatus = '';
   const loop = async () => {
     await bridge.step();

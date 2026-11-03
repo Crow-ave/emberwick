@@ -32,9 +32,10 @@ export const GOODS = {
 
 // Places the player can gather raw goods from.
 export const GATHER_SPOTS = {
-  forest: { good: 'wood',  energy: 2, base: 3 },
-  fields: { good: 'wheat', energy: 2, base: 4 },
-  mine:   { good: 'ore',   energy: 3, base: 2 },
+  // you need the right tool to work here (axe, plow, pickaxe); it wears out with use
+  forest: { good: 'wood',  energy: 2, base: 2 },
+  fields: { good: 'wheat', energy: 2, base: 2 },
+  mine:   { good: 'ore',   energy: 3, base: 1 },
 };
 
 // Map layout on a 12x12 isometric grid. (i, j) = grid cell, w = footprint.
@@ -67,28 +68,28 @@ export const CRAFTSMEN = [
   {
     id: 'woodcutter', name: 'Bram the Woodcutter', wallet: 400,
     recipe: { in: { wood: 2 }, out: { lumber: 1 } },
-    buys: { wood: 3 }, sells: { lumber: 8, axe: 16 },
+    buys: { wood: 3 }, sells: { lumber: 8, axe: 30 },
     stock: { wood: 6, lumber: 4, axe: 3 }, target: { wood: 10, lumber: 6, axe: 3 },
     lines: ['Good timber keeps a village standing.', 'Dry wood, fair price. That is my rule.'],
   },
   {
     id: 'mill', name: 'Ilsa the Miller', wallet: 400,
     recipe: { in: { wheat: 3 }, out: { flour: 2 } },
-    buys: { wheat: 3 }, sells: { flour: 6, plow: 22 },
+    buys: { wheat: 3 }, sells: { flour: 6, plow: 30 },
     stock: { wheat: 9, flour: 4, plow: 2 }, target: { wheat: 12, flour: 6, plow: 2 },
     lines: ['The stones turn whether you bring wheat or not.', 'Bring me grain, I will make you flour.'],
   },
   {
     id: 'bakery', name: 'Tobin the Baker', wallet: 450,
     recipe: { in: { flour: 2, wood: 1 }, out: { bread: 4 } },
-    buys: { flour: 6, wood: 3 }, sells: { bread: 5 },
+    buys: { flour: 6, wood: 3 }, sells: { bread: 6 },
     stock: { flour: 4, wood: 3, bread: 6 }, target: { flour: 6, wood: 4, bread: 8 },
     lines: ['Warm bread, warm village.', 'No flour, no bread. Simple as that.'],
   },
   {
     id: 'smithy', name: 'Doran the Blacksmith', wallet: 600,
-    recipe: { in: { ore: 2, wood: 1 }, out: { sword: 1, pickaxe: 1 } },
-    buys: { ore: 6, wood: 3 }, sells: { sword: 40, pickaxe: 18 },
+    recipe: { in: { ore: 2, wood: 1 }, out: { sword: 1 } },
+    buys: { ore: 6, wood: 3 }, sells: { sword: 45, pickaxe: 35 },
     stock: { ore: 4, wood: 2, sword: 2, pickaxe: 3 }, target: { ore: 8, wood: 3, sword: 3, pickaxe: 3 },
     lines: ['Iron in, steel out.', 'Dragon talk is good for business, I will admit.'],
   },
@@ -102,14 +103,14 @@ export const CRAFTSMEN = [
   {
     id: 'inn', name: 'Marta the Innkeeper', wallet: 500,
     recipe: { in: { bread: 1 }, out: { meal: 2 } },
-    buys: { bread: 6 }, sells: { meal: 7 },
+    buys: { bread: 6 }, sells: { meal: 9 },
     stock: { bread: 4, meal: 2 }, target: { bread: 6, meal: 4 },
     lines: ['Travellers bring coin and stories.', 'Full tables mean a full purse.'],
   },
   {
     id: 'tower', name: 'Captain Hale', wallet: 700,
     recipe: null,
-    buys: { sword: 42, bread: 6 }, sells: {},
+    buys: { sword: 47, bread: 7 },  sells: {},
     stock: { sword: 2, bread: 2 }, target: { sword: 4, bread: 4 },
     lines: ['The peak is quiet. For now.', 'A blade in every hand when the dragon comes.'],
   },
@@ -138,14 +139,14 @@ export const RULES = {
   energyMax: 10,
   breadEnergy: 3,
   energyCap: 20,          // max energy grows with level, up to this
-  levelXp: [0, 5, 12, 22, 35, 50], // xp needed for level 1..6
+  levelXp: [0, 8, 20, 40, 65, 100], // xp needed for level 1..6
   tradeBonus: 0.03,       // craftsmen pay 3% more per trading level above 1
-  toolUses: 25,           // a tool breaks after this many uses
+  toolUses: 30,           // a tool breaks after this many uses
   mealEnergy: 5,
-  energyPerTick: DEMO ? 0.25 : 0.25,
+  energyPerTick: DEMO ? 0.2 : 0.15,   // energy comes back slowly; food and sleep help
   guardSalaryPerDay: 25, // paid from the treasury
   treasuryReserve: 2000, // treasury never goes below this
-  priceStep: DEMO ? 0.06 : 0.025, // how fast prices react
+  priceStep: DEMO ? 0.12 : 0.06,  // how fast prices move toward their supply-and-demand level
   profitTaxAbove: 800,   // shops richer than this pay a profit tax
   profitTaxRate: 0.2,
   minPrice: 1,
@@ -155,7 +156,11 @@ export const RULES = {
 // Wages are paid per shift, straight from the craftsman's wallet.
 // While under contract the player works only for their employer (no gathering).
 export const JOBS = {
-  wageBase: { smithy: 12, carpenter: 11, bakery: 9, mill: 9, woodcutter: 8, inn: 8, tower: 10 },
+  wageBase: { smithy: 12, carpenter: 12, bakery: 8, mill: 9, woodcutter: 9, inn: 7, tower: 9 },
+  // experience a shop asks for. Shops without an entry take beginners.
+  require: { smithy: { skill: 'mining', level: 2 }, mill: { skill: 'farming', level: 2 }, woodcutter: { skill: 'woodcutting', level: 2 }, carpenter: { skill: 'woodcutting', level: 3 } },
+  signingBonus: 1,       // paid by the employer when the contract is signed; the contract terms go on NEAR with it
+  coolDownDays: 2,       // after quitting early, shops will not hire you for this many days
   days: 3,               // length of a contract in game days
   shiftEnergy: 3,        // energy one shift costs
   shiftsPerDay: 3,       // an apprentice works only at their shop, up to this many shifts a day
@@ -164,11 +169,27 @@ export const JOBS = {
   reserve: 100,          // a craftsman keeps this much before hiring
 };
 
+// The village council. Anyone in the village can propose one of these kinds of
+// decisions; players, bot villagers and the AI craftsmen vote. Vote weight mixes
+// wealth (square root, so the rich cannot simply buy every vote), how long you have
+// lived here and what you have given to the village.
+export const COUNCIL = {
+  kinds: ['grant', 'tax', 'welcome', 'festival'],
+  fee: 2,                  // proposing costs this much, paid to the treasury (stops spam)
+  maxOpen: 3,              // open proposals at once
+  quorum: 4,               // a decision needs at least this many voters
+  grant: { min: 50, max: 400 },     // treasury -> one craftsman (e.g. sword money for the tower)
+  tax: { min: 0.01, max: 0.06 },    // market tax rate
+  welcome: { min: 100, max: 800 },  // treasury -> newcomer fund
+  festival: { min: 2, max: 10 },    // treasury -> every villager, per head
+  weight: { wealth: 0.5, residencyCap: 10, contributionCap: 10 },
+};
+
 // Homes are owned by the village. Rent goes to the treasury every day.
 export const HOUSES = {
-  'house-1': { size: 'room',  rent: 3, deposit: 6,  rest: 6 },
-  'house-2': { size: 'small', rent: 5, deposit: 10, rest: 10 },
-  'house-3': { size: 'large', rent: 8, deposit: 16, rest: 99 }, // a full night's sleep
+  'house-1': { size: 'room',  rent: 6,  deposit: 12, rest: 6 },
+  'house-2': { size: 'small', rent: 10, deposit: 20, rest: 10 },
+  'house-3': { size: 'large', rent: 16, deposit: 32, rest: 99 }, // a full night's sleep
 };
 
 // Where each starting path gathers and who buys what they gather.

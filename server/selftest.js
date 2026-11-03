@@ -5,7 +5,7 @@ import { TOKEN, RULES } from './world.js';
 const state = createState(42);
 const me = joinPlayer(state, 'Tester', 'miner').id;
 let problems = 0;
-const stats = { jobs: 0, shifts: 0, rents: 0, rests: 0 };
+const stats = { jobs: 0, shifts: 0, rents: 0, rests: 0, proposals: 0, votes: 0 };
 const fail = (m) => { problems++; console.log('PROBLEM:', m); };
 
 for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
@@ -15,11 +15,17 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   // jobs and homes: take any job offered, work a shift, rent the room, sleep, sometimes move out
   if (t % 11 === 0) {
     const p = state.players[me];
-    if (!p.job) { const o = Object.values(state.jobOffers)[0]; if (o) { const r = playerAction(state, me, { type: 'takeJob', npc: o.npc }); if (r.ok) stats.jobs++; } }
+    if (!p.job) for (const o of Object.values(state.jobOffers)) { const r = playerAction(state, me, { type: 'apply', npc: o.npc }); if (r.ok) { stats.jobs++; break; } }
     if (p.job && playerAction(state, me, { type: 'shift' }).ok) stats.shifts++;
     if (!p.home && playerAction(state, me, { type: 'rentHouse', house: 'house-1' }).ok) stats.rents++;
     if (playerAction(state, me, { type: 'rest' }).ok) stats.rests++;
     if (p.home && t % 997 === 0) playerAction(state, me, { type: 'leaveHouse' });
+  }
+  // council: propose now and then and vote on whatever is open
+  if (t % 53 === 0) {
+    const kinds = [{ kind: 'festival', amount: 3 }, { kind: 'tax', rate: 0.04 }, { kind: 'grant', npc: 'tower', amount: 100 }, { kind: 'welcome', amount: 150 }];
+    if (playerAction(state, me, { type: 'propose', ...kinds[(t / 53) % 4 | 0] }).ok) stats.proposals++;
+    for (const prop of state.council.open) if (playerAction(state, me, { type: 'vote', id: prop.id, yes: t % 2 === 0 }).ok) stats.votes++;
   }
   const total = totalMoney(state);
   if (Math.abs(total - TOKEN.totalSupply) > 0.05) { fail(`money total ${total} at tick ${t}`); break; }
@@ -33,6 +39,9 @@ for (const n of Object.values(v.npcs)) console.log(n.id.padEnd(10), 'wallet', St
 console.log('Funds: newcomer', state.balances.newcomerFund, 'adventurer', state.balances.adventurerFund);
 console.log('Contracts:', JSON.stringify(stats), '| deposits held', state.balances.deposits);
 if (!stats.jobs || !stats.shifts || !stats.rents || !stats.rests) fail('jobs or homes never happened');
+const decided = state.council.closed.length;
+console.log('Council: proposals', stats.proposals, 'votes', stats.votes, '| recent results', state.council.closed.map((x) => x.kind + ':' + x.result).join(', '), '| tax', state.taxRate ?? 'default');
+if (!stats.proposals || !stats.votes || !decided) fail('the council never decided anything');
 console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day', l.day, l.text));
 console.log(problems ? `${problems} problem(s)` : 'All checks passed.');
 process.exit(problems ? 1 : 0);

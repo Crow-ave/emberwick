@@ -3,7 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
-import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES } from './world.js';
+import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -67,13 +67,13 @@ export function balance(state, acct) {
 const watchers = [];
 export function onTransfer(fn) { watchers.push(fn); }
 
-function transfer(state, from, to, amount) {
+function transfer(state, from, to, amount, note = null) {
   amount = r2(amount);
   if (amount <= 0) return true;
   if (balance(state, from) + 1e-9 < amount) return false;
   state.balances[from] = r2(balance(state, from) - amount);
   state.balances[to] = r2(balance(state, to) + amount);
-  for (const w of watchers) w(from, to, amount);
+  for (const w of watchers) w(from, to, amount, note);
   return true;
 }
 
@@ -188,10 +188,14 @@ function sellToNpc(state, actor, npcId, good, qty) {
   const npc = state.npcs[npcId];
   if (!npc || npc.buys[good] === undefined) return { ok: false, error: 'This shop does not buy that.', code: 'err.notBuying' };
   if (inv(actor.holder, good) < qty) return { ok: false, error: 'You do not have enough.', code: 'err.notEnough' };
+  // a shop with a full store room stops buying; one low on money keeps a small reserve
+  const room = Math.floor(targetFor(state, npcId, good) * 3 - (npc.stock[good] || 0));
+  if (room < 1) return { ok: false, error: 'The store room is full. Try another shop or come back later.', code: 'err.storeFull' };
+  qty = Math.min(qty, room);
   const unit = price(npc.buys[good] * (1 + (actor.bonus || 0)));
   const total = unit * qty;
-  if (balance(state, npcAcct(npcId)) < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
-  const tax = r2(total * RULES.taxRate);
+  if (balance(state, npcAcct(npcId)) - 60 < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
+  const tax = r2(total * taxRate(state));
   transfer(state, npcAcct(npcId), actor.acct, total);
   transfer(state, actor.acct, 'treasury', tax);
   addInv(actor.holder, good, -qty);
@@ -206,7 +210,7 @@ function buyFromNpc(state, actor, npcId, good, qty) {
   const unit = price(npc.sells[good]);
   const total = unit * qty;
   if (balance(state, actor.acct) < total) return { ok: false, error: 'You do not have enough EMWK.', code: 'err.noMoney' };
-  const tax = r2(total * RULES.taxRate);
+  const tax = r2(total * taxRate(state));
   transfer(state, actor.acct, npcAcct(npcId), total);
   transfer(state, npcAcct(npcId), 'treasury', tax);
   npc.stock[good] -= qty;
@@ -221,12 +225,13 @@ function npcTrade(state, buyerId, sellerId, good, qty) {
   return buyFromNpc(state, actor, sellerId, good, qty);
 }
 
+export const toolFor = (good) => Object.keys(GOODS).find((k) => GOODS[k].boosts === good);
+
 function gatherYield(state, spot, holder) {
   const s = GATHER_SPOTS[spot];
   let amount = s.base + Math.floor(rng(state) * 2);
-  if (holder.xp) amount += skillLevel(holder, SKILL_OF[s.good]) - 1;
-  const tool = Object.entries(GOODS).find(([k, g]) => g.boosts === s.good && inv(holder, k) > 0);
-  if (tool) amount += 2;
+  if (holder.xp) amount += Math.floor((skillLevel(holder, SKILL_OF[s.good]) - 1) / 2); // +1 at level 3 and 5
+  // players and bots must hold the right tool (checked by the caller)
   if (s.good === 'wheat' && state.events.drought > 0) amount = Math.max(1, Math.floor(amount / 2));
   return amount;
 }
@@ -284,6 +289,8 @@ function doAction(state, p, actor, action, qty) {
     if (p.job) return { ok: false, error: 'You are an apprentice. You can only work at your shop until you quit.', code: 'err.employed' };
     const spot = GATHER_SPOTS[action.spot];
     if (!spot) return { ok: false, error: 'You cannot gather there.', code: 'err.cannotGather' };
+    const need = toolFor(spot.good);
+    if (inv(p, need) < 1) return { ok: false, error: 'You need the right tool to work here.', code: 'err.noTool', tool: need };
     const cost = energyCost(p, action.spot);
     if (p.energy < cost) return { ok: false, error: 'You are too tired. Rest a little.', code: 'err.tired' };
     p.energy = r2(p.energy - cost);
@@ -345,11 +352,14 @@ export function questFor(p) {
   const sh = st.shifts || 0;
   // an apprentice cannot gather, so the work goals count shifts at their shop instead
   const job = p.job && ['gather', 'sell', 'supply'].includes(q.id) ? p.job.npc : null;
+  // no job and no tool for your work: first find a way to earn
+  const workGoal = ['gather', 'sell', 'supply'].includes(q.id);
+  const findJob = !job && workGoal && p.inv && !(p.inv[toolFor(GATHER_SPOTS[route.spot].good)] > 0);
   const progress = job
     ? { gather: [st.gathers + sh, 2], sell: [Math.max(st.sells ? 3 : 0, sh), 3], supply: [Math.max(Math.round(st.sold * 8 / 15), sh), 8] }[q.id]
     : { gather: [st.gathers, 2], earn: [Math.floor(st.earned), 40], supply: [st.sold, 15] }[q.id] || null;
-  const target = job || fill(q.target);
-  return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target, reward: q.reward, progress, spot: route.spot, shop: route.shop, job };
+  const target = job || (findJob ? 'market' : fill(q.target));
+  return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target, reward: q.reward, progress, spot: route.spot, shop: route.shop, job, findJob };
 }
 
 function questDone(p, q) {
@@ -388,6 +398,7 @@ export function tick(state) {
   for (const b of Object.values(state.bots)) b.energy = Math.min(RULES.energyMax, r2(b.energy + RULES.energyPerTick));
 
   runBots(state);
+  runCouncil(state, newDay);
   runCraftsmen(state);
   runInn(state);
   adjustPrices(state);
@@ -397,12 +408,30 @@ export function tick(state) {
   if (newDay) startNewDay(state);
 }
 
+// Each morning the bot villagers look at prices and move to the work that pays
+// best per unit of energy (with some loyalty to yesterday's work). This keeps
+// supply in balance: when ore floods the market, miners drift to the fields.
+function chooseBotWork(state) {
+  const value = {};
+  for (const [key, spot] of Object.entries(GATHER_SPOTS)) {
+    const buyers = Object.values(state.npcs).filter((n) => n.buys[spot.good] !== undefined && (n.stock[spot.good] || 0) < targetFor(state, n.id, spot.good) * 1.5);
+    const best = buyers.length ? Math.max(...buyers.map((n) => n.buys[spot.good])) : 0;
+    value[key] = (best * (spot.base + 0.5)) / spot.energy;
+  }
+  const ranked = Object.keys(value).sort((a, c) => value[c] - value[a]);
+  for (const b of Object.values(state.bots)) {
+    const now = b.spot || { farmer: 'fields', miner: 'mine', woodcutter: 'forest' }[b.path];
+    if (value[now] >= value[ranked[0]] * 0.75 || rng(state) < 0.5) { b.spot = now; continue; }
+    b.spot = ranked[0];
+  }
+}
+
 function runBots(state) {
   for (const b of Object.values(state.bots)) {
-    if (rng(state) > 0.35) continue;
-    const spotKey = { farmer: 'fields', miner: 'mine', woodcutter: 'forest' }[b.path];
+    if (rng(state) > 0.22) continue;
+    const spotKey = b.spot || { farmer: 'fields', miner: 'mine', woodcutter: 'forest' }[b.path];
     const spot = GATHER_SPOTS[spotKey];
-    if (b.energy >= spot.energy) {
+    if (b.energy >= spot.energy && inv(b, spot.good) < 6) { // no point gathering what nobody buys
       b.energy = r2(b.energy - spot.energy);
       addInv(b, spot.good, gatherYield(state, spotKey, b));
     }
@@ -423,6 +452,12 @@ function runBots(state) {
   }
 }
 
+const TOOL_MAKER = {
+  smithy: { good: 'pickaxe', in: { ore: 2, wood: 1 } },
+  woodcutter: { good: 'axe', in: { wood: 3 } },
+  mill: { good: 'plow', in: { wheat: 2 } },
+};
+
 function runCraftsmen(state) {
   for (const def of CRAFTSMEN) {
     const npc = state.npcs[def.id];
@@ -436,6 +471,14 @@ function runCraftsmen(state) {
       if (supplier && rng(state) < 0.5) npcTrade(state, def.id, supplier.id, good, Math.min(need, supplier.stock[good], 2));
     }
 
+    // tools are made only when the shelf runs low, so they keep their value
+    const tool = TOOL_MAKER[def.id];
+    if (tool && (npc.stock[tool.good] || 0) < def.target[tool.good] && rng(state) < 0.08 &&
+        Object.entries(tool.in).every(([g, q]) => (npc.stock[g] || 0) >= q)) {
+      for (const [g, q] of Object.entries(tool.in)) npc.stock[g] -= q;
+      npc.stock[tool.good] = (npc.stock[tool.good] || 0) + 1;
+    }
+
     // produce
     if (!def.recipe) continue;
     const outGood = Object.keys(def.recipe.out)[0];
@@ -445,9 +488,25 @@ function runCraftsmen(state) {
       for (const [g, q] of Object.entries(def.recipe.in)) npc.stock[g] -= q;
       for (const [g, q] of Object.entries(def.recipe.out)) npc.stock[g] = (npc.stock[g] || 0) + q;
       // the woodcutter, miller and smith also make tools now and then
-      if (def.id === 'woodcutter' && rng(state) < 0.15) npc.stock.axe = (npc.stock.axe || 0) + 1;
-      if (def.id === 'mill' && rng(state) < 0.1) npc.stock.plow = (npc.stock.plow || 0) + 1;
     }
+  }
+}
+
+// travelling merchants buy finished goods the village has too much of, paid from
+// the adventurer fund (the inn sends travellers' money back into that fund)
+function runMerchants(state) {
+  if (balance(state, 'adventurerFund') < 500) return;
+  const wants = [['carpenter', 'cart'], ['woodcutter', 'lumber'], ['mill', 'flour'], ['smithy', 'sword'], ['smithy', 'ore'], ['woodcutter', 'wood'], ['mill', 'wheat']];
+  for (const [npcId, good] of wants) {
+    const npc = state.npcs[npcId];
+    const made = npc.sells[good] !== undefined;
+    const extra = Math.floor((npc.stock[good] || 0) - targetFor(state, npcId, good) * (made ? 1 : 1.5));
+    if (extra < 1 || rng(state) > 0.6) continue;
+    const qty = Math.min(extra, 4);
+    // made goods sell at 80% of the shop price; raw goods at the price the shop paid
+    const unit = price((npc.sells[good] ?? npc.buys[good]) * (npc.sells[good] !== undefined ? 0.8 : 1));
+    if (!transfer(state, 'adventurerFund', npcAcct(npcId), unit * qty)) return;
+    npc.stock[good] -= qty;
   }
 }
 
@@ -463,21 +522,23 @@ function runInn(state) {
   }
 }
 
+// Prices follow supply and demand: each shop compares its stock with the stock it
+// wants. Short on something, it pays more; overflowing, it pays less. Prices move a
+// little toward that level every step, so they react smoothly.
 function adjustPrices(state) {
-  const step = RULES.priceStep;
+  const k = RULES.priceStep;
   for (const def of CRAFTSMEN) {
     const npc = state.npcs[def.id];
     for (const good of Object.keys(npc.buys)) {
-      const s = npc.stock[good] || 0, t = targetFor(state, def.id, good);
-      if (s < t) npc.buys[good] *= 1 + step * (s < t / 2 ? 1.5 : 1);
-      else if (s > t * 1.5) npc.buys[good] *= 1 - step;
-      npc.buys[good] = clamp(npc.buys[good], npc.base[good] * 0.4, npc.base[good] * 4);
+      const s = npc.stock[good] || 0, t = Math.max(1, targetFor(state, def.id, good));
+      const level = npc.base[good] * clamp(Math.pow(t / Math.max(s, 0.5), 0.8), 0.4, 4);
+      npc.buys[good] += (level - npc.buys[good]) * k;
     }
     for (const good of Object.keys(npc.sells)) {
       const s = npc.stock[good] || 0, t = Math.max(1, targetFor(state, def.id, good));
-      if (s < t * 0.5) npc.sells[good] *= 1 + step;
-      else if (s > t) npc.sells[good] *= 1 - step * 0.7;
-      npc.sells[good] = clamp(npc.sells[good], npc.base[good] * 0.5, npc.base[good] * 4);
+      const floor = GOODS[good] && GOODS[good].kind === 'tool' ? 0.8 : 0.5;
+      const level = npc.base[good] * clamp(Math.pow(t / Math.max(s, 0.5), 0.6), floor, 4);
+      npc.sells[good] += (level - npc.sells[good]) * k;
     }
   }
 }
@@ -529,8 +590,14 @@ function startNewDay(state) {
     const acct = npcAcct(def.id), bal = balance(state, acct);
     if (bal > RULES.profitTaxAbove) transfer(state, acct, 'treasury', (bal - RULES.profitTaxAbove) * RULES.profitTaxRate);
   }
+  // shops buy supplies from outside the village (salt, nails, cloth): rich shops
+  // send part of their extra money to the travellers' fund, which pays the merchants
+  for (const def of CRAFTSMEN) {
+    const acct = npcAcct(def.id), extra = balance(state, acct) - 500;
+    if (extra > 0) transfer(state, acct, 'adventurerFund', extra * 0.15);
+  }
   const innBal = balance(state, npcAcct('inn'));
-  if (innBal > 600) transfer(state, npcAcct('inn'), 'adventurerFund', (innBal - 600) * 0.5);
+  if (innBal > 500) transfer(state, npcAcct('inn'), 'adventurerFund', (innBal - 500) * 0.8);
 
   // random events
   if (ev.drought === 0 && rng(state) < RULES.droughtChance) {
@@ -546,12 +613,220 @@ function startNewDay(state) {
     ev.dragon--;
   }
   if (ev.attackDay !== null && state.day >= ev.attackDay) resolveAttack(state);
+  for (let i = 0; i < 3; i++) runMerchants(state);
+  chooseBotWork(state);
   postJobOffers(state);
 }
 
 // ---------- jobs and homes ----------
 
+// ---------- the village council ----------
+
+export const taxRate = (state) => (state.taxRate ?? RULES.taxRate);
+
+function ensureCouncil(state) {
+  if (!state.council) state.council = { open: [], closed: [], nextId: 1 };
+}
+
+// vote weight: sqrt(wealth) * 0.5 + days lived here (max 10) + what you gave (max 10)
+export function voteWeight(state, voter) {
+  const W = COUNCIL.weight;
+  let bal = 0, days = 0, gave = 0;
+  if (voter.startsWith('player:')) {
+    const p = state.players[voter.slice(7)];
+    if (!p) return null;
+    bal = balance(state, voter);
+    days = state.day - (p.joinedDay || state.day);
+    const st = p.stats || {};
+    gave = (st.taxes || 0) + (st.shifts || 0) + (st.sold || 0) * 0.2;
+  } else if (voter.startsWith('bot:')) {
+    bal = balance(state, voter); days = state.day; gave = 2;
+  } else if (voter.startsWith('npc:')) {
+    bal = balance(state, voter); days = W.residencyCap; gave = 5;
+  }
+  const parts = {
+    wealth: r2(Math.sqrt(Math.max(0, bal)) * W.wealth),
+    residency: Math.min(W.residencyCap, Math.max(0, days)),
+    contribution: r2(Math.min(W.contributionCap, gave)),
+  };
+  return { ...parts, total: r2(parts.wealth + parts.residency + parts.contribution) };
+}
+
+function clampProposal(kind, a) {
+  const c = COUNCIL[kind];
+  if (kind === 'grant') {
+    if (!CRAFTSMEN.some((d) => d.id === a.npc)) return null;
+    return { npc: a.npc, amount: Math.round(Math.min(c.max, Math.max(c.min, Number(a.amount) || 0))) };
+  }
+  if (kind === 'tax') return { rate: Math.round(Math.min(c.max, Math.max(c.min, Number(a.rate) || 0)) * 100) / 100 };
+  if (kind === 'welcome') return { amount: Math.round(Math.min(c.max, Math.max(c.min, Number(a.amount) || 0))) };
+  if (kind === 'festival') return { amount: Math.round(Math.min(c.max, Math.max(c.min, Number(a.amount) || 0))) };
+  return null;
+}
+
+function voters(state) {
+  return [
+    ...Object.keys(state.players).map((id) => 'player:' + id),
+    ...Object.keys(state.bots).map((id) => 'bot:' + id),
+    ...CRAFTSMEN.map((c) => 'npc:' + c.id),
+  ];
+}
+
+function voterName(state, v) {
+  if (v.startsWith('player:')) return (state.players[v.slice(7)] || {}).name || '?';
+  if (v.startsWith('bot:')) return (state.bots[v.slice(4)] || {}).name || '?';
+  return v; // craftsmen are named on the client, in the player's language
+}
+
+function propose(state, by, kind, args) {
+  ensureCouncil(state);
+  if (!COUNCIL.kinds.includes(kind)) return { ok: false, error: 'Unknown proposal.', code: 'err.badProposal' };
+  const params = clampProposal(kind, args || {});
+  if (!params) return { ok: false, error: 'Unknown proposal.', code: 'err.badProposal' };
+  if (state.council.open.length >= COUNCIL.maxOpen) return { ok: false, error: 'The council is full. Wait for a vote to end.', code: 'err.councilFull' };
+  if (state.council.open.some((x) => x.kind === kind && JSON.stringify(x.params) === JSON.stringify(params))) return { ok: false, error: 'That is already being voted on.', code: 'err.sameProposal' };
+  if (by.startsWith('player:') && !transfer(state, by, 'treasury', COUNCIL.fee)) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+  const id = state.council.nextId++;
+  const prop = { id, kind, params, by, byName: voterName(state, by), day: state.day, closesTick: state.tick + RULES.ticksPerDay, votes: {}, aiPlan: {} };
+  // AI voters decide at different moments during the day
+  for (const v of voters(state)) if (!v.startsWith('player:')) prop.aiPlan[v] = state.tick + 1 + Math.floor(rng(state) * RULES.ticksPerDay * 0.8);
+  state.council.open.push(prop);
+  addLog(state, `New council proposal #${id}.`, 'info', 'log.proposal', { name: by.startsWith('npc:') ? { $npc: by.slice(4) } : prop.byName, n: id });
+  return { ok: true, id };
+}
+
+function vote(state, voter, id, yes) {
+  ensureCouncil(state);
+  const prop = state.council.open.find((x) => x.id === Number(id));
+  if (!prop) return { ok: false, error: 'That vote has ended.', code: 'err.voteClosed' };
+  if (prop.votes[voter]) return { ok: false, error: 'You already voted.', code: 'err.voted' };
+  const w = voteWeight(state, voter);
+  if (!w) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };
+  prop.votes[voter] = { yes: !!yes, w: w.total };
+  return { ok: true, weight: w.total };
+}
+
+// how an AI villager or craftsman feels about a proposal, and why (shown in the vote list)
+function aiOpinion(state, voter, prop) {
+  const tre = balance(state, 'treasury');
+  const rich = tre > 6000, r = rng(state);
+  const isNpc = voter.startsWith('npc:');
+  const danger = state.events.attackDay !== null || state.readiness < 60;
+  const say = (yes, why) => ({ yes, why });
+  switch (prop.kind) {
+    case 'grant':
+      if (voter === 'npc:' + prop.params.npc) return say(true, 'self');
+      if (prop.params.npc === 'tower' && danger) return r < 0.9 ? say(true, 'danger') : say(false, 'notMyShop');
+      if (rich) return r < 0.55 ? say(true, 'rich') : say(false, 'notMyShop');
+      return r < 0.25 ? say(true, 'help') : say(false, 'poor');
+    case 'tax': {
+      const lower = prop.params.rate < taxRate(state);
+      if (isNpc) return lower ? (r < 0.85 ? say(true, 'taxShop') : say(false, 'treasuryNeeds')) : (r < 0.15 ? say(true, 'treasuryNeeds') : say(false, 'taxShop'));
+      if (lower) return tre > 4000 ? (r < 0.7 ? say(true, 'cheaper') : say(false, 'treasuryNeeds')) : (r < 0.35 ? say(true, 'cheaper') : say(false, 'poor'));
+      return tre < 4000 ? (r < 0.6 ? say(true, 'treasuryNeeds') : say(false, 'pricier')) : (r < 0.25 ? say(true, 'treasuryNeeds') : say(false, 'pricier'));
+    }
+    case 'welcome':
+      if (isNpc) return (rich ? r < 0.6 : r < 0.3) ? say(true, 'customers') : say(false, rich ? 'notNeeded' : 'poor');
+      return r < 0.6 ? say(true, 'newcomers') : say(false, 'notNeeded');
+    case 'festival':
+      if (isNpc) return (rich ? r < 0.45 : r < 0.15) ? say(true, 'customers') : say(false, rich ? 'waste' : 'poor');
+      return r < 0.85 ? say(true, 'festival') : say(false, 'waste');
+    default: return say(false, 'waste');
+  }
+}
+
+function enact(state, prop) {
+  const p = prop.params;
+  const spare = balance(state, 'treasury') - RULES.treasuryReserve;
+  if (prop.kind === 'grant') {
+    if (spare < p.amount) return 'poor';
+    transfer(state, 'treasury', npcAcct(p.npc), p.amount);
+  } else if (prop.kind === 'tax') {
+    state.taxRate = p.rate;
+  } else if (prop.kind === 'welcome') {
+    if (spare < p.amount) return 'poor';
+    transfer(state, 'treasury', 'newcomerFund', p.amount);
+  } else if (prop.kind === 'festival') {
+    const people = [...Object.keys(state.players).map((id) => 'player:' + id), ...Object.keys(state.bots).map((id) => 'bot:' + id)];
+    if (spare < p.amount * people.length) return 'poor';
+    for (const h of people) transfer(state, 'treasury', h, p.amount);
+  }
+  return 'done';
+}
+
+function runCouncil(state, newDay) {
+  ensureCouncil(state);
+  const c = state.council;
+  for (const prop of c.open) {
+    for (const [v, at] of Object.entries(prop.aiPlan)) {
+      if (state.tick < at || prop.votes[v]) continue;
+      const w = voteWeight(state, v);
+      if (w) { const o = aiOpinion(state, v, prop); prop.votes[v] = { yes: o.yes, w: w.total, why: o.why }; }
+      delete prop.aiPlan[v];
+    }
+  }
+  // close the votes that have run for a full day
+  for (const prop of c.open.filter((x) => state.tick >= x.closesTick)) {
+    const vs = Object.values(prop.votes);
+    prop.yes = r2(vs.filter((x) => x.yes).reduce((a, x) => a + x.w, 0));
+    prop.no = r2(vs.filter((x) => !x.yes).reduce((a, x) => a + x.w, 0));
+    prop.voters = vs.length;
+    if (vs.length < COUNCIL.quorum) prop.result = 'quorum';
+    else if (prop.yes <= prop.no) prop.result = 'rejected';
+    else prop.result = enact(state, prop) === 'done' ? 'passed' : 'poor';
+    prop.closedDay = state.day;
+    delete prop.aiPlan;
+    c.open = c.open.filter((x) => x !== prop);
+    c.closed.unshift(prop);
+    c.closed.length = Math.min(c.closed.length, 8);
+    addLog(state, `Council proposal #${prop.id}: ${prop.result}.`, prop.result === 'passed' ? 'good' : 'warn', 'log.decided.' + prop.result, { n: prop.id });
+  }
+  if (!newDay) return;
+  // the AI villagers bring their own ideas to the council now and then (each idea at most every 3 days)
+  if (c.open.length < 2 && rng(state) < 0.5) {
+    c.lastIdea = c.lastIdea || {};
+    const fresh = (k) => (c.lastIdea[k] || -99) <= state.day - 3;
+    const tre = balance(state, 'treasury');
+    const bot = () => 'bot:b' + (1 + Math.floor(rng(state) * 12));
+    const ideas = [];
+    if (state.events.attackDay !== null || state.readiness < 45) ideas.push(['npc:tower', 'grant', { npc: 'tower', amount: 150 }]);
+    if (tre > 7000) ideas.push([bot(), 'festival', { amount: 4 }]);
+    if (taxRate(state) > COUNCIL.tax.min) ideas.push(['npc:' + CRAFTSMEN[Math.floor(rng(state) * CRAFTSMEN.length)].id, 'tax', { rate: Math.max(COUNCIL.tax.min, r2(taxRate(state) - 0.01)) }]);
+    if (tre < 4000 && taxRate(state) < COUNCIL.tax.max) ideas.push([bot(), 'tax', { rate: Math.min(COUNCIL.tax.max, r2(taxRate(state) + 0.01)) }]);
+    if (balance(state, 'newcomerFund') < 1500) ideas.push([bot(), 'welcome', { amount: 200 }]);
+    const pick = ideas.filter(([, k]) => fresh(k));
+    if (pick.length) {
+      const [by, kind, args] = pick[Math.floor(rng(state) * pick.length)];
+      if (propose(state, by, kind, args).ok) c.lastIdea[kind] = state.day;
+    }
+  }
+}
+
+function councilView(state, playerId) {
+  ensureCouncil(state);
+  const me = playerId ? 'player:' + playerId : null;
+  const show = (prop, open) => {
+    const vs = Object.entries(prop.votes);
+    const yes = r2(vs.filter(([, x]) => x.yes).reduce((a, [, x]) => a + x.w, 0));
+    const no = r2(vs.filter(([, x]) => !x.yes).reduce((a, [, x]) => a + x.w, 0));
+    return {
+      id: prop.id, kind: prop.kind, params: prop.params, by: prop.by, byName: prop.byName,
+      left: open ? Math.max(0, prop.closesTick - state.tick) / RULES.ticksPerDay : 0,
+      yes, no, voters: vs.length, myVote: me && prop.votes[me] ? prop.votes[me].yes : null,
+      list: vs.map(([v, x]) => ({ who: v.startsWith('npc:') ? v : voterName(state, v), yes: x.yes, w: x.w, why: x.why || null, me: v === me })).sort((a, b) => b.w - a.w).slice(0, 20),
+      result: open ? null : prop.result, closedDay: prop.closedDay,
+    };
+  };
+  return {
+    open: state.council.open.map((x) => show(x, true)),
+    closed: state.council.closed.slice(0, 5).map((x) => show(x, false)),
+    taxRate: taxRate(state), rules: COUNCIL, reserve: RULES.treasuryReserve,
+    myWeight: me ? voteWeight(state, me) : null,
+  };
+}
+
 export function ensureContracts(state) {
+  ensureCouncil(state);
   if (!state.jobOffers) state.jobOffers = {};
   if (!state.houses) state.houses = Object.fromEntries(Object.keys(HOUSES).map((id) => [id, { tenant: null, since: null }]));
   if (state.balances.deposits === undefined) state.balances.deposits = 0;
@@ -574,7 +849,7 @@ function postJobOffers(state) {
     if (!JOBS.wageBase[def.id] || n.damagedUntil > state.day || employs(state, def.id)) continue;
     const wage = wageFor(state, def.id);
     if (balance(state, npcAcct(def.id)) < wage * JOBS.shiftsPerDay * JOBS.days + JOBS.reserve) continue;
-    state.jobOffers[def.id] = { npc: def.id, wage, days: JOBS.days, day: state.day };
+    state.jobOffers[def.id] = { npc: def.id, wage, days: JOBS.days, day: state.day, require: JOBS.require[def.id] || null };
   }
 }
 
@@ -597,6 +872,7 @@ function endJob(state, p, reason) {
       p.stats.spent = r2(p.stats.spent + fee);
     }
     j.fee = fee;
+    p.quitUntil = state.day + JOBS.coolDownDays;
     addLog(state, `${p.name} quit a job and paid a ${fee} EMWK notice fee.`, 'warn', 'log.quit', { name: p.name, n: fee, place: { $place: j.npc } });
   } else if (reason === 'done') {
     addLog(state, `${p.name} finished an apprenticeship.`, 'good', 'log.jobDone', { name: p.name, place: { $place: j.npc }, n: j.shifts });
@@ -629,16 +905,39 @@ function settleContracts(state) {
   }
 }
 
+// an AI craftsman decides on a job application, with a reason the player can read
+function judgeApplicant(state, p, npc) {
+  const req = JOBS.require[npc];
+  if (p.quitUntil && p.quitUntil > state.day) return { ok: false, why: 'quitRecently' };
+  if (req && skillLevel(p, req.skill) < req.level) return { ok: false, why: 'needSkill', need: { skill: req.skill, level: req.level, have: skillLevel(p, req.skill) } };
+  if (req) return { ok: true, why: 'skilled' };
+  return { ok: true, why: (p.jobsDone || 0) > 0 ? 'experienced' : 'beginner' };
+}
+
 function contractAction(state, p, action) {
   const acct = 'player:' + p.id;
-  if (action.type === 'takeJob') {
+  if (action.type === 'propose') return propose(state, acct, action.kind, action);
+  if (action.type === 'vote') return vote(state, acct, action.id, action.yes);
+  if (action.type === 'takeJob' || action.type === 'apply') {
     const o = state.jobOffers[action.npc];
     if (!o) return { ok: false, error: 'That job is no longer offered.', code: 'err.noJob' };
     if (p.job) return { ok: false, error: 'You already have a job.', code: 'err.haveJob' };
-    p.job = { npc: o.npc, wage: o.wage, daysLeft: o.days, startDay: state.day, shiftDay: null, shiftsToday: 0, shifts: 0 };
+    // the craftsman looks at your application and says why
+    const verdict = judgeApplicant(state, p, o.npc);
+    if (!verdict.ok) {
+      addLog(state, `${p.name} applied for a job and was turned down.`, 'warn', 'log.turnedDown', { name: p.name, place: { $place: o.npc } });
+      return { ok: false, error: 'The craftsman turned you down.', code: 'err.turnedDown', why: verdict.why, need: verdict.need };
+    }
+    const contractId = (state.contractSeq = (state.contractSeq || 0) + 1);
+    p.job = { npc: o.npc, wage: o.wage, daysLeft: o.days, startDay: state.day, shiftDay: null, shiftsToday: 0, shifts: 0, contractId };
     delete state.jobOffers[o.npc];
+    // signing: a small bonus from the employer carries the contract terms onto NEAR
+    const terms = `Emberwick contract #${contractId}: ${o.npc} hires ${p.name}. ${o.wage} EMWK/shift, max ${JOBS.shiftsPerDay}/day, ${o.days} days, severance ${o.wage * JOBS.severanceDays}, notice fee ${o.wage * JOBS.noticeShifts}.`;
+    p.job.terms = terms;
+    transfer(state, npcAcct(o.npc), acct, JOBS.signingBonus, { memo: terms, contract: contractId });
+    p.stats.earned = r2(p.stats.earned + JOBS.signingBonus);
     addLog(state, `${p.name} became an apprentice.`, 'join', 'log.hired', { name: p.name, place: { $place: o.npc }, n: o.wage });
-    return { ok: true, job: p.job };
+    return { ok: true, job: p.job, why: verdict.why };
   }
   if (action.type === 'shift') {
     const j = p.job;
@@ -765,6 +1064,7 @@ export function publicView(state, playerId) {
       sells: Object.fromEntries(Object.entries(n.sells).map(([g, v]) => [g, price(v)])),
       stock: n.stock,
       closed: n.damagedUntil > state.day,
+      full: Object.keys(n.buys).filter((g) => (n.stock[g] || 0) >= targetFor(state, def.id, g) * 3),
       line: def.lines[(state.day + def.id.length) % def.lines.length],
       lineKey: `${def.id}.${(state.day + def.id.length) % def.lines.length}`,
     };
@@ -786,6 +1086,7 @@ export function publicView(state, playerId) {
     player: p ? playerView(state, p) : null,
     bots: Object.values(state.bots).map((b) => ({ id: b.id, name: b.name, path: b.path })),
     jobOffers: Object.values(state.jobOffers || {}),
+    council: councilView(state, playerId),
     houses: Object.fromEntries(Object.entries(HOUSES).map(([id, h]) => {
       const st = (state.houses || {})[id] || {};
       return [id, { ...h, tenant: st.tenant ? (state.players[st.tenant] || {}).name || '?' : null, mine: !!(st.tenant && st.tenant === playerId) }];
