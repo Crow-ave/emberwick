@@ -17,10 +17,10 @@ const PATH_LOOK = {
   woodcutter: { color: '#a0522d', hair: '#5a3a22' },
   apprentice: { color: '#3a6ec0', hair: '#c98a3a' },
 };
-const CARRY = { wheat: '#e8c83c', ore: '#7a7a80', wood: '#8a5a3a' };
+const CARRY = { wheat: '#e8c83c', ore: '#7a7a80', wood: '#8a5a3a', wool: '#f4f1ea' };
 const PATH_GOOD = { farmer: 'wheat', miner: 'ore', woodcutter: 'wood', apprentice: 'wood' };
-const SPOT_GOOD = { fields: 'wheat', forest: 'wood', mine: 'ore' };
-const SPOT_COST = { fields: 2, forest: 2, mine: 3 };
+const SPOT_GOOD = { fields: 'wheat', forest: 'wood', mine: 'ore', pasture: 'wool' };
+const SPOT_COST = { fields: 2, forest: 2, mine: 3, pasture: 2 };
 
 // ---------- text helpers ----------
 
@@ -322,6 +322,8 @@ function panelCraftsman(b) {
   if (n.closed) h += `<p class="closed">${t('panel.closed')}</p>`;
   else if (n.shut) h += `<p class="closed">${t('err.night')}</p>`;
   h += `<div class="quote">"${esc(t('line.' + n.lineKey))}"</div>`;
+  if (b.id === 'inn') h += sleepBox('inn');
+  if (b.id === 'tailor' && view.events.winter && me && !me.inv.coat) h += `<p class="closed small">${t('coat.need')}</p>`;
   h += jobSection(b.id);
   if (chainOk()) h += `<p class="small">${exLink('address/' + view.chain.accounts.npcs[b.id], t('near.view') + ' · ' + esc(view.chain.accounts.npcs[b.id]))}</p>`;
   if (b.id === 'inn') {
@@ -457,8 +459,12 @@ function panelGuide() {
   if (!me) return `<h2>${t('guide.title')}</h2><p>${t('guide.join')}</p>`;
   const route = world.routes[me.path];
   const steps = [];
-  if (view.night) steps.push({ text: t('guide.night'), go: 'inn', label: t('go.to', { place: placeName('inn') }) });
-  const carried = ['wheat', 'wood', 'ore'].filter((g) => (me.inv[g] || 0) > 0);
+  if (view.night && !me.sleepPlace) {
+    const bed = me.home ? me.home.id : (me.plot && view.plots[me.plot] && view.plots[me.plot].built ? me.plot : 'inn');
+    steps.push({ text: t(bed === 'inn' ? 'guide.nightInn' : 'guide.nightHome', { place: placeName(bed), n: me.innBed }), go: bed, label: t('go.to', { place: placeName(bed) }) });
+  }
+  if (me.freezing) steps.push({ text: t('guide.coat', { p: view.npcs.tailor ? view.npcs.tailor.sells.coat : '?' }), go: 'tailor', label: t('go.to', { place: placeName('tailor') }) });
+  const carried = ['wheat', 'wood', 'ore', 'wool'].filter((g) => (me.inv[g] || 0) > 0);
   if (carried.length) {
     for (const g of carried) {
       const best = bestBuyer(g);
@@ -559,13 +565,23 @@ function jobSection(npc) {
     `<p class="muted small">${t('job.severance', { n: o.wage })} ${t('job.quitNote', { n: o.wage })}</p></div>`;
 }
 
+// at night: go to bed here (your home, your own house, or a paid bed at the inn)
+function sleepBox(place) {
+  const me = view.player;
+  if (!me || !view.night) return '';
+  if (me.sleepPlace === place) return `<div class="contract sleep"><b>${t('sleep.asleep')}</b><p class="small">${t('sleep.asleepInfo')}</p></div>`;
+  const paid = place === 'inn';
+  return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small">${t(paid ? 'sleep.innInfo' : 'sleep.homeInfo', { n: me.innBed })}</p>` +
+    `<button class="primary big" data-act="sleep" data-place="${place}" ${paid && me.coins < me.innBed ? 'disabled' : ''}>${t(paid ? 'sleep.innBtn' : 'sleep.btn', { n: me.innBed })}</button></div>`;
+}
+
 function panelHouse(b) {
   const h = view.houses[b.id], me = view.player;
   let x = `<h2>${esc(placeName(b.id))}</h2><p class="muted">${t('house.rentInfo', { r: h.rent, d: h.deposit })}</p>` +
     `<p>${h.rest >= 99 ? t('house.restFull') : t('house.restInfo', { n: h.rest })}</p>`;
   if (h.mine) {
     const rested = me.home && me.home.restedToday;
-    x += `<div class="contract"><b>${t('house.yours')}</b>` +
+    x += sleepBox(b.id) + `<div class="contract"><b>${t('house.yours')}</b>` +
       (rested ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary big" data-act="rest">${h.rest >= 99 ? t('house.restFullBtn') : t('house.rest', { n: h.rest })}</button>`) +
       `<button class="linkbtn" data-act="leaveHouse">${t('house.leave', { n: h.deposit })}</button></div>`;
   } else if (h.tenant) x += `<p class="muted">${t('house.taken', { name: esc(h.tenant) })}</p>`;
@@ -582,7 +598,7 @@ function panelPlot(b) {
   if (p.mine) {
     h += deedCard(b.id, p, true) + `<div class="contract"><b>${t('plot.yours')}</b>`;
     if (p.built) {
-      h += `<p class="small">${t('plot.home')}</p>` + (me.restedToday ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary big" data-act="rest">${t('house.restFullBtn')}</button>`);
+      h += sleepBox(b.id) + `<p class="small">${t('plot.home')}</p>` + (me.restedToday ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary big" data-act="rest">${t('house.restFullBtn')}</button>`);
     } else {
       const have = me.inv.lumber || 0, ok = have >= L.build.lumber && me.coins >= L.build.fee;
       h += `<p class="small">${t('plot.buildInfo', { n: L.build.lumber, have, fee: L.build.fee, place: placeName(L.build.builder) })}</p>` +
@@ -919,6 +935,7 @@ function renderHud() {
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('rank.' + String(me.rank).toLowerCase())}</div></div></div>` +
     `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
     `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
+    ((me.asleep || me.cold || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
     `<div class="shortcuts"><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button></div>` +
     (me.job || me.home || me.plot ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
     (me.job ? `<div class="jobinfo">${t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage })}</div>` : '') +
@@ -936,8 +953,8 @@ function renderHud() {
 
 // ---------- the bottom panel: bag, wealth, skills, this shop ----------
 
-const TOOL_SHOP = { pickaxe: 'smithy', axe: 'woodcutter', plow: 'mill' };
-const TOOL_OF = { ore: 'pickaxe', wood: 'axe', wheat: 'plow' };
+const TOOL_SHOP = { pickaxe: 'smithy', axe: 'woodcutter', plow: 'mill', shears: 'tailor' };
+const TOOL_OF = { ore: 'pickaxe', wood: 'axe', wheat: 'plow', wool: 'shears' };
 
 function goodValue(g) {
   const b = bestBuyer(g);
@@ -1091,6 +1108,11 @@ async function act(type, extra = {}) {
 
 function explain(type, extra, r) {
   const place = type === 'gather' ? extra.spot : extra.npc || extra.house || extra.plot;
+  if (type === 'sleep') {
+    result[extra.place] = { key: r.paid ? 'result.sleptInn' : 'result.slept', p: { n: r.paid } };
+    if (you) you.inside = extra.place;
+    return;
+  }
   if (type === 'gather') {
     popup(place, `+${r.got} ${goodName(r.good)}`, '#3d7a34');
     flash('bag');
@@ -1262,6 +1284,7 @@ document.body.addEventListener('click', (e) => {
   else if (a === 'takeJob' || a === 'shift' || a === 'quitJob') { const npc = btn.dataset.npc || ui.selected; delete result[npc]; goAndDo(npc, a, () => act(a, { npc })); }
   else if (a === 'buyPlot' || a === 'buildHouse') { const plot = ui.selected; delete result[plot]; goAndDo(plot, a, () => act(a, { plot })); }
   else if (a === 'rentHouse' || a === 'leaveHouse' || a === 'rest') { const house = ui.selected; delete result[house]; goAndDo(house, a, () => act(a, { house })); }
+  else if (a === 'sleep') { const place = btn.dataset.place; delete result[place]; goAndDo(place, 'sleep', () => act('sleep', { place, house: place })); }
   else if (a === 'gather') { const spot = btn.dataset.spot || ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
   else { const npc = btn.dataset.npc || ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
 });

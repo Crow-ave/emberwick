@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, tick, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, tick, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -18,6 +18,7 @@ const PORT = Number(process.env.PORT) || 3000;
 let state;
 try {
   state = JSON.parse(fs.readFileSync(SAVE, 'utf8'));
+  ensureContracts(state); // bring older saves up to date (new shops, plots, council)
   console.log(`Loaded saved village (day ${state.day}).`);
 } catch {
   state = createState();

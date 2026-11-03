@@ -105,6 +105,7 @@ const KEEPERS = {
   carpenter: { color: '#a04a34', hair: '#5a3a22', apron: '#c9a06a' },
   inn: { color: '#7a3b2a', hair: '#8a3a2a', apron: '#f3e8d6' },
   tower: { color: '#6b645a', hair: '#3a3a3a', hat: '#8a8a90' },
+  tailor: { color: '#3f5f8f', hair: '#2a1a12', apron: '#e9d8c2' },
 };
 
 const ITEM_ICON = {
@@ -116,6 +117,8 @@ const ITEM_ICON = {
   sword: (x, y) => rect(x - 1.5, y - 34, 3, 26, '#cfd3d8') + rect(x - 8, y - 10, 16, 3, '#8a6a3a') + rect(x - 1.5, y - 7, 3, 7, '#5a3a22'),
   pickaxe: (x, y) => rect(x - 1, y - 24, 3, 24, '#6b4a2e') + `<path d="M${x - 12} ${y - 22} Q${x} ${y - 30} ${x + 12} ${y - 22} L${x + 10} ${y - 19} Q${x} ${y - 25} ${x - 10} ${y - 19} Z" fill="#9aa0a8"/>`,
   cart: (x, y) => rect(x - 18, y - 16, 36, 12, '#a87a4a') + `<circle cx="${x - 10}" cy="${y - 3}" r="5" fill="#3a2a1a"/><circle cx="${x + 10}" cy="${y - 3}" r="5" fill="#3a2a1a"/>`,
+  coat: (x, y) => `<path d="M${x - 6} ${y - 28} L${x - 16} ${y - 22} L${x - 14} ${y} L${x + 14} ${y} L${x + 16} ${y - 22} L${x + 6} ${y - 28} L${x} ${y - 22} Z" fill="#3a6ea8" stroke="#2a4e78"/><path d="M${x} ${y - 22} V${y}" stroke="#e9d8c2" stroke-width="1.5"/>`,
+  shears: (x, y) => `<circle cx="${x - 6}" cy="${y - 5}" r="5" fill="none" stroke="#c4473a" stroke-width="2.5"/><circle cx="${x + 6}" cy="${y - 5}" r="5" fill="none" stroke="#c4473a" stroke-width="2.5"/><path d="M${x - 3} ${y - 9} L${x + 4} ${y - 30} M${x + 3} ${y - 9} L${x - 4} ${y - 30}" stroke="#9aa0a8" stroke-width="3"/>`,
   meal: (x, y) => `<ellipse cx="${x}" cy="${y - 3}" rx="15" ry="5" fill="#f4efe4"/><ellipse cx="${x}" cy="${y - 7}" rx="9" ry="5" fill="#a84a2a"/>`,
 };
 
@@ -144,6 +147,10 @@ function shopProp(id) {
         `<g class="flick"><ellipse cx="910" cy="446" rx="40" ry="20" fill="#e5803a"/><ellipse cx="910" cy="448" rx="22" ry="10" fill="#f6d25a"/></g>` +
         `${rect(120, 410, 160, 14, '#8a5a3a')}${rect(130, 424, 10, 46, '#6b4a2e')}${rect(260, 424, 10, 46, '#6b4a2e')}` +
         `${rect(160, 392, 16, 18, '#e2b640', 'rx="3"')}${rect(220, 392, 16, 18, '#e2b640', 'rx="3"')}</g>`;
+    case 'tailor':
+      return `<g>${rect(830, 300, 8, 170, '#5a3a22')}${rect(800, 300, 70, 6, '#5a3a22')}` +
+        `<path d="M820 310 L790 330 L795 420 L880 420 L885 330 L855 310 L838 326 Z" fill="#b5501e" stroke="#8a3a14"/>` +
+        `${rect(900, 430, 50, 40, '#7a3b8a', 'rx="6"')}${rect(950, 440, 50, 30, '#2f7a3a', 'rx="6"')}${rect(910, 400, 70, 30, '#e2b640', 'rx="6"')}</g>`;
     case 'tower':
       return `<g>${rect(800, 300, 200, 14, '#6b4a2e')}${rect(800, 380, 200, 14, '#6b4a2e')}${rect(810, 260, 10, 210, '#5a3a22')}${rect(980, 260, 10, 210, '#5a3a22')}` +
         `<path d="M860 300 L880 240 L900 300 Z" fill="#a33a2f"/><path d="M920 300 L940 240 L960 300 Z" fill="#3a5fa0"/></g>`;

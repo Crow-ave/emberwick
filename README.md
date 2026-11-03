@@ -16,7 +16,9 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - Village treasury with a fixed reserve, profit tax on rich shops and a guard salary
 - Random events: droughts, winters, dragon warnings and attacks, judged by village readiness
 - Day and night: at night the shops close (the inn stays open), nobody gathers or works shifts, and villagers walk home to sleep
-- Winter comes 2 days in every 8: snow on the ground and roofs, and the bakery needs firewood
+- Shelter: at night a player sleeps in their rented home, their own house or a paid bed at the inn (5 EMWK) and recovers fast. A night outside means no rest and a cold morning (max energy −3 for the day)
+- Winter comes 2 days in every 8: snow on the ground and roofs, and the bakery needs firewood. Without a coat you are cold: outdoor work costs 1 more energy, you rest at half speed, and winter nights outside drain energy
+- The tailor (an eighth AI craftsman) sews winter coats from wool. Wool comes from the sheep pasture (you need shears from the tailor). Coats last 6 winter days; bot villagers buy them too
 - Dragon peak slowly turns red as an attack comes closer
 - Twelve villager bots that keep the economy moving
 - Four languages: English, Türkçe, Français, Deutsch (menu in the top bar; add more in `public/i18n.js`)

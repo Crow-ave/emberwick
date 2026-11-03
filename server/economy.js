@@ -205,9 +205,17 @@ const skillLevel = (p, skill) => levelFromXp((p.xp && p.xp[skill]) || 0);
 export function maxEnergy(p) {
   if (!p.xp) return RULES.energyMax;
   const total = SKILLS.reduce((a, s) => a + skillLevel(p, s), 0);
-  return Math.min(RULES.energyCap, RULES.energyMax + total - SKILLS.length);
+  const base = Math.min(RULES.energyCap, RULES.energyMax + total - SKILLS.length);
+  return p.cold ? Math.max(4, base - RULES.coldMaxEnergy) : base;
 }
-function energyCost(p, spotKey) {
+const hasCoat = (p) => ((p.inv && p.inv.coat) || 0) > 0;
+// cold: winter without a coat
+const freezing = (state, p) => !!state.events.winter && !hasCoat(p);
+function energyCost(p, spotKey, state = null) {
+  if (state && freezing(state, p)) return energyCostBase(p, spotKey) + RULES.winterNoCoatCost;
+  return energyCostBase(p, spotKey);
+}
+function energyCostBase(p, spotKey) {
   const s = GATHER_SPOTS[spotKey], lvl = skillLevel(p, SKILL_OF[s.good]);
   return Math.max(1, s.energy - (lvl >= 3 ? 1 : 0) - (lvl >= 5 ? 1 : 0));
 }
@@ -226,6 +234,7 @@ function targetFor(state, npcId, good) {
     if (npcId === 'smithy' && good === 'ore') t *= 2;
   }
   if (state.events.winter && npcId === 'bakery' && good === 'wood') t *= 2;
+  if (state.events.winter && npcId === 'tailor' && (good === 'coat' || good === 'wool')) t *= 2;
   return t;
 }
 
@@ -345,7 +354,7 @@ function doAction(state, p, actor, action, qty) {
     if (!spot) return { ok: false, error: 'You cannot gather there.', code: 'err.cannotGather' };
     const need = toolFor(spot.good);
     if (inv(p, need) < 1) return { ok: false, error: 'You need the right tool to work here.', code: 'err.noTool', tool: need };
-    const cost = energyCost(p, action.spot);
+    const cost = energyCost(p, action.spot, state);
     if (p.energy < cost) return { ok: false, error: 'You are too tired. Rest a little.', code: 'err.tired' };
     p.energy = r2(p.energy - cost);
     const got = gatherYield(state, action.spot, p);
@@ -448,7 +457,20 @@ export function tick(state) {
   const newDay = state.tick % RULES.ticksPerDay === 0;
 
   // energy recovers for everyone
-  for (const p of Object.values(state.players)) p.energy = Math.min(maxEnergy(p), r2(p.energy + RULES.energyPerTick));
+  const nightNow = isNight(state);
+  for (const p of Object.values(state.players)) {
+    let gain = RULES.energyPerTick;
+    const asleep = p.sleep && p.sleep.day === state.day;
+    if (nightNow) {
+      if (asleep) gain *= RULES.sleepRegen;          // warm bed
+      else {                                         // out in the dark: no rest
+        gain = 0;
+        if (freezing(state, p) && p.seenAt !== undefined && state.tick - p.seenAt < RULES.ticksPerDay) gain = -RULES.winterNightDrain;
+        p.nightOut = (p.nightOut || 0) + 1;
+      }
+    } else if (freezing(state, p)) gain *= 0.5;      // cold days drain you
+    p.energy = Math.max(0, Math.min(maxEnergy(p), r2(p.energy + gain)));
+  }
   for (const b of Object.values(state.bots)) b.energy = Math.min(RULES.energyMax, r2(b.energy + RULES.energyPerTick));
 
   const night = isNight(state);
@@ -512,6 +534,7 @@ const TOOL_MAKER = {
   smithy: { good: 'pickaxe', in: { ore: 2, wood: 1 } },
   woodcutter: { good: 'axe', in: { wood: 3 } },
   mill: { good: 'plow', in: { wheat: 2 } },
+  tailor: { good: 'shears', in: { ore: 1 } },
 };
 
 function runCraftsmen(state) {
@@ -552,7 +575,7 @@ function runCraftsmen(state) {
 // the adventurer fund (the inn sends travellers' money back into that fund)
 function runMerchants(state) {
   if (balance(state, 'adventurerFund') < 500) return;
-  const wants = [['carpenter', 'cart'], ['woodcutter', 'lumber'], ['mill', 'flour'], ['smithy', 'sword'], ['smithy', 'ore'], ['woodcutter', 'wood'], ['mill', 'wheat']];
+  const wants = [['carpenter', 'cart'], ['tailor', 'coat'], ['tailor', 'wool'], ['woodcutter', 'lumber'], ['mill', 'flour'], ['smithy', 'sword'], ['smithy', 'ore'], ['woodcutter', 'wood'], ['mill', 'wheat']];
   for (const [npcId, good] of wants) {
     const npc = state.npcs[npcId];
     const made = npc.sells[good] !== undefined;
@@ -613,7 +636,7 @@ function recordHistory(state) {
     const src = producers.length ? producers.map((n) => n.sells[g]) : buyers.map((n) => n.buys[g]);
     if (!src.length) continue;
     const avg = src.reduce((a, b) => a + b, 0) / src.length;
-    state.history[g].push(r2(avg));
+    (state.history[g] = state.history[g] || []).push(r2(avg));
     if (state.history[g].length > 60) state.history[g].shift();
   }
 }
@@ -629,6 +652,30 @@ function startNewDay(state) {
   const wasWinter = ev.winter;
   ev.winter = state.day % 8 === 0 || state.day % 8 === 7;
   if (ev.winter && !wasWinter) addLog(state, 'Winter arrives. Firewood is in demand.', 'warn', 'log.winter');
+
+  // morning: who slept in a bed, who spent the night outside; coats wear out in winter
+  for (const p of Object.values(state.players)) {
+    const active = p.seenAt !== undefined && state.tick - p.seenAt < RULES.ticksPerDay * 1.5;
+    const slept = p.sleep && p.sleep.day === state.day - 1;
+    const outside = (p.nightOut || 0) >= RULES.ticksPerDay * 0.1; // more than half the night outside
+    p.cold = !!(active && !slept && outside);
+    p.nightOut = 0;
+    if (p.cold) p.energy = Math.min(p.energy, maxEnergy(p));
+    if (ev.winter && hasCoat(p)) {
+      p.wear = p.wear || {};
+      p.wear.coat = (p.wear.coat || 0) + 1;
+      if (p.wear.coat >= RULES.coatWinterDays) { addInv(p, 'coat', -1); p.wear.coat = 0; p.coatWorn = state.day; }
+    }
+  }
+  // bot villagers buy a coat when winter comes (or is near)
+  if (ev.winter || state.day % 8 === 6) {
+    for (const b of Object.values(state.bots)) {
+      if (inv(b, 'coat') > 0 || rng(state) > 0.35) continue;
+      const res = buyFromNpc(state, { acct: 'bot:' + b.id, holder: b }, 'tailor', 'coat', 1);
+      if (res.ok) b.coatDays = 0;
+    }
+  }
+  if (ev.winter) for (const b of Object.values(state.bots)) if (inv(b, 'coat') > 0 && (b.coatDays = (b.coatDays || 0) + 1) >= RULES.coatWinterDays) { addInv(b, 'coat', -1); b.coatDays = 0; }
 
   // treasury pays the guard captain when his purse runs low
   const spare = balance(state, 'treasury') - RULES.treasuryReserve;
@@ -905,6 +952,12 @@ function councilView(state, playerId) {
 
 export function ensureContracts(state) {
   ensureCouncil(state);
+  // villages saved before the tailor opened: the shop opens with money from the treasury
+  for (const c of CRAFTSMEN) if (!state.npcs[c.id]) {
+    state.npcs[c.id] = { id: c.id, buys: { ...c.buys }, sells: { ...c.sells }, base: { ...c.buys, ...c.sells }, stock: { ...c.stock }, damagedUntil: 0, mood: c.lines[0] };
+    if (!transfer(state, 'treasury', npcAcct(c.id), c.wallet, { memo: `Emberwick: ${c.name} opens a shop` })) state.balances[npcAcct(c.id)] = state.balances[npcAcct(c.id)] || 0;
+    addLog(state, `${c.name} opened a new shop in the village.`, 'good', 'log.newShop', { name: { $npc: c.id } });
+  }
   if (!state.plots) state.plots = Object.fromEntries(LAND.plots.map((id) => [id, { owner: null, built: false, deed: null }]));
   if (!state.jobOffers) state.jobOffers = {};
   if (!state.houses) state.houses = Object.fromEntries(Object.keys(HOUSES).map((id) => [id, { tenant: null, since: null }]));
@@ -1101,6 +1154,21 @@ function contractAction(state, p, action) {
     p.home = null;
     return { ok: true, deposit: h.deposit };
   }
+  if (action.type === 'sleep') {
+    // go to bed for the night: your rented home, your own built home, or a bed at the inn
+    if (!isNight(state)) return { ok: false, error: 'It is not night yet. You can sleep once it gets dark.', code: 'err.notNight' };
+    if (p.sleep && p.sleep.day === state.day) return { ok: false, error: 'You are already asleep.', code: 'err.asleep' };
+    const place = action.place;
+    const own = p.plot && place === p.plot && state.plots[p.plot] && state.plots[p.plot].built;
+    const rented = p.home && place === p.home;
+    if (place === 'inn') {
+      if (!transfer(state, acct, npcAcct('inn'), RULES.innBed, { memo: `Emberwick: ${p.name} sleeps at the inn` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+      p.stats.spent = r2(p.stats.spent + RULES.innBed);
+    } else if (!own && !rented) return { ok: false, error: 'You can only sleep in your own home or at the inn.', code: 'err.noBed' };
+    p.sleep = { day: state.day, place };
+    p.where = place;
+    return { ok: true, place, paid: place === 'inn' ? RULES.innBed : 0 };
+  }
   if (action.type === 'rest') {
     const own = p.plot && state.plots[p.plot] && state.plots[p.plot].built && (!p.home || action.house === p.plot);
     if (!p.home && !own) return { ok: false, error: 'You do not rent a home.', code: 'err.noHome' };
@@ -1147,7 +1215,7 @@ function playerView(state, p) {
     const xp = p.xp[s] || 0, level = levelFromXp(xp);
     skills[s] = { xp, level, from: RULES.levelXp[level - 1], to: RULES.levelXp[level] ?? null };
   }
-  const costs = Object.fromEntries(Object.keys(GATHER_SPOTS).map((k) => [k, energyCost(p, k)]));
+  const costs = Object.fromEntries(Object.keys(GATHER_SPOTS).map((k) => [k, energyCost(p, k, state)]));
   return {
     ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p),
     job: p.job ? (() => {
@@ -1156,11 +1224,15 @@ function playerView(state, p) {
     })() : null,
     home: p.home ? { id: p.home, ...HOUSES[p.home], restedToday: p.restedDay === state.day } : null,
     restedToday: p.restedDay === state.day,
+    asleep: !!(p.sleep && p.sleep.day === state.day && isNight(state)), sleepPlace: p.sleep && p.sleep.day === state.day ? p.sleep.place : null,
+    cold: !!p.cold, freezing: freezing(state, p), coatLeft: hasCoat(p) ? RULES.coatWinterDays - ((p.wear && p.wear.coat) || 0) : 0,
+    innBed: RULES.innBed,
     skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,
   };
 }
 
 export function publicView(state, playerId) {
+  if (CRAFTSMEN.some((c) => !state.npcs[c.id])) ensureContracts(state);
   const npcs = {};
   for (const def of CRAFTSMEN) {
     const n = state.npcs[def.id];

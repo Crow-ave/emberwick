@@ -8,17 +8,18 @@ export const TOKEN = { symbol: 'EMWK', totalSupply: 25000 };
 // How the fixed supply is split at genesis. Money never appears from nowhere:
 // it only moves between these accounts and players.
 export const GENESIS = {
-  treasury: 10000,
+  treasury: 9600,
   newcomerFund: 5000,
   adventurerFund: 5000,
   botFund: 1500,
-  craftsmen: 3500,
+  craftsmen: 3900,
 };
 
 export const GOODS = {
   wheat:   { name: 'Wheat',     kind: 'raw' },
   wood:    { name: 'Wood',      kind: 'raw' },
   ore:     { name: 'Iron ore',  kind: 'raw' },
+  wool:    { name: 'Wool',      kind: 'raw' },
   lumber:  { name: 'Lumber',    kind: 'made' },
   flour:   { name: 'Flour',     kind: 'made' },
   bread:   { name: 'Bread',     kind: 'made' },
@@ -27,6 +28,8 @@ export const GOODS = {
   axe:     { name: 'Axe',       kind: 'tool', boosts: 'wood' },
   plow:    { name: 'Plow',      kind: 'tool', boosts: 'wheat' },
   cart:    { name: 'Cart',      kind: 'tool', boosts: 'carry' },
+  shears:  { name: 'Shears',    kind: 'tool', boosts: 'wool' },
+  coat:    { name: 'Winter coat', kind: 'clothing' }, // keeps you warm in winter; wears out after a few winter days
   meal:    { name: 'Meal',      kind: 'service' },
 };
 
@@ -36,6 +39,7 @@ export const GATHER_SPOTS = {
   forest: { good: 'wood',  energy: 2, base: 2 },
   fields: { good: 'wheat', energy: 2, base: 2 },
   mine:   { good: 'ore',   energy: 3, base: 1 },
+  pasture: { good: 'wool', energy: 2, base: 2 },
 };
 
 // Map layout on a 14x14 isometric grid. (i, j) = grid cell, w = footprint.
@@ -57,6 +61,8 @@ export const BUILDINGS = [
   { id: 'house-1',    name: 'Room',        type: 'house',     i: 9,  j: 10,  w: 1, size: 'room' },
   { id: 'house-2',    name: 'Small house', type: 'house',     i: 8,  j: 11,  w: 1, size: 'small' },
   { id: 'house-3',    name: 'Large house', type: 'house',     i: 11, j: 10, w: 1, size: 'large' },
+  { id: 'pasture',    name: 'Sheep pasture', type: 'gather',  i: 0,  j: 10, w: 2 },
+  { id: 'tailor',     name: 'Tailor',      type: 'craftsman', i: 3,  j: 10, w: 1 },
   { id: 'gate',       name: 'Village gate',type: 'landmark',  i: 5,  j: 13, w: 1 },
   // building land: four plots around the village players can buy and build a home on
   { id: 'plot-1',     name: 'Plot 1',      type: 'plot',      i: 1,  j: 12, w: 1 },
@@ -116,6 +122,13 @@ export const CRAFTSMEN = [
     lines: ['Travellers bring coin and stories.', 'Full tables mean a full purse.'],
   },
   {
+    id: 'tailor', name: 'Selma the Tailor', wallet: 400,
+    recipe: { in: { wool: 3 }, out: { coat: 1 } },
+    buys: { wool: 3, ore: 6 }, sells: { coat: 26, shears: 22 },
+    stock: { wool: 6, ore: 1, coat: 3, shears: 3 }, target: { wool: 9, ore: 2, coat: 4, shears: 3 },
+    lines: ['Winter bites. A good coat bites back.', 'Bring me wool and I will keep the village warm.'],
+  },
+  {
     id: 'tower', name: 'Captain Hale', wallet: 700,
     recipe: null,
     buys: { sword: 47, bread: 7 },  sells: {},
@@ -158,13 +171,20 @@ export const RULES = {
   profitTaxAbove: 800,   // shops richer than this pay a profit tax
   profitTaxRate: 0.2,
   minPrice: 1,
+  // nights and winter
+  innBed: 5,             // a bed for the night at the inn, paid to the innkeeper
+  sleepRegen: 3,         // energy comes back this many times faster while you sleep indoors
+  coldMaxEnergy: 3,      // after a night outside your energy cannot fill up as high the next day
+  winterNoCoatCost: 1,   // extra energy for outdoor work in winter without a coat
+  winterNightDrain: 0.08, // energy lost per step on a winter night outside without a coat
+  coatWinterDays: 6,     // a coat lasts this many winter days
 };
 
 // Apprentice jobs: craftsmen post an offer each day if they can afford it.
 // Wages are paid per shift, straight from the craftsman's wallet.
 // While under contract the player works only for their employer (no gathering).
 export const JOBS = {
-  wageBase: { smithy: 12, carpenter: 12, bakery: 8, mill: 9, woodcutter: 9, inn: 7, tower: 9 },
+  wageBase: { smithy: 12, carpenter: 12, bakery: 8, mill: 9, woodcutter: 9, inn: 7, tower: 9, tailor: 8 },
   // experience a shop asks for. Shops without an entry take beginners.
   require: { smithy: { skill: 'mining', level: 2 }, mill: { skill: 'farming', level: 2 }, woodcutter: { skill: 'woodcutting', level: 2 }, carpenter: { skill: 'woodcutting', level: 3 } },
   signingBonus: 1,       // paid by the employer when the contract is signed; the contract terms go on NEAR with it
@@ -232,5 +252,5 @@ export const QUESTS = [
 ];
 
 // Which skill each raw good trains.
-export const SKILL_OF = { wheat: 'farming', wood: 'woodcutting', ore: 'mining' };
+export const SKILL_OF = { wheat: 'farming', wood: 'woodcutting', ore: 'mining', wool: 'farming' };
 export const SKILLS = ['farming', 'woodcutting', 'mining', 'trading'];

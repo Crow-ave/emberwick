@@ -125,6 +125,7 @@ function sign(x, y, icon, bg = '#efe4cf') {
     axe: `<rect x="${x - .8}" y="${y - 6}" width="1.6" height="13" fill="#7a5236"/><path d="M${x} ${y - 6} q7 1 6 7 q-4 -2 -6 -1 z" fill="#9aa0a8"/>`,
     mug: `<rect x="${x - 5}" y="${y - 5}" width="8" height="10" rx="1.5" fill="#e2b640"/><rect x="${x - 5}" y="${y - 6}" width="8" height="3" rx="1.5" fill="#fff"/><path d="M${x + 3} ${y - 3} q4 0 4 3 q0 3 -4 3" stroke="#e2b640" stroke-width="1.6" fill="none"/>`,
     coin: `<circle cx="${x}" cy="${y}" r="5.5" fill="#e2b640" stroke="#a07a20"/><text x="${x}" y="${y + 2.6}" font-size="7" text-anchor="middle" fill="#8a5a10" font-weight="bold">E</text>`,
+    coat: `<path d="M${x - 3} ${y - 6} L${x - 7} ${y - 3} L${x - 6} ${y + 6} L${x + 6} ${y + 6} L${x + 7} ${y - 3} L${x + 3} ${y - 6} L${x} ${y - 3} Z" fill="#3a6ea8"/><path d="M${x} ${y - 3} V${y + 6}" stroke="#f4efe4" stroke-width=".8"/><circle cx="${x + 1.5}" cy="${y}" r=".7" fill="#e2b640"/><circle cx="${x + 1.5}" cy="${y + 3}" r=".7" fill="#e2b640"/>`,
     wheat: `<path d="M${x} ${y + 6} V${y - 5}" stroke="#a8841e" stroke-width="1.2"/><ellipse cx="${x - 2}" cy="${y - 2}" rx="1.6" ry="3" fill="#e8c83c"/><ellipse cx="${x + 2}" cy="${y - 3}" rx="1.6" ry="3" fill="#e8c83c"/><ellipse cx="${x}" cy="${y - 6}" rx="1.6" ry="3" fill="#e8c83c"/>`,
   }[icon] || '';
   return `<g><rect x="${x - 1}" y="${y - 24}" width="2" height="30" fill="#5a3a22"/><rect x="${x - 1}" y="${y - 24}" width="14" height="2" fill="#5a3a22"/>` +
@@ -285,6 +286,40 @@ const DRAW = {
       sign(cx + 26, cy - 6, 'mug', '#7a3b2a') + `<rect x="${cx - 36}" y="${cy + 4}" width="12" height="8" fill="#8a6a4a"/><rect x="${cx - 34}" y="${cy + 1}" width="3" height="4" fill="#e2b640"/><rect x="${cx - 29}" y="${cy + 1}" width="3" height="4" fill="#e2b640"/>`;
   },
   tower(cx, cy) { return watchtower(cx, cy, true); },
+  tailor(cx, cy) {
+    // a narrow two-storey shop with a blue roof, a big display window, a coat on a stand and bolts of cloth
+    const f = frame(cx, cy, 0.95, 24);
+    let s = shadow(cx, cy, 24) + chimney(cx, cy, 0.95, 24, 14, '#7a6a5a') + house(cx, cy, 0.95, 24, '#e9d8c2', '#cdb99c', '#3f5f8f', '#334d76', 14) + door(cx, cy, 0.95, 24);
+    s += windowAt(mid(f.B, f.R, 0.18), f.R, 6, 1.35, true) + windowAt(mid(f.B, f.R, 0.4), f.R, 24 * 0.74, 0.95);
+    s += windowAt(mid(f.L, f.B, 0.1), f.B, 24 * 0.74, 0.95);
+    // coat stand outside
+    const p = [f.R[0] + 6, f.R[1] + 8];
+    s += `<line x1="${p[0]}" y1="${p[1]}" x2="${p[0]}" y2="${p[1] - 20}" stroke="#5a3a22" stroke-width="1.4"/><path d="M${p[0] - 4} ${p[1] - 18} L${p[0] - 7} ${p[1] - 14} L${p[0] - 6} ${p[1] - 5} L${p[0] + 6} ${p[1] - 5} L${p[0] + 7} ${p[1] - 14} L${p[0] + 4} ${p[1] - 18} L${p[0]} ${p[1] - 15} Z" fill="#b5501e"/>`;
+    // bolts of cloth
+    s += `<g stroke="rgba(0,0,0,.2)" stroke-width=".5"><ellipse cx="${f.L[0] - 2}" cy="${f.L[1] + 6}" rx="5" ry="3" fill="#7a3b8a"/><ellipse cx="${f.L[0] + 7}" cy="${f.L[1] + 9}" rx="5" ry="3" fill="#2f7a3a"/><ellipse cx="${f.L[0] + 2}" cy="${f.L[1] + 3}" rx="5" ry="3" fill="#e2b640"/></g>`;
+    return s + sign(cx - 40, cy - 12, 'coat', '#eef3fa');
+  },
+  pasture(cx, cy, v) {
+    // a green meadow with a wooden fence, a shed and sheep
+    const snow = v.events.winter;
+    const d = diamond(cx, cy, BT * 0.95, BH * 0.95), [T, R, B, L] = d;
+    let s = poly(d, snow ? '#d9e4d4' : '#9fd46a');
+    const inner = diamond(cx, cy, BT * 0.88, BH * 0.88);
+    s += fence(inner[0][0], inner[0][1], inner[3][0], inner[3][1], 6) + fence(inner[0][0], inner[0][1], inner[1][0], inner[1][1], 6);
+    // little shed
+    s += house(cx + 22, cy - 12, 0.5, 11, '#c9a46a', '#a8854e', '#8a5a3a', '#6b4528', 8);
+    // sheep (deterministic spots)
+    const sheep = [[-30, 2], [-12, -8], [4, 8], [-20, 14], [18, 12], [-2, -2]];
+    for (const [dx, dy] of sheep.sort((a, b) => a[1] - b[1])) {
+      const x = cx + dx, y = cy + dy;
+      s += `<ellipse cx="${x + 1}" cy="${y + 4}" rx="6" ry="2" fill="rgba(40,60,20,.2)"/><rect x="${x - 3}" y="${y}" width="1.4" height="4" fill="#3a3a3a"/><rect x="${x + 2}" y="${y}" width="1.4" height="4" fill="#3a3a3a"/>` +
+        `<ellipse cx="${x}" cy="${y - 1}" rx="6" ry="4.2" fill="#fbfaf6" stroke="#d8d2c4" stroke-width=".6"/><circle cx="${x - 3}" cy="${y - 3}" r="2.4" fill="#fbfaf6"/><circle cx="${x + 2}" cy="${y - 4}" r="2.6" fill="#fbfaf6"/>` +
+        `<ellipse cx="${x + 6}" cy="${y - 2}" rx="2.4" ry="2" fill="#3a3a3a"/>`;
+    }
+    // hay bales
+    s += `<ellipse cx="${B[0] - 14}" cy="${B[1] - 10}" rx="5" ry="3.4" fill="#e3c26a" stroke="#b8963e"/><ellipse cx="${B[0] - 4}" cy="${B[1] - 7}" rx="5" ry="3.4" fill="#e3c26a" stroke="#b8963e"/>`;
+    return s;
+  },
   market(cx, cy) {
     let s = poly(diamond(cx, cy, BT * 0.95, BH * 0.95), '#dcc8a2');
     const cols = ['#c4473a', '#3a7fc0', '#e2b640', '#4f9a48'];
@@ -358,7 +393,7 @@ for (let j = 9; j <= 11; j++) ROAD.add(`2,${j}`);   // a path past the mill to t
 const WATER = new Set(['8,7', '9,7', '8,8']);
 
 let blocked = null, entrances = {}, workCells = {};
-const OPEN_AREAS = new Set(['gate', 'fields', 'forest', 'watch-1', 'watch-2', 'watch-3']); // people can walk inside these
+const OPEN_AREAS = new Set(['gate', 'fields', 'forest', 'pasture', 'watch-1', 'watch-2', 'watch-3']); // people can walk inside these
 export function buildGrid(buildings) {
   blocked = new Set(WATER);
   for (const b of buildings) {

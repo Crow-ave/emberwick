@@ -52,7 +52,34 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   const b = playerAction(state, me, { type: 'buy', npc: 'bakery', good: 'bread', qty: 1 });
   console.log('Night: gather', g.code, '| bakery', b.code, '| view.night', publicView(state, me).night);
   if (g.code !== 'err.night' || b.code !== 'err.night') fail('shops or gathering stayed open at night');
+  // a bed at the inn costs money and fills energy fast; sleeping outside leaves you cold in the morning
+  const p = state.players[me], inn = state.balances['npc:inn'];
+  p.energy = 2;
+  const bed = playerAction(state, me, { type: 'sleep', place: 'inn' });
+  const e0 = p.energy; tick(state); tick(state);
+  console.log('Sleep: inn bed', bed.ok, '| paid', Math.round((state.balances['npc:inn'] - inn) * 100) / 100, '| energy', e0, '->', p.energy);
+  if (!bed.ok || p.energy - e0 < RULES.energyPerTick * 2 * RULES.sleepRegen - 0.01) fail('sleeping at the inn did not work');
+  while ((state.tick % per) !== 0) tick(state);
+  if (p.cold) fail('a player who slept at the inn woke up cold');
+  while ((state.tick % per) / per < 0.85) tick(state);
+  p.seenAt = state.tick; while ((state.tick % per) !== 0) tick(state);
+  console.log('Night outside: cold in the morning', p.cold);
+  if (!p.cold) fail('sleeping outside had no effect');
 }
+
+// winter: a coat from the tailor keeps you warm
+{
+  const p = state.players[me];
+  state.events.winter = true;
+  const cold = playerView0().costs.mine;
+  const r = playerAction(state, me, { type: 'buy', npc: 'tailor', good: 'coat', qty: 1 });
+  const warm = playerView0().costs.mine;
+  console.log('Winter: coat bought', r.ok, '| mine energy without/with coat', cold, warm);
+  if (!r.ok || warm >= cold) fail('a coat did not help in winter');
+  state.events.winter = false;
+  if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with nights and coats');
+}
+function playerView0() { return publicView(state, me).player; }
 
 // a watchtower: the council orders one, the carpenter is paid, readiness goes up
 {
@@ -63,7 +90,8 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   for (let i = 0; i < RULES.ticksPerDay + 2; i++) tick(state);
   const after = (state.watchtowers || []).length;
   console.log('Watchtower: proposed', r.ok, '| towers', before, '->', after, '| carpenter +', Math.round(state.balances['npc:carpenter'] - carp));
-  if (!r.ok || after !== before + 1) fail('the council could not build a watchtower');
+  if (r.code === 'err.noTowerSpot') console.log('  (all watchtower spots already built by the village)');
+  else if (!r.ok || after !== before + 1) fail('the council could not build a watchtower');
   if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with the watchtower');
 }
 
