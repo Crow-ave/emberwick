@@ -20,26 +20,27 @@
     </div>
   </header>
 
-  <div class="banner" id="banner" hidden></div>
-
   <main class="stage">
-    <svg id="map" role="img" aria-label="Map of Emberwick village"></svg>
-    <svg id="scene" role="img" hidden></svg>
-    <button id="mini" class="mini" hidden></button>
-    <div id="scene-bar" class="scene-bar" hidden></div>
+    <div class="view" id="view">
+      <svg id="map" role="img" aria-label="Map of Emberwick village" preserveAspectRatio="xMidYMid meet"></svg>
+      <svg id="scene" role="img" hidden preserveAspectRatio="xMidYMid meet"></svg>
+      <button id="mini" class="mini" hidden></button>
+      <div id="scene-bar" class="scene-bar" hidden></div>
+      <div class="banner" id="banner" hidden></div>
+      <div class="hint" id="hint" data-i18n="ui.hint"></div>
+    </div>
+
+    <div class="bottom">
+      <section class="dock" id="dock"></section>
+    </div>
 
     <aside class="side">
       <div class="card me" id="me"></div>
       <div class="card quest" id="quest"></div>
       <div class="card panel" id="panel" hidden></div>
+      <section class="card log"><h3 data-i18n="ui.news">Village news</h3><ul id="log"></ul></section>
     </aside>
-
-    <div class="hint" id="hint" data-i18n="ui.hint"></div>
   </main>
-
-  <section class="dock" id="dock"></section>
-
-  <section class="log"><h3 data-i18n="ui.news">Village news</h3><ul id="log"></ul></section>
 
   <div class="overlay" id="join" hidden>
     <form class="dialog" id="join-form" novalidate>

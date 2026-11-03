@@ -15,6 +15,9 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - Selling to and buying from craftsmen, with a 3% market tax to the village treasury
 - Village treasury with a fixed reserve, profit tax on rich shops and a guard salary
 - Random events: droughts, winters, dragon warnings and attacks, judged by village readiness
+- Day and night: at night the shops close (the inn stays open), nobody gathers or works shifts, and villagers walk home to sleep
+- Winter comes 2 days in every 8: snow on the ground and roofs, and the bakery needs firewood
+- Dragon peak slowly turns red as an attack comes closer
 - Twelve villager bots that keep the economy moving
 - Four languages: English, Türkçe, Français, Deutsch (menu in the top bar; add more in `public/i18n.js`)
 - A fixed supply of 25,000 EMWK. Money only moves between accounts and never appears from nowhere (checked by `npm test`)
@@ -41,6 +44,17 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - Players, the 12 bot villagers and the 7 AI craftsmen all vote, each in their own interest (shops want lower tax, the guard wants sword money before a dragon attack, villagers like festivals).
 - Vote weight is hybrid: half the square root of your coins, plus days lived in the village (max 10), plus what you gave (taxes, shifts, goods sold; max 10). Wealth helps, but cannot buy the vote alone.
 - A vote lasts one game day and needs at least 4 voters. Passed decisions are carried out automatically, and the treasury never goes below its reserve. Every payment is mirrored to NEAR like any other transfer.
+
+## Land, homes and deeds
+
+- Four plots of building land are spread around the village (north, east, south and west). A plot costs 120 EMWK, paid to the treasury.
+- The buyer gets a **deed: a NEP-171 NFT** on NEAR (`deeds.emberwick-village.testnet`, near-sdk-rs 4.0 standard contract with events). It goes to the buyer's verified wallet; without one, the village bank holds it and moves it to the wallet once the player verifies.
+- On their own plot a player builds a home with 6 lumber and 40 EMWK for the carpenter. Their own home has no rent and sleeping there fills their energy.
+
+## Watchtowers
+
+- Anyone can propose "Build a watchtower" at the council. If it passes, the treasury pays the carpenter 250 EMWK and a new tower goes up on one of three free spots on the map.
+- Each extra tower adds 10% to village readiness against the dragon. The AI villagers propose and back towers when danger is high.
 
 ## On NEAR
 
@@ -88,6 +102,7 @@ npm test   # 100 game days of economy checks, then the NEAR bridge against an in
 | `server/index.js` | Game server and live updates |
 | `server/near.js` | NEAR bridge: account setup, token deploy, batched transfers, balance sync |
 | `public/vendor/near-wallet.js` | Meteor Wallet through NEAR Wallet Selector, bundled for the browser (source in `tools/wallet/`) |
+| `contracts/emwk_deeds.wasm` | Standard NEP-171 NFT contract for land deeds (near-sdk-rs 4.0 example) |
 | `contracts/emwk_token.wasm` | Standard NEP-141 fungible token (near-sdk-rs 4.0 example, emits NEP-297 events so explorers and wallets index it) |
 | `public/iso.js` | The visual layer (isometric map). Can be replaced without touching game data |
 | `public/app.js` | Panels, joining, actions |

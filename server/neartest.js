@@ -86,6 +86,23 @@ async function run(faucetWorks) {
   check(chain.ft.get('emberwick.testnet') === toUnits(2), 'cashed-out EMWK stays in the wallet');
 }
 
+// land deeds: the NFT contract is set up and a deed is minted to the buyer's wallet
+async function deeds() {
+  console.log('\n== land deeds');
+  const chain = fakeChain({ faucetWorks: true });
+  const state = createState(3);
+  let saved = null, got = null;
+  const bridge = new Bridge({ adapter: chain, npcIds: CRAFTSMEN.map((c) => c.id), totalSupply: TOKEN.totalSupply, balances: () => state.balances,
+    store: { load: () => saved, save: (o) => { saved = o; } }, wasm: new Uint8Array(1), nftWasm: new Uint8Array(1), onDeed: (plot, info) => { got = { plot, ...info }; } });
+  await bridge.step(); await bridge.step();
+  check(bridge.deeds.status === 'ready', 'deeds contract is ready (' + bridge.deeds.status + ')');
+  bridge.mintDeed({ plot: 'plot-1', tokenId: 'plot-1-1-p1', owner: 'emberwick.testnet', title: 't', description: 'd' });
+  await bridge.step();
+  check(chain.nft.tokens.get('plot-1-1-p1') === 'emberwick.testnet', 'deed NFT belongs to the buyer');
+  check(got && got.minted && got.plot === 'plot-1', 'the game hears that the deed was minted');
+}
+await deeds();
+
 await run(true);
 await run(false);
 console.log(fails ? `\n${fails} check(s) failed.` : '\nAll NEAR bridge checks passed.');

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, tick, joinPlayer, playerAction, publicView, onTransfer, linkWallet, withdraw, depositIn } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -50,9 +50,16 @@ async function startNear() {
     totalSupply: TOKEN.totalSupply,
     balances: () => state.balances,
     wasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_token.wasm')),
+    nftWasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_deeds.wasm')),
+    onDeed: (plot, info) => { setDeed(state, plot, info); save(); broadcast(); },
     say: (m) => console.log('[NEAR] ' + m),
   });
   onTransfer((from, to, amount, note) => bridge.onTransfer(from, to, amount, note));
+  // a land deed goes to the buyer's wallet, or is held by the village bank until they link one
+  onGameEvent((type, d) => {
+    if (type !== 'deed' || !bridge.root) return;
+    bridge.mintDeed({ plot: d.plot, tokenId: d.tokenId, owner: d.wallet || bridge.root, title: `Emberwick land deed: ${d.plot}`, description: `Plot ${d.plot} in the village of Emberwick, bought by ${d.name} on game day ${d.day}. Held for player ${d.player}.` });
+  });
   let lastStatus = '';
   const loop = async () => {
     await bridge.step();
@@ -68,8 +75,24 @@ async function startNear() {
   loop();
   setInterval(loop, RULES.demo ? 8000 : 12000);
   setInterval(() => { if (bridge.status === 'ready') bridge.needReconcile = true; }, 5 * 60 * 1000);
+  // deeds for land bought while NEAR was offline (or before a restart) are minted later
+  setInterval(() => {
+    if (bridge.deeds.status !== 'ready') return;
+    for (const [id, plot] of Object.entries(state.plots || {})) {
+      if (!plot.owner || !plot.deed || plot.deed.minted || bridge.deedQueue.some((d) => d.tokenId === plot.deed.tokenId)) continue;
+      const p = state.players[plot.owner] || {};
+      bridge.mintDeed({ plot: id, tokenId: plot.deed.tokenId, owner: (p.nearVerified && p.near) || bridge.root, title: `Emberwick land deed: ${id}`, description: `Plot ${id} in the village of Emberwick, owned by ${p.name || 'a villager'}. Held for player ${plot.owner}.` });
+    }
+  }, 10000);
 }
 const challenges = new Map(); // playerId -> one-time wallet sign-in message
+function moveHeldDeeds(pid) {
+  const p = state.players[pid];
+  if (!bridge || !p || !p.near) return;
+  for (const [id, plot] of Object.entries(state.plots || {})) {
+    if (plot.owner === pid && plot.deed && plot.deed.minted && plot.deed.owner === bridge.root) bridge.moveDeed({ plot: id, tokenId: plot.deed.tokenId, owner: p.near });
+  }
+}
 const chainView = () => (bridge ? bridge.view() : { status: 'off' });
 const view = (pid) => ({ ...publicView(state, pid), chain: chainView() });
 
@@ -177,6 +200,7 @@ const server = http.createServer(async (req, res) => {
     challenges.delete(body.player);
     const r = linkWallet(state, body.player, body.accountId, verified);
     if (r.ok) r.verified = verified;
+    if (r.ok && verified) moveHeldDeeds(body.player);
     if (r.ok) { save(); broadcast(); }
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
@@ -218,7 +242,7 @@ const server = http.createServer(async (req, res) => {
   if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
 });

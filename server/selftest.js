@@ -32,6 +32,41 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   for (const [k, v] of Object.entries(state.balances)) if (v < -0.001) fail(`${k} negative: ${v}`);
 }
 
+// land: buy a plot, build a home with lumber, sleep in it
+{
+  const p = state.players[me];
+  if (p.job) playerAction(state, me, { type: 'quitJob' });
+  const bought = playerAction(state, me, { type: 'buyPlot', plot: 'plot-1' });
+  p.inv.lumber = (p.inv.lumber || 0) + 6;
+  const built = playerAction(state, me, { type: 'buildHouse', plot: 'plot-1' });
+  console.log('Land: bought', bought.ok, '| built', built.ok, '| total money', totalMoney(state));
+  if (!bought.ok || !built.ok) fail('could not buy land or build a home');
+  if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with land');
+}
+
+// night: shops close (the inn stays open), nobody gathers
+{
+  const per = RULES.ticksPerDay;
+  while ((state.tick % per) / per < 0.85) tick(state);
+  const g = playerAction(state, me, { type: 'gather', spot: 'mine' });
+  const b = playerAction(state, me, { type: 'buy', npc: 'bakery', good: 'bread', qty: 1 });
+  console.log('Night: gather', g.code, '| bakery', b.code, '| view.night', publicView(state, me).night);
+  if (g.code !== 'err.night' || b.code !== 'err.night') fail('shops or gathering stayed open at night');
+}
+
+// a watchtower: the council orders one, the carpenter is paid, readiness goes up
+{
+  const before = (state.watchtowers || []).length, carp = state.balances['npc:carpenter'];
+  const r = playerAction(state, me, { type: 'propose', kind: 'tower' });
+  const prop = state.council.open.find((x) => x.kind === 'tower');
+  if (prop) for (const k of Object.keys(prop.aiPlan)) prop.votes[k] = { yes: true, w: 1 }, delete prop.aiPlan[k];
+  for (let i = 0; i < RULES.ticksPerDay + 2; i++) tick(state);
+  const after = (state.watchtowers || []).length;
+  console.log('Watchtower: proposed', r.ok, '| towers', before, '->', after, '| carpenter +', Math.round(state.balances['npc:carpenter'] - carp));
+  if (!r.ok || after !== before + 1) fail('the council could not build a watchtower');
+  if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with the watchtower');
+}
+
 const v = publicView(state, me);
 console.log('Day', v.day, '| total money', v.totalMoney, '| treasury', v.treasury, '| readiness', v.readiness);
 console.log('Player:', v.player.name, 'coins', v.player.coins, 'inv', JSON.stringify(v.player.inv));

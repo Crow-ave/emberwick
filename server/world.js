@@ -38,12 +38,12 @@ export const GATHER_SPOTS = {
   mine:   { good: 'ore',   energy: 3, base: 1 },
 };
 
-// Map layout on a 12x12 isometric grid. (i, j) = grid cell, w = footprint.
+// Map layout on a 14x14 isometric grid. (i, j) = grid cell, w = footprint.
 export const BUILDINGS = [
   { id: 'forest',     name: 'Forest',      type: 'gather',    i: 0,  j: 1,  w: 3 },
   { id: 'fields',     name: 'Fields',      type: 'gather',    i: 1,  j: 5,  w: 3 },
   { id: 'mine',       name: 'Mine',        type: 'gather',    i: 9,  j: 2,  w: 2 },
-  { id: 'dragonpeak', name: 'Dragon peak', type: 'landmark',  i: 10, j: 0,  w: 2 },
+  { id: 'dragonpeak', name: 'Dragon peak', type: 'landmark',  i: 12, j: 0,  w: 2 },
   { id: 'woodcutter', name: 'Woodcutter',  type: 'craftsman', i: 4,  j: 1,  w: 1 },
   { id: 'mill',       name: 'Mill',        type: 'craftsman', i: 1,  j: 9,  w: 1 },
   { id: 'smithy',     name: 'Smithy',      type: 'craftsman', i: 8,  j: 3,  w: 1 },
@@ -57,8 +57,16 @@ export const BUILDINGS = [
   { id: 'house-1',    name: 'Room',        type: 'house',     i: 9,  j: 10,  w: 1, size: 'room' },
   { id: 'house-2',    name: 'Small house', type: 'house',     i: 8,  j: 11,  w: 1, size: 'small' },
   { id: 'house-3',    name: 'Large house', type: 'house',     i: 11, j: 10, w: 1, size: 'large' },
-  { id: 'gate',       name: 'Village gate',type: 'landmark',  i: 5,  j: 11, w: 1 },
-  { id: 'expansion',  name: 'Expansion land', type: 'future', i: 0,  j: 10, w: 2 },
+  { id: 'gate',       name: 'Village gate',type: 'landmark',  i: 5,  j: 13, w: 1 },
+  // building land: four plots around the village players can buy and build a home on
+  { id: 'plot-1',     name: 'Plot 1',      type: 'plot',      i: 1,  j: 12, w: 1 },
+  { id: 'plot-2',     name: 'Plot 2',      type: 'plot',      i: 8,  j: 13, w: 1 },
+  { id: 'plot-3',     name: 'Plot 3',      type: 'plot',      i: 12, j: 6,  w: 1 },
+  { id: 'plot-4',     name: 'Plot 4',      type: 'plot',      i: 3,  j: 2,  w: 1 },
+  // places where the council can order more watchtowers (empty until built)
+  { id: 'watch-1',    name: 'Watchtower',  type: 'watch',     i: 13, j: 3,  w: 1 },
+  { id: 'watch-2',    name: 'Watchtower',  type: 'watch',     i: 0,  j: 6,  w: 1 },
+  { id: 'watch-3',    name: 'Watchtower',  type: 'watch',     i: 12, j: 12, w: 1 },
 ];
 
 // The seven craftsmen. They are AI agents with their own wallets.
@@ -174,7 +182,7 @@ export const JOBS = {
 // wealth (square root, so the rich cannot simply buy every vote), how long you have
 // lived here and what you have given to the village.
 export const COUNCIL = {
-  kinds: ['grant', 'tax', 'welcome', 'festival'],
+  kinds: ['grant', 'tax', 'welcome', 'festival', 'tower'],
   fee: 2,                  // proposing costs this much, paid to the treasury (stops spam)
   maxOpen: 3,              // open proposals at once
   quorum: 4,               // a decision needs at least this many voters
@@ -182,7 +190,18 @@ export const COUNCIL = {
   tax: { min: 0.01, max: 0.06 },    // market tax rate
   welcome: { min: 100, max: 800 },  // treasury -> newcomer fund
   festival: { min: 2, max: 10 },    // treasury -> every villager, per head
+  tower: { cost: 250, readiness: 10, spots: ['watch-1', 'watch-2', 'watch-3'] }, // treasury pays the carpenter to build a watchtower
   weight: { wealth: 0.5, residencyCap: 10, contributionCap: 10 },
+};
+
+// Land: a player buys a plot from the village (the money goes to the treasury) and
+// gets a deed, an NFT on NEAR. On their own plot they can build a home with lumber
+// and the carpenter's work. Their own home needs no rent.
+export const LAND = {
+  plots: ['plot-1', 'plot-2', 'plot-3', 'plot-4'],
+  price: 120,                 // EMWK to the treasury
+  build: { lumber: 6, fee: 40, builder: 'carpenter' },
+  rest: 99,                   // sleeping in your own home fills your energy
 };
 
 // Homes are owned by the village. Rent goes to the treasury every day.

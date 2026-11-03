@@ -36,6 +36,9 @@ const LOW_GAS = 0.05;       // top an account up below this
 const MAX_ACTIONS = 15;     // ft_transfer actions per transaction
 const FT_GAS = 15n * 10n ** 12n;
 const FEED_MAX = 40;
+const DEEDS_NEAR = 2.9;   // storage for the deeds (NFT) contract, ~250 KB
+const MINT_NEAR = 0.05;   // storage for one deed; what is not used comes back
+const DEED_ICON = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#3a2a1e"/><path d="M8 18 16 10l8 8v7H8z" fill="#e8642c"/><rect x="14" y="20" width="4" height="5" fill="#f6c34a"/></svg>');
 
 const ICON = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#3a2a1e"/>' +
@@ -71,6 +74,67 @@ export class Bridge {
     this.busy = false;
     this.txCount = 0;
     this.keys = this.store.load();
+    this.nftWasm = o.nftWasm || null;
+    this.deeds = { status: 'off', detail: null };
+    this.deedQueue = [];
+    this.onDeed = o.onDeed || (() => {});
+  }
+
+  // ---- land deeds: an NFT contract next to the token ----
+  get deedsId() { return this.root && 'deeds.' + this.root; }
+  mintDeed(d) { this.deedQueue.push({ kind: 'mint', ...d }); }
+  moveDeed(d) { this.deedQueue.push({ kind: 'move', ...d }); }
+
+  async setupDeeds() {
+    const A = this.adapter;
+    if (!this.nftWasm || !A.isNftReady) return;
+    if (await A.isNftReady(this.deedsId)) { this.deeds = { status: 'ready', detail: null }; return; }
+    if (!(await A.exists(this.deedsId))) {
+      const bal = await A.nearBalance(this.root);
+      if (bal < DEEDS_NEAR + 0.3) {
+        this.deeds = { status: 'need-funds', detail: { address: this.root, amount: Math.ceil(DEEDS_NEAR + 0.5 - bal) } };
+        return;
+      }
+      await A.createSub(this.root, this.deedsId, A.publicKeyOf(this.keys.secretKey), DEEDS_NEAR);
+      await this.waitFor(this.deedsId);
+    }
+    if (!(await A.hasCode(this.deedsId))) await A.deploy(this.deedsId, this.nftWasm);
+    await A.call(this.deedsId, this.deedsId, 'new', {
+      owner_id: this.root,
+      metadata: { spec: 'nft-1.0.0', name: 'Emberwick Land Deeds', symbol: 'EMWKDEED', icon: DEED_ICON, base_uri: null, reference: null, reference_hash: null },
+    }, 0);
+    this.say(`Land deeds contract deployed: ${this.deedsId}`);
+    this.deeds = { status: 'ready', detail: null };
+  }
+
+  async sendDeeds() {
+    const A = this.adapter;
+    while (this.deedQueue.length) {
+      const d = this.deedQueue[0];
+      const entry = { at: Date.now(), from: this.root, items: [{ to: d.owner, amount: 0, label: d.kind === 'mint' ? 'deed' : 'deed move', deed: d.tokenId, plot: d.plot }], hash: null, ok: false };
+      try {
+        if (d.kind === 'mint') {
+          entry.hash = await A.callTx(this.root, this.deedsId, 'nft_mint', {
+            token_id: d.tokenId, token_owner_id: d.owner,
+            token_metadata: { title: d.title, description: d.description, media: DEED_ICON, copies: 1, issued_at: String(Date.now()) },
+          }, nearToYocto(MINT_NEAR));
+        } else {
+          entry.hash = await A.callTx(this.root, this.deedsId, 'nft_transfer', { receiver_id: d.owner, token_id: d.tokenId, memo: 'Emberwick: deed to its owner' }, 1n);
+        }
+        entry.ok = true;
+        this.txCount++;
+        this.onDeed(d.plot, { minted: true, owner: d.owner, contract: this.deedsId, hash: entry.hash });
+        this.say(`Deed ${d.tokenId} ${d.kind === 'mint' ? 'minted for' : 'moved to'} ${d.owner}`);
+      } catch (e) {
+        entry.error = String(e.message || e).slice(0, 160);
+        this.say('Deed failed: ' + entry.error);
+        this.feed.unshift(entry);
+        return; // try again on the next pass
+      }
+      this.deedQueue.shift();
+      this.feed.unshift(entry);
+      this.feed.length = Math.min(this.feed.length, FEED_MAX);
+    }
   }
 
   // --- names on chain ---
@@ -120,6 +184,7 @@ export class Bridge {
       network: NET.networkId, explorer: NET.explorer, wallet: NET.wallet,
       status: this.status, detail: this.detail, accounts,
       balances: this.chainBalances, feed: this.feed.slice(0, FEED_MAX), pending: this.queue.length, txCount: this.txCount,
+      deeds: { ...this.deeds, contract: this.root ? this.deedsId : null, pending: this.deedQueue.length },
     };
   }
 
@@ -340,6 +405,8 @@ export class Bridge {
         await this.setup();
         if (this.status !== 'ready') return;
       }
+      if (this.deeds.status !== 'ready') { try { await this.setupDeeds(); } catch (e) { this.deeds = { status: 'error', detail: { message: String(e.message || e).slice(0, 160) } }; } }
+      if (this.deeds.status === 'ready' && this.deedQueue.length) await this.sendDeeds();
       if (this.needReconcile) { await this.reconcile(); return; }
       if (!this.queue.length) return;
       const items = this.queue.splice(0);
@@ -404,6 +471,13 @@ export async function makeNearAdapter(secretKeyRef) {
     async isTokenReady(id) {
       // a contract that is deployed but not initialised answers with an error
       try { const m = await view(id, 'ft_metadata', {}); return !!(m && m.symbol); } catch (e) { if (e instanceof RpcError) return false; throw e; }
+    },
+    async isNftReady(id) {
+      try { const m = await view(id, 'nft_metadata', {}); return !!(m && m.symbol); } catch (e) { if (e instanceof RpcError) return false; throw e; }
+    },
+    async callTx(signerId, contractId, methodName, args, depositYocto) {
+      const r = await acct(signerId).signAndSendTransaction({ receiverId: contractId, actions: [actions.functionCall(methodName, args, 100n * 10n ** 12n, BigInt(depositYocto))] });
+      return (r && r.transaction && r.transaction.hash) || (r && r.transaction_outcome && r.transaction_outcome.id) || null;
     },
     async isRegistered(tokenId, id) {
       return !!(await view(tokenId, 'storage_balance_of', { account_id: id }));

@@ -22,9 +22,19 @@ export function fakeChain({ faucetWorks }) {
     async createTopLevel(from, name, _pk, n) { const a = need(from); if (a.near < n) throw new Error('not enough'); a.near -= n; acc.set(name, { near: n }); },
     async createSub(parent, id, _pk, n) { const a = need(parent); if (a.near < n) throw new Error('not enough'); a.near -= n; acc.set(id, { near: n }); txs++; },
     async deploy(id) { need(id).code = true; txs++; },
+    nft: null,
     async call(_s, contract, method, args) {
       if (method !== 'new') throw new Error('unknown');
+      if (args.total_supply === undefined) { this.nft = { contract, tokens: new Map() }; txs++; return; }
       token = contract; ft.set(args.owner_id, BigInt(args.total_supply)); txs++;
+    },
+    async isNftReady(id) { return !!(this.nft && this.nft.contract === id); },
+    async callTx(_s, contract, method, args) {
+      if (!this.nft || this.nft.contract !== contract) throw new Error('no nft contract');
+      if (method === 'nft_mint') this.nft.tokens.set(args.token_id, args.token_owner_id);
+      if (method === 'nft_transfer') this.nft.tokens.set(args.token_id, args.receiver_id);
+      txs++;
+      return 'nfthash' + txs;
     },
     async register(_s, _t, ids) { for (const id of ids) if (!ft.has(id)) ft.set(id, 0n); txs++; },
     async sendNear(from, to, n) { need(from).near -= n; need(to).near += n; txs++; },
