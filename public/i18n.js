@@ -2,6 +2,18 @@
 // {name} style placeholders are filled in by t(key, params).
 
 const en = {
+  "panel.noNeed": "has enough right now",
+  "panel.sellQuote": "Sell {n} for {p}",
+  "panel.onlyNeeds": "needs only {n} right now",
+  "result.soldSome": "The craftsman took only {n} {good} for {total} EMWK ({got} after tax): each extra one is worth less to them. Sell the other {left} later, elsewhere, or on the exchange.",
+  "ai.level": "Workshop level {n}",
+  "ai.more": "learned: {good} sells well, keeps more",
+  "ai.less": "learned: {good} sells slowly, keeps less",
+  "err.homeLeased": "Your home is up for rent, so you cannot sleep there. Stop renting it out first.",
+  "err.innFull": "All rooms at the inn are taken tonight.",
+  "inn.rooms": "Rooms free tonight: {n} of {all}.",
+  "talk.inn.full": "Sorry, every room is taken tonight. Try again tomorrow, or go home.",
+  "log.upgraded": "{name} expanded the workshop to level {n}.",
   "b.exchange": "Exchange",
   "b.pond": "Fishing pond",
   "district.3": "Exchange quarter",
@@ -654,6 +666,18 @@ const en = {
 };
 
 const tr = {
+  "panel.noNeed": "şu an yeterince var",
+  "panel.sellQuote": "{n} tane sat: {p}",
+  "panel.onlyNeeds": "şu an sadece {n} tane istiyor",
+  "result.soldSome": "Esnaf sadece {n} {good} aldı, {total} EMWK (vergiden sonra {got}): fazlası onun için daha az değerli. Kalan {left} taneyi sonra, başka yerde ya da borsada sat.",
+  "ai.level": "Atölye seviyesi {n}",
+  "ai.more": "öğrendi: {good} iyi satıyor, daha çok tutuyor",
+  "ai.less": "öğrendi: {good} yavaş satıyor, daha az tutuyor",
+  "err.homeLeased": "Evin kirada, orada uyuyamazsın. Önce kiraya vermeyi bırak.",
+  "err.innFull": "Bu gece handaki bütün odalar dolu.",
+  "inn.rooms": "Bu gece boş oda: {all} odadan {n}.",
+  "talk.inn.full": "Kusura bakma, bu gece bütün odalar dolu. Yarın tekrar gel ya da evine git.",
+  "log.upgraded": "{name} atölyesini {n}. seviyeye büyüttü.",
   "b.exchange": "Borsa",
   "b.pond": "Balık göleti",
   "district.3": "Borsa mahallesi",
@@ -1306,6 +1330,18 @@ const tr = {
 };
 
 const fr = {
+  "panel.noNeed": "en a assez pour l'instant",
+  "panel.sellQuote": "Vendre {n} pour {p}",
+  "panel.onlyNeeds": "n'en veut que {n} pour l'instant",
+  "result.soldSome": "L'artisan n'a pris que {n} {good} pour {total} EMWK ({got} après taxe) : chaque unité en plus vaut moins pour lui. Vendez les {left} autres plus tard, ailleurs ou à la bourse.",
+  "ai.level": "Atelier niveau {n}",
+  "ai.more": "a appris : {good} se vend bien, en garde plus",
+  "ai.less": "a appris : {good} se vend lentement, en garde moins",
+  "err.homeLeased": "Votre maison est en location, vous ne pouvez pas y dormir. Arrêtez d'abord la location.",
+  "err.innFull": "Toutes les chambres de l'auberge sont prises ce soir.",
+  "inn.rooms": "Chambres libres ce soir : {n} sur {all}.",
+  "talk.inn.full": "Désolée, toutes les chambres sont prises ce soir. Revenez demain, ou rentrez chez vous.",
+  "log.upgraded": "{name} a agrandi son atelier au niveau {n}.",
   "b.exchange": "Bourse",
   "b.pond": "Étang de pêche",
   "district.3": "Quartier de la bourse",
@@ -1958,6 +1994,18 @@ const fr = {
 };
 
 const de = {
+  "panel.noNeed": "hat gerade genug",
+  "panel.sellQuote": "{n} verkaufen für {p}",
+  "panel.onlyNeeds": "braucht gerade nur {n}",
+  "result.soldSome": "Der Handwerker nahm nur {n} {good} für {total} EMWK ({got} nach Steuer): jedes weitere Stück ist ihm weniger wert. Verkaufe die übrigen {left} später, woanders oder an der Börse.",
+  "ai.level": "Werkstatt Stufe {n}",
+  "ai.more": "gelernt: {good} verkauft sich gut, hält mehr vorrätig",
+  "ai.less": "gelernt: {good} verkauft sich langsam, hält weniger vorrätig",
+  "err.homeLeased": "Dein Haus ist zur Miete angeboten, darum kannst du dort nicht schlafen. Beende zuerst die Vermietung.",
+  "err.innFull": "Heute Nacht sind alle Zimmer im Gasthaus belegt.",
+  "inn.rooms": "Freie Zimmer heute Nacht: {n} von {all}.",
+  "talk.inn.full": "Tut mir leid, heute Nacht ist alles belegt. Komm morgen wieder oder geh nach Hause.",
+  "log.upgraded": "{name} hat die Werkstatt auf Stufe {n} vergrößert.",
   "b.exchange": "Börse",
   "b.pond": "Fischteich",
   "district.3": "Börsenviertel",
@@ -2610,6 +2658,18 @@ const de = {
 };
 
 const ru = {
+  "panel.noNeed": "сейчас хватает",
+  "panel.sellQuote": "Продать {n} за {p}",
+  "panel.onlyNeeds": "сейчас нужно только {n}",
+  "result.soldSome": "Ремесленник взял только {n} {good} за {total} EMWK ({got} после налога): каждая лишняя штука ему стоит меньше. Остальные {left} продайте позже, в другом месте или на бирже.",
+  "ai.level": "Мастерская, уровень {n}",
+  "ai.more": "узнал(а): {good} хорошо продаётся, держит больше",
+  "ai.less": "узнал(а): {good} продаётся медленно, держит меньше",
+  "err.homeLeased": "Ваш дом сдаётся, поэтому там нельзя спать. Сначала перестаньте его сдавать.",
+  "err.innFull": "Сегодня все комнаты в трактире заняты.",
+  "inn.rooms": "Свободных комнат сегодня: {n} из {all}.",
+  "talk.inn.full": "Простите, сегодня все комнаты заняты. Приходите завтра или идите домой.",
+  "log.upgraded": "{name} расширил(а) мастерскую до уровня {n}.",
   "b.exchange": "Биржа",
   "b.pond": "Рыбный пруд",
   "district.3": "Биржевой квартал",
@@ -3397,6 +3457,18 @@ const ru = {
 };
 
 const zh = {
+  "panel.noNeed": "目前够用了",
+  "panel.sellQuote": "卖出 {n} 个，得 {p}",
+  "panel.onlyNeeds": "目前只需要 {n} 个",
+  "result.soldSome": "工匠只收了 {n} 个{good}，共 {total} EMWK（税后 {got}）：多出来的每一个对他都更不值钱。剩下的 {left} 个以后再卖、去别处卖，或者挂到交易所。",
+  "ai.level": "作坊 {n} 级",
+  "ai.more": "学到了：{good}卖得好，多备货",
+  "ai.less": "学到了：{good}卖得慢，少备货",
+  "err.homeLeased": "你的房子正在出租，所以不能在那里睡。先停止出租。",
+  "err.innFull": "今晚旅店的房间都满了。",
+  "inn.rooms": "今晚空房：{all} 间中有 {n} 间。",
+  "talk.inn.full": "抱歉，今晚房间都满了。明天再来，或者回家吧。",
+  "log.upgraded": "{name} 把作坊扩建到了 {n} 级。",
   "b.exchange": "交易所",
   "b.pond": "钓鱼池",
   "district.3": "交易所街区",

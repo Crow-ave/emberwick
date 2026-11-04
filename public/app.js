@@ -337,7 +337,8 @@ function sleepButton(place) {
   const me = view.player;
   if (!me || !view.night || me.sleepPlace) return '';
   const plot = view.plots[place];
-  if (plot && plot.mine && !plot.bed) return '';
+  if (plot && plot.mine && (!plot.bed || plot.lease)) return '';
+  if (place === 'inn' && view.inn && view.inn.free < 1) return `<button disabled>${t('err.innFull')}</button>`;
   const paid = place === 'inn';
   return `<button class="primary" data-act="sleep" data-place="${place}" ${paid && me.coins < me.innBed ? 'disabled' : ''}>${t(paid ? 'sleep.innBtn' : 'sleep.btn', { n: me.innBed })}</button>`;
 }
@@ -356,7 +357,7 @@ function sceneTalk(id) {
     if (view.night) return { x: at[0], y: at[1], text: t(me.sleepPlace === id ? 'talk.home.asleep' : 'talk.home.night') };
     return null;
   }
-  if (id === 'inn' && view.night) return { x: at[0], y: at[1], text: me.sleepPlace === 'inn' ? t('talk.inn.asleep', { name: me.name }) : t('talk.inn.bed', { n: me.innBed }) };
+  if (id === 'inn' && view.night) return { x: at[0], y: at[1], text: me.sleepPlace === 'inn' ? t('talk.inn.asleep', { name: me.name }) : view.inn && view.inn.free < 1 ? t('talk.inn.full') : t('talk.inn.bed', { n: me.innBed }) + ' ' + t('inn.rooms', { n: view.inn ? view.inn.free : '?', all: view.inn ? view.inn.rooms : 4 }) };
   const n = view.npcs[id];
   if (n && n.shut) return { x: at[0], y: at[1], text: t('talk.shut') };
   if (id === 'tailor' && view.events.winter && !me.inv.coat) return { x: at[0], y: at[1], text: t('talk.tailor.winter', { p: n.sells.coat }) };
@@ -388,7 +389,12 @@ function tradeBlock(id) {
       const have = me ? me.inv[g] || 0 : 0;
       h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.youHave', { n: have })})</span></td><td class="n">${p} EMWK</td>` +
         ((n.full || []).includes(g) ? `<td class="n"><span class="muted small">${t('panel.full')}</span></td></tr>`
-          : `<td class="n"><button class="${have ? 'sellbtn' : ''}" data-act="sell" data-good="${g}" ${!have || n.closed ? 'disabled' : ''}>${have ? t('panel.sellAll', { n: have }) : t('panel.sell')}</button></td></tr>`);
+          : (() => {
+            const o = (n.offers || {})[g];
+            if (have && o && o.qty < 1) return `<td class="n"><span class="muted small">${t('panel.noNeed')}</span></td></tr>`;
+            const label = have && o ? t('panel.sellQuote', { n: o.qty, p: Math.round(o.total) }) : have ? t('panel.sellAll', { n: have }) : t('panel.sell');
+            return `<td class="n"><button class="${have ? 'sellbtn' : ''}" data-act="sell" data-good="${g}" ${!have || n.closed || n.shut ? 'disabled' : ''}>${label}</button>${have && o && o.qty < have ? `<div class="muted small">${t('panel.onlyNeeds', { n: o.qty })}</div>` : ''}</td></tr>`;
+          })());
     }
     h += `</table>`;
   }
@@ -411,6 +417,10 @@ function panelCraftsman(b) {
   let h = `<h2>${esc(npcName(b.id))}</h2><div class="muted">${esc(t('panel.purse', { place: placeName(b.id), n: n.wallet }))}</div>`;
   if (n.closed) h += `<p class="closed">${t('panel.closed')}</p>`;
   else if (n.shut) h += `<p class="closed">${t('err.night')}</p>`;
+  if (b.id !== 'tower') {
+    const learned = Object.entries(n.learn || {}).filter(([, v]) => Math.abs(v - 1) >= 0.15).map(([g, v]) => t(v > 1 ? 'ai.more' : 'ai.less', { good: goodName(g) }));
+    h += `<p class="small ai-note">${t('ai.level', { n: n.level || 1 })}${learned.length ? ' · ' + learned.join(' · ') : ''}</p>`;
+  }
   h += `<div class="quote">"${esc(t('line.' + n.lineKey))}"</div>`;
   if (b.id === 'inn') h += sleepBox('inn');
   if (b.id === 'tailor' && view.events.winter && me && !me.inv.coat) h += `<p class="closed small">${t('coat.need')}</p>`;
@@ -678,17 +688,18 @@ const MAP_CARD = new Set(['treasury', 'council', 'exchange']);
 function renderMapCard(id, top, html) {
   const card = $('map-card');
   if (!card) return false;
-  if (!id || ui.scene) { card.hidden = true; return false; }
+  if (!id || ui.scene) { card.hidden = true; $('view').classList.remove('card-on'); return false; }
   const typing = card.contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
   if (!typing) card.innerHTML = closeBtn() + top + html;
   card.hidden = false;
+  $('view').classList.add('card-on');
   return true;
 }
 function renderPanel() {
   const panel = $('panel');
   const typing = document.activeElement && panel.contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
   if (typing) return; // keep what the player is typing
-  if (!MAP_CARD.has(ui.selected) && $('map-card')) $('map-card').hidden = true;
+  if (!MAP_CARD.has(ui.selected) && $('map-card')) { $('map-card').hidden = true; $('view').classList.remove('card-on'); }
   if (ui.selected === 'near') { panel.innerHTML = closeBtn() + panelNear(); panel.hidden = false; return; }
   if (ui.selected === 'board') { panel.innerHTML = closeBtn() + boardSection(); panel.hidden = false; return; }
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
@@ -760,9 +771,11 @@ function sleepBox(place) {
   if (view.night && me.sleepPlace) return `<div class="contract sleep"><p class="small">${t('sleep.elsewhere', { place: placeName(me.sleepPlace) })}</p></div>`;
   const paid = place === 'inn';
   const own = me.plot === place, plot = own ? view.plots[place] : null;
+  if (own && plot && plot.lease) return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small">${t('err.homeLeased')}</p></div>`;
+  if (paid && view.inn && view.night && view.inn.free < 1) return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small closed">${t('err.innFull')}</p></div>`;
   if (own && plot && !plot.bed) return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small">${t('bed.none', { p: view.npcs.carpenter.sells.bed })}</p><button data-go="carpenter">${esc(t('go.to', { place: placeName('carpenter') }))}</button></div>`;
   if (!view.night) return `<div class="contract sleep day"><b>${t('sleep.titleDay')}</b><p class="small">${t(paid ? 'sleep.innInfo' : 'sleep.homeInfo', { n: me.innBed })}</p><button disabled>${t('sleep.afterDark', { s: toNight() })}</button></div>`;
-  return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small">${t(paid ? 'sleep.innInfo' : 'sleep.homeInfo', { n: me.innBed })}</p>` +
+  return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small">${t(paid ? 'sleep.innInfo' : 'sleep.homeInfo', { n: me.innBed })}</p>${paid && view.inn ? `<p class="small">${t('inn.rooms', { n: view.inn.free, all: view.inn.rooms })}</p>` : ''}` +
     `<button class="primary big" data-act="sleep" data-place="${place}" ${paid && me.coins < me.innBed ? 'disabled' : ''}>${t(paid ? 'sleep.innBtn' : 'sleep.btn', { n: me.innBed })}</button></div>`;
 }
 // real seconds until it gets dark
@@ -1347,7 +1360,7 @@ async function act(type, extra = {}) {
   if (type === 'sell') body.qty = view.player.inv[extra.good] || 0;
   const r = await post('/api/action', body);
   if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
-  if (r.ok && type !== 'visit') explain(type, extra, r);
+  if (r.ok && type !== 'visit') { explain(type, extra, r); if (ui.scene) renderScene(); }
   if (!r.ok && r.code === 'err.turnedDown') {
     const why = r.why === 'needSkill' ? t('apply.needSkill', { skill: t('skill.' + r.need.skill), n: r.need.level, have: r.need.have }) : t('apply.' + r.why);
     result[extra.npc] = { key: 'result.turnedDown', p: { name: { $npc: extra.npc }, why }, bad: true };
@@ -1399,7 +1412,7 @@ function explain(type, extra, r) {
     flash('coins');
     const q = view.player && view.player.questInfo;
     result[place] = {
-      key: 'result.sold', p: { total: r.total, unit: r.unit, tax: r.tax, got },
+      key: r.qty < r.offered ? 'result.soldSome' : 'result.sold', p: { total: r.total, unit: r.unit, tax: r.tax, got, n: r.qty, left: r.offered - r.qty, good: { $good: extra.good } },
       next: q && q.target && q.target !== place ? { key: 'result.next', p: { text: { $quest: true } }, go: q.target } : null,
     };
   } else if (type === 'eat' || type === 'meal') {

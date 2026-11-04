@@ -196,6 +196,12 @@ export function threatLevel(state) {
   return Math.round(Math.max(0.15, Math.min(1, 1 - left / (span + 0.0001))) * 100) / 100;
 }
 
+// rooms at the inn: travellers take some, players the rest
+export function innFree(state) {
+  const players = Object.values(state.players).filter((p) => p.sleep && p.sleep.day === state.day && p.sleep.place === 'inn').length;
+  return Math.max(0, RULES.innRooms - (state.innGuests || 0) - players);
+}
+
 function rng(state) {
   // small deterministic generator so a saved game replays the same way
   state.seed = (state.seed * 1103515245 + 12345) % 2147483648;
@@ -275,6 +281,11 @@ function gainXp(p, skill, n = 1) {
 function targetFor(state, npcId, good) {
   const def = CRAFTSMEN.find((c) => c.id === npcId);
   let t = def.target[good] || 0;
+  const npc = state.npcs && state.npcs[npcId];
+  if (npc) {
+    if (npc.learn && npc.learn[good]) t *= npc.learn[good];   // what this craftsman learned about demand
+    if (npc.level > 1) t *= 1 + 0.2 * (npc.level - 1);        // a bigger workshop keeps more in stock
+  }
   if (state.events.dragon > 0) {
     if (npcId === 'tower' && good === 'sword') t *= 3;
     if (npcId === 'smithy' && good === 'ore') t *= 2;
@@ -291,22 +302,37 @@ function sellToNpc(state, actor, npcId, good, qty) {
   const npc = state.npcs[npcId];
   if (!npc || npc.buys[good] === undefined) return { ok: false, error: 'This shop does not buy that.', code: 'err.notBuying' };
   if (inv(actor.holder, good) < qty) return { ok: false, error: 'You do not have enough.', code: 'err.notEnough' };
-  // a shop with a full store room stops buying; one low on money keeps a small reserve
-  const room = Math.floor(targetFor(state, npcId, good) * 3 - (npc.stock[good] || 0));
-  if (room < 1) return { ok: false, error: 'The store room is full. Try another shop or come back later.', code: 'err.storeFull' };
-  qty = Math.min(qty, room);
-  const unit = price(npc.buys[good] * (1 + (actor.bonus || 0)));
-  // a shop short of money buys what it can afford instead of nothing (keeps the chain moving)
-  const afford = Math.floor((balance(state, npcAcct(npcId)) - 60) / unit);
-  if (afford < 1) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
-  qty = Math.min(qty, afford);
-  const total = r2(unit * qty);
+  // the craftsman haggles: they take only what they need, and every extra unit is worth a bit less to them
+  const offered = qty, q = sellQuote(state, npcId, good, qty, actor.bonus || 0);
+  if (q.want < 1) return { ok: false, error: 'The store room is full. Try another shop or come back later.', code: 'err.storeFull' };
+  if (q.qty < 1) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
+  qty = q.qty;
+  const total = q.total, unit = r2(total / qty);
   const tax = r2(total * taxRate(state));
   transfer(state, npcAcct(npcId), actor.acct, total);
   transfer(state, actor.acct, 'treasury', tax);
   addInv(actor.holder, good, -qty);
   npc.stock[good] = (npc.stock[good] || 0) + qty;
-  return { ok: true, unit, total, tax };
+  return { ok: true, unit, total, tax, qty, offered, want: q.want };
+}
+
+// what a craftsman would pay for `qty` of a good right now: unit by unit, the price falls as their
+// store fills (the same supply-and-demand rule that moves prices), and they stop at what they need
+export function sellQuote(state, npcId, good, qty, bonus = 0) {
+  const npc = state.npcs[npcId];
+  if (!npc || npc.buys[good] === undefined) return { qty: 0, total: 0, want: 0 };
+  const t = Math.max(1, targetFor(state, npcId, good)), s0 = npc.stock[good] || 0;
+  const want = Math.max(0, Math.ceil(t * 2 - s0));
+  const cash = balance(state, npcAcct(npcId)) - 60;
+  let n = 0, total = 0;
+  const units = [];
+  while (n < Math.min(qty, want)) {
+    const level = npc.base[good] * clamp(Math.pow(t / Math.max(s0 + n + 0.5, 0.5), 0.8), 0.4, 4);
+    const unit = Math.max(RULES.minPrice, Math.round(Math.min(npc.buys[good], level) * (1 + bonus) * 100) / 100);
+    if (total + unit > cash) break;
+    total += unit; units.push(unit); n++;
+  }
+  return { qty: n, total: r2(total), want, first: units[0] || 0, last: units[units.length - 1] || 0 };
 }
 
 function buyFromNpc(state, actor, npcId, good, qty) {
@@ -321,6 +347,8 @@ function buyFromNpc(state, actor, npcId, good, qty) {
   transfer(state, npcAcct(npcId), 'treasury', tax);
   npc.stock[good] -= qty;
   addInv(actor.holder, good, qty);
+  npc.soldToday = npc.soldToday || {};
+  npc.soldToday[good] = (npc.soldToday[good] || 0) + qty; // the craftsman learns how much people want
   return { ok: true, unit, total, tax };
 }
 
@@ -440,10 +468,10 @@ function doAction(state, p, actor, action, qty) {
   if (action.type === 'sell') {
     const res = sellToNpc(state, actor, action.npc, action.good, qty);
     if (res.ok) {
-      p.stats.sells++; p.stats.sold += qty; p.stats.earned = r2(p.stats.earned + res.total - res.tax); p.stats.taxes = r2(p.stats.taxes + res.tax);
+      p.stats.sells++; p.stats.sold += res.qty; p.stats.earned = r2(p.stats.earned + res.total - res.tax); p.stats.taxes = r2(p.stats.taxes + res.tax);
       res.levelUp = gainXp(p, 'trading');
     }
-    if (res.ok) res.message = `Sold ${qty} ${GOODS[action.good].name.toLowerCase()} for ${res.total} EMWK (tax ${res.tax}).`;
+    if (res.ok) res.message = `Sold ${res.qty} ${GOODS[action.good].name.toLowerCase()} for ${res.total} EMWK (tax ${res.tax}).`;
     return res;
   }
   if (action.type === 'buy') {
@@ -627,7 +655,7 @@ function runCraftsmen(state) {
     const outGood = Object.keys(def.recipe.out)[0];
     if ((npc.stock[outGood] || 0) >= targetFor(state, def.id, outGood) * 1.5) continue;
     const canMake = Object.entries(def.recipe.in).every(([g, q]) => (npc.stock[g] || 0) >= q);
-    if (canMake && rng(state) < 0.5) {
+    if (canMake && rng(state) < 0.5 * (1 + 0.3 * ((npc.level || 1) - 1))) { // a bigger workshop works faster
       for (const [g, q] of Object.entries(def.recipe.in)) npc.stock[g] -= q;
       for (const [g, q] of Object.entries(def.recipe.out)) npc.stock[g] = (npc.stock[g] || 0) + q;
       // the woodcutter, miller and smith also make tools now and then
@@ -731,6 +759,34 @@ function startNewDay(state) {
       if (p.wear.coat >= RULES.coatWinterDays) { addInv(p, 'coat', -1); p.wear.coat = 0; p.coatWorn = state.day; }
     }
   }
+  // the AI craftsmen get better at their trade: they learn demand from yesterday's sales,
+  // and a craftsman who makes good money expands the workshop (paid to the carpenter, who builds it)
+  for (const def of CRAFTSMEN) {
+    const npc = state.npcs[def.id];
+    if (!npc) continue;
+    npc.level = npc.level || 1;
+    npc.learn = npc.learn || {};
+    npc.history = npc.history || {};
+    for (const good of Object.keys(npc.sells)) {
+      const sold = (npc.soldToday && npc.soldToday[good]) || 0;
+      const h = (npc.history[good] = [...(npc.history[good] || []), sold].slice(-5));
+      const avg = h.reduce((a, x) => a + x, 0) / h.length, base = def.target[good] || 1;
+      const goal = clamp((avg * 1.5) / base, 0.6, 2);
+      npc.learn[good] = Math.round((((npc.learn[good] || 1) * 0.7) + goal * 0.3) * 100) / 100;
+    }
+    npc.soldToday = {};
+    const cost = 250 * npc.level;
+    if (npc.level < 3 && def.id !== 'tower' && balance(state, npcAcct(def.id)) > 650 + cost && rng(state) < 0.3) {
+      const builder = def.id === 'carpenter' ? 'woodcutter' : 'carpenter';
+      if (transfer(state, npcAcct(def.id), npcAcct(builder), cost, { memo: `Emberwick: ${def.name} expands the workshop to level ${npc.level + 1}` })) {
+        npc.level++;
+        addLog(state, `${def.name} expanded the workshop to level ${npc.level}.`, 'good', 'log.upgraded', { name: { $npc: def.id }, n: npc.level });
+      }
+    }
+  }
+  // travellers take some of the inn's rooms tonight
+  state.innGuests = Math.floor(rng(state) * 3);
+
   // bot villagers buy a coat when winter comes (or is near)
   if (ev.winter || state.day % 8 === 6) {
     for (const b of Object.values(state.bots)) {
@@ -1318,10 +1374,12 @@ function contractAction(state, p, action) {
     if (p.sleep && p.sleep.day === state.day) return { ok: false, error: 'You are already asleep.', code: 'err.asleep' };
     const place = action.place;
     const ownPlot = p.plot && place === p.plot && state.plots[p.plot];
-    const own = ownPlot && ownPlot.built && !(ownPlot.lease && ownPlot.lease.tenant);
+    if (ownPlot && ownPlot.lease) return { ok: false, error: 'Your home is rented out. Sleep somewhere else, or stop renting it out.', code: 'err.homeLeased' };
+    const own = ownPlot && ownPlot.built;
     if (own && !ownPlot.bed) return { ok: false, error: 'There is no bed in your home yet. The carpenter sells beds.', code: 'err.noBedYet' };
     const rented = (p.home && place === p.home) || (p.lease && place === p.lease);
     if (place === 'inn') {
+      if (innFree(state) < 1) return { ok: false, error: 'All rooms at the inn are taken tonight.', code: 'err.innFull' };
       if (!transfer(state, acct, npcAcct('inn'), RULES.innBed, { memo: `Emberwick: ${p.name} sleeps at the inn` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
       p.stats.spent = r2(p.stats.spent + RULES.innBed);
     } else if (!own && !rented) return { ok: false, error: 'You can only sleep in your own home or at the inn.', code: 'err.noBed' };
@@ -1331,7 +1389,7 @@ function contractAction(state, p, action) {
   }
   if (action.type === 'rest') {
     const mine = p.plot && state.plots[p.plot];
-    const own = mine && mine.built && !(mine.lease && mine.lease.tenant) && (!p.home || action.house === p.plot);
+    const own = mine && mine.built && !mine.lease && (!p.home || action.house === p.plot);
     if (own && !mine.bed) return { ok: false, error: 'There is no bed in your home yet. The carpenter sells beds.', code: 'err.noBedYet' };
     if (!p.home && !own) return { ok: false, error: 'You do not rent a home.', code: 'err.noHome' };
     if (p.restedDay === state.day) return { ok: false, error: 'You already slept here today.', code: 'err.rested' };
@@ -1522,6 +1580,11 @@ export function publicView(state, playerId) {
       stock: n.stock,
       closed: n.damagedUntil > state.day,
       shut: isNight(state) && def.id !== 'inn', // closed for the night
+      level: n.level || 1, learn: n.learn || {},
+      offers: playerId && state.players[playerId] ? Object.fromEntries(Object.keys(n.buys).filter((g) => inv(state.players[playerId], g) > 0).map((g) => {
+        const q = sellQuote(state, def.id, g, inv(state.players[playerId], g), (skillLevel(state.players[playerId], 'trading') - 1) * RULES.tradeBonus);
+        return [g, { qty: q.qty, total: q.total, want: q.want, first: q.first, last: q.last }];
+      })) : {},
       full: Object.keys(n.buys).filter((g) => (n.stock[g] || 0) >= targetFor(state, def.id, g) * 3),
       line: def.lines[(state.day + def.id.length) % def.lines.length],
       lineKey: `${def.id}.${(state.day + def.id.length) % def.lines.length}`,
@@ -1534,6 +1597,7 @@ export function publicView(state, playerId) {
     day: state.day,
     dayProgress: (state.tick % RULES.ticksPerDay) / RULES.ticksPerDay,
     night: isNight(state),
+    inn: { rooms: RULES.innRooms, free: innFree(state) },
     nightStart: NIGHT_START,
     threat: threatLevel(state),
     watchtowers: state.watchtowers || [],

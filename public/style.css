@@ -406,3 +406,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .exform { flex-wrap: wrap; gap: 6px; align-items: center; }
 .exform input { width: 64px; } .exform select { max-width: 150px; }
 .bld.far { cursor: pointer; } .bld.far:hover path { filter: brightness(1.06); }
+
+/* map shrinks to the left while a big card is open (v38) */
+.view.card-on #map { transform: translateX(-23%); transition: transform .35s ease; }
+#map { transition: transform .35s ease; }
+.ai-note { color: #4a5a8a; }

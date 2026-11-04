@@ -26,6 +26,13 @@ Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what
 - Fishing at the pond (a rod from the carpenter); the innkeeper cooks meals from fish
 - A fixed supply of 25,000 EMWK. Money only moves between accounts and never appears from nowhere (checked by `npm test`)
 
+## AI craftsmen that haggle, learn and grow
+
+- **Haggling:** a craftsman buys only what they need, and each extra unit is worth a little less to them (the same supply-and-demand rule that moves prices). The sell button shows the offer ("Sell 12 for 29"); the rest you sell later, elsewhere or on the exchange.
+- **Learning:** every morning each craftsman looks at what sold in the last days and keeps more of what sells well, less of what does not. The shop panel shows what they learned.
+- **Growing:** a craftsman who earns well expands the workshop (up to level 3): faster production and bigger stock. The expansion is paid to the carpenter, who builds it, so the money stays in the village.
+- **The inn has 4 rooms**; travellers take some each night. When it is full, it is full.
+
 ## A living market
 
 - Gathering needs the right tool (pickaxe, axe, plow). Tools wear out and cost real money, so starting a new trade is a decision. Apprentices start with more coins but no tool.

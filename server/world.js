@@ -214,6 +214,7 @@ export const RULES = {
   minPrice: 1,
   // nights and winter
   innBed: 5,             // a bed for the night at the inn, paid to the innkeeper
+  innRooms: 4,           // the inn has four rooms; travellers take some of them each night
   sleepRegen: 3,         // energy comes back this many times faster while you sleep indoors
   coldMaxEnergy: 3,      // after a night outside your energy cannot fill up as high the next day
   winterNoCoatCost: 1,   // extra energy for outdoor work in winter without a coat
