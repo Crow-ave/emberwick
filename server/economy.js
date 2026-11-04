@@ -3,7 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
-import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND } from './world.js';
+import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND, DISTRICTS, CENTRE_FACTOR } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -208,6 +208,21 @@ export function maxEnergy(p) {
   const base = Math.min(RULES.energyCap, RULES.energyMax + total - SKILLS.length);
   return p.cold ? Math.max(4, base - RULES.coldMaxEnergy) : base;
 }
+// ---------- land: prices by distance, districts, levels ----------
+const PLOT_DEFS = BUILDINGS.filter((b) => b.type === 'plot');
+const plotDef = (id) => PLOT_DEFS.find((b) => b.id === id);
+export function playerLevel(p) { return SKILLS.reduce((a, s) => a + skillLevel(p, s), 0) - (SKILLS.length - 1); }
+export function plotPrice(id) {
+  const d = plotDef(id);
+  if (!d) return LAND.price;
+  const f = d.district ? DISTRICTS[d.district].factors[Number(id.split('-')[1]) - 1] : (CENTRE_FACTOR[id] || 1);
+  return Math.round(LAND.price * f);
+}
+const plotBuild = (id) => { const d = plotDef(id); return d && d.district ? { ...LAND.build, ...DISTRICTS[d.district].build } : LAND.build; };
+const districtOpen = (state, n) => !n || (state.districts || []).includes(n);
+const plotOpen = (state, id) => { const d = plotDef(id); return !!d && districtOpen(state, d.district); };
+const nextDistrict = (state) => Object.keys(DISTRICTS).map(Number).find((n) => !districtOpen(state, n) && districtOpen(state, DISTRICTS[n].needs)) || null;
+const freePlots = (state) => PLOT_DEFS.filter((d) => plotOpen(state, d.id) && !(state.plots[d.id] || {}).owner).length;
 const hasCoat = (p) => ((p.inv && p.inv.coat) || 0) > 0;
 // cold: winter without a coat
 const freezing = (state, p) => !!state.events.winter && !hasCoat(p);
@@ -250,8 +265,11 @@ function sellToNpc(state, actor, npcId, good, qty) {
   if (room < 1) return { ok: false, error: 'The store room is full. Try another shop or come back later.', code: 'err.storeFull' };
   qty = Math.min(qty, room);
   const unit = price(npc.buys[good] * (1 + (actor.bonus || 0)));
-  const total = unit * qty;
-  if (balance(state, npcAcct(npcId)) - 60 < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
+  // a shop short of money buys what it can afford instead of nothing (keeps the chain moving)
+  const afford = Math.floor((balance(state, npcAcct(npcId)) - 60) / unit);
+  if (afford < 1) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
+  qty = Math.min(qty, afford);
+  const total = r2(unit * qty);
   const tax = r2(total * taxRate(state));
   transfer(state, npcAcct(npcId), actor.acct, total);
   transfer(state, actor.acct, 'treasury', tax);
@@ -352,6 +370,7 @@ function doAction(state, p, actor, action, qty) {
     if (p.job) return { ok: false, error: 'You are an apprentice. You can only work at your shop until you quit.', code: 'err.employed' };
     const spot = GATHER_SPOTS[action.spot];
     if (!spot) return { ok: false, error: 'You cannot gather there.', code: 'err.cannotGather' };
+    if (state.events.winter && action.spot === 'fields') return { ok: false, error: 'Nothing grows in winter. The fields are under snow until spring.', code: 'err.winterFields' };
     const need = toolFor(spot.good);
     if (inv(p, need) < 1) return { ok: false, error: 'You need the right tool to work here.', code: 'err.noTool', tool: need };
     const cost = energyCost(p, action.spot, state);
@@ -399,6 +418,10 @@ function doAction(state, p, actor, action, qty) {
   if (action.type === 'buy') {
     const res = buyFromNpc(state, actor, action.npc, action.good, qty);
     if (res.ok) p.stats.spent = r2(p.stats.spent + res.total);
+    if (res.ok && action.good === 'bed') {
+      const home = p.plot && state.plots[p.plot];
+      if (home && home.built && !home.bed) { addInv(p, 'bed', -1); home.bed = true; res.installed = p.plot; }
+    }
     if (res.ok) res.message = `Bought ${qty} ${GOODS[action.good].name.toLowerCase()} for ${res.total} EMWK.`;
     return res;
   }
@@ -492,6 +515,7 @@ export function tick(state) {
 function chooseBotWork(state) {
   const value = {};
   for (const [key, spot] of Object.entries(GATHER_SPOTS)) {
+    if (state.events.winter && key === 'fields') { value[key] = 0; continue; } // nothing to harvest under the snow
     const buyers = Object.values(state.npcs).filter((n) => n.buys[spot.good] !== undefined && (n.stock[spot.good] || 0) < targetFor(state, n.id, spot.good) * 1.5);
     const best = buyers.length ? Math.max(...buyers.map((n) => n.buys[spot.good])) : 0;
     value[key] = (best * (spot.base + 0.5)) / spot.energy;
@@ -509,7 +533,7 @@ function runBots(state) {
     if (rng(state) > 0.22) continue;
     const spotKey = b.spot || { farmer: 'fields', miner: 'mine', woodcutter: 'forest' }[b.path];
     const spot = GATHER_SPOTS[spotKey];
-    if (b.energy >= spot.energy && inv(b, spot.good) < 6) { // no point gathering what nobody buys
+    if (b.energy >= spot.energy && inv(b, spot.good) < 6 && !(state.events.winter && spotKey === 'fields')) { // no point gathering what nobody buys
       b.energy = r2(b.energy - spot.energy);
       addInv(b, spot.good, gatherYield(state, spotKey, b));
     }
@@ -535,6 +559,7 @@ const TOOL_MAKER = {
   woodcutter: { good: 'axe', in: { wood: 3 } },
   mill: { good: 'plow', in: { wheat: 2 } },
   tailor: { good: 'shears', in: { ore: 1 } },
+  carpenter: { good: 'bed', in: { lumber: 2 } },
 };
 
 function runCraftsmen(state) {
@@ -683,6 +708,17 @@ function startNewDay(state) {
     transfer(state, 'treasury', npcAcct('tower'), RULES.guardSalaryPerDay);
   }
 
+  // a craftsman whose purse is almost empty gets a small loan from the treasury, so one
+  // bad winter cannot stop a whole supply chain (wheat -> flour -> bread)
+  for (const def of CRAFTSMEN) {
+    if (def.id === 'tower') continue;
+    const left = balance(state, 'treasury') - RULES.treasuryReserve;
+    if (balance(state, npcAcct(def.id)) < 150 && left >= 150) {
+      transfer(state, 'treasury', npcAcct(def.id), 150, { memo: `Emberwick: the treasury helps ${def.name} through a hard time` });
+      addLog(state, `The treasury helped ${def.name} with 150 EMWK.`, 'info', 'log.bailout', { name: { $npc: def.id }, n: 150 });
+    }
+  }
+
   // the guard eats bread and swords wear out on patrol
   const tower = state.npcs.tower;
   if ((tower.stock.bread || 0) > 0) tower.stock.bread--;
@@ -770,6 +806,7 @@ function clampProposal(kind, a) {
   if (kind === 'welcome') return { amount: Math.round(Math.min(c.max, Math.max(c.min, Number(a.amount) || 0))) };
   if (kind === 'festival') return { amount: Math.round(Math.min(c.max, Math.max(c.min, Number(a.amount) || 0))) };
   if (kind === 'tower') return { cost: c.cost };
+  if (kind === 'district') return { n: Number(a.n) || null };
   return null;
 }
 
@@ -793,6 +830,11 @@ function propose(state, by, kind, args) {
   const params = clampProposal(kind, args || {});
   if (!params) return { ok: false, error: 'Unknown proposal.', code: 'err.badProposal' };
   if (kind === 'tower' && !freeTowerSpot(state)) return { ok: false, error: 'There is no room for another watchtower.', code: 'err.noTowerSpot' };
+  if (kind === 'district') {
+    const n = nextDistrict(state);
+    if (!n) return { ok: false, error: 'There is no new land to open right now.', code: 'err.noDistrict' };
+    params.n = n; params.cost = DISTRICTS[n].cost;
+  }
   if (state.council.open.length >= COUNCIL.maxOpen) return { ok: false, error: 'The council is full. Wait for a vote to end.', code: 'err.councilFull' };
   if (state.council.open.some((x) => x.kind === kind && JSON.stringify(x.params) === JSON.stringify(params))) return { ok: false, error: 'That is already being voted on.', code: 'err.sameProposal' };
   if (by.startsWith('player:') && !transfer(state, by, 'treasury', COUNCIL.fee)) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
@@ -838,6 +880,12 @@ function aiOpinion(state, voter, prop) {
     case 'welcome':
       if (isNpc) return (rich ? r < 0.6 : r < 0.3) ? say(true, 'customers') : say(false, rich ? 'notNeeded' : 'poor');
       return r < 0.6 ? say(true, 'newcomers') : say(false, 'notNeeded');
+    case 'district': {
+      if (voter === 'npc:carpenter' || voter === 'npc:woodcutter') return say(true, 'self');
+      const few = freePlots(state) <= 1;
+      if (few) return r < 0.8 ? say(true, 'growth') : say(false, 'poor');
+      return (rich ? r < 0.5 : r < 0.2) ? say(true, 'growth') : say(false, rich ? 'notNeeded' : 'poor');
+    }
     case 'tower':
       if (voter === 'npc:carpenter' || voter === 'npc:tower') return say(true, 'self');
       if (danger) return r < 0.85 ? say(true, 'danger') : say(false, 'poor');
@@ -860,6 +908,15 @@ function enact(state, prop) {
   } else if (prop.kind === 'welcome') {
     if (spare < p.amount) return 'poor';
     transfer(state, 'treasury', 'newcomerFund', p.amount);
+  } else if (prop.kind === 'district') {
+    const n = p.n;
+    if (!n || districtOpen(state, n) || !districtOpen(state, DISTRICTS[n].needs)) return 'poor';
+    if (spare < DISTRICTS[n].cost) return 'poor';
+    // the roads and the clearing are built by the carpenter and the woodcutter
+    transfer(state, 'treasury', npcAcct('carpenter'), DISTRICTS[n].cost / 2, { memo: `Emberwick council #${prop.id}: open ${DISTRICTS[n].name}` });
+    transfer(state, 'treasury', npcAcct('woodcutter'), DISTRICTS[n].cost / 2, { memo: `Emberwick council #${prop.id}: clear land for ${DISTRICTS[n].name}` });
+    state.districts = [...(state.districts || []), n];
+    addLog(state, `${DISTRICTS[n].name} is open. New plots are for sale.`, 'good', 'log.districtOpen', { place: { $district: n } });
   } else if (prop.kind === 'tower') {
     const spot = freeTowerSpot(state);
     if (!spot) return 'poor';
@@ -898,7 +955,7 @@ function runCouncil(state, newDay) {
     prop.closedDay = state.day;
     delete prop.aiPlan;
     // the decision goes on NEAR: a 0.01 EMWK record from the treasury carries it in the memo
-    const what = { grant: `grant ${prop.params.amount} to ${prop.params.npc}`, tax: `market tax ${Math.round(prop.params.rate * 100)}%`, welcome: `${prop.params.amount} to newcomer fund`, festival: `festival ${prop.params.amount} per villager`, tower: `build a watchtower for ${prop.params.cost}` }[prop.kind];
+    const what = { grant: `grant ${prop.params.amount} to ${prop.params.npc}`, tax: `market tax ${Math.round(prop.params.rate * 100)}%`, welcome: `${prop.params.amount} to newcomer fund`, festival: `festival ${prop.params.amount} per villager`, tower: `build a watchtower for ${prop.params.cost}`, district: `open ${(DISTRICTS[prop.params.n] || {}).name} for ${prop.params.cost}` }[prop.kind];
     transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick council #${prop.id} (${what}): ${prop.result.toUpperCase()}. Yes ${prop.yes} / No ${prop.no}, ${prop.voters} voters.`, council: prop.id });
     c.open = c.open.filter((x) => x !== prop);
     c.closed.unshift(prop);
@@ -914,6 +971,8 @@ function runCouncil(state, newDay) {
     const bot = () => 'bot:b' + (1 + Math.floor(rng(state) * 12));
     const ideas = [];
     if (state.events.attackDay !== null || state.readiness < 45) ideas.push(['npc:tower', 'grant', { npc: 'tower', amount: 150 }]);
+    const nd = nextDistrict(state);
+    if (nd && freePlots(state) <= 1 && tre > RULES.treasuryReserve + DISTRICTS[nd].cost + 500) ideas.push([bot(), 'district', { n: nd }]);
     if ((state.events.attackDay !== null || state.readiness < 60) && freeTowerSpot(state) && tre > RULES.treasuryReserve + 1500) ideas.push(['npc:tower', 'tower', {}]);
     if (tre > 7000) ideas.push([bot(), 'festival', { amount: 4 }]);
     if (taxRate(state) > COUNCIL.tax.min) ideas.push(['npc:' + CRAFTSMEN[Math.floor(rng(state) * CRAFTSMEN.length)].id, 'tax', { rate: Math.max(COUNCIL.tax.min, r2(taxRate(state) - 0.01)) }]);
@@ -958,7 +1017,16 @@ export function ensureContracts(state) {
     if (!transfer(state, 'treasury', npcAcct(c.id), c.wallet, { memo: `Emberwick: ${c.name} opens a shop` })) state.balances[npcAcct(c.id)] = state.balances[npcAcct(c.id)] || 0;
     addLog(state, `${c.name} opened a new shop in the village.`, 'good', 'log.newShop', { name: { $npc: c.id } });
   }
-  if (!state.plots) state.plots = Object.fromEntries(LAND.plots.map((id) => [id, { owner: null, built: false, deed: null }]));
+  if (!state.plots) state.plots = {};
+  for (const d of PLOT_DEFS) if (!state.plots[d.id]) state.plots[d.id] = { owner: null, built: false, deed: null };
+  if (!state.districts) state.districts = [];
+  // shops learn new goods added in later versions (e.g. the carpenter's beds)
+  for (const c of CRAFTSMEN) {
+    const n = state.npcs[c.id];
+    if (!n) continue;
+    for (const [g, v] of Object.entries(c.sells)) if (n.sells[g] === undefined) { n.sells[g] = v; n.base[g] = v; n.stock[g] = c.stock[g] || 0; }
+    for (const [g, v] of Object.entries(c.buys)) if (n.buys[g] === undefined) { n.buys[g] = v; n.base[g] = v; n.stock[g] = n.stock[g] || c.stock[g] || 0; }
+  }
   if (!state.jobOffers) state.jobOffers = {};
   if (!state.houses) state.houses = Object.fromEntries(Object.keys(HOUSES).map((id) => [id, { tenant: null, since: null }]));
   if (state.balances.deposits === undefined) state.balances.deposits = 0;
@@ -1022,6 +1090,14 @@ function settleContracts(state) {
       else if (j.daysLeft <= 0) endJob(state, p, 'done');
       else if (balance(state, npcAcct(j.npc)) < j.wage) endJob(state, p, 'broke');
     }
+    if (p.lease) {
+      const plot = state.plots[p.lease];
+      if (!plot || !plot.lease || plot.lease.tenant !== p.id) p.lease = null;
+      else if (!transfer(state, 'player:' + p.id, 'player:' + plot.owner, plot.lease.rent, { memo: `Emberwick: rent for ${p.lease}` })) {
+        addLog(state, `${p.name} could not pay the rent and had to move out.`, 'warn', 'log.evicted', { name: p.name, place: { $place: p.lease } });
+        plot.lease.tenant = null; p.lease = null;
+      } else p.stats.spent = r2(p.stats.spent + plot.lease.rent);
+    }
     if (p.home) {
       const h = HOUSES[p.home];
       if (!transfer(state, 'player:' + p.id, 'treasury', h.rent)) {
@@ -1053,26 +1129,66 @@ function contractAction(state, p, action) {
     if (!plot) return { ok: false, error: 'Unknown place.', code: 'err.unknownPlace' };
     if (plot.owner) return { ok: false, error: 'This plot is already sold.', code: 'err.plotSold' };
     if (p.plot) return { ok: false, error: 'You already own a plot.', code: 'err.havePlot' };
-    if (!transfer(state, acct, 'treasury', LAND.price)) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
-    p.stats.spent = r2(p.stats.spent + LAND.price);
+    if (!plotOpen(state, action.plot)) return { ok: false, error: 'This neighbourhood is not open yet. The council decides when it opens.', code: 'err.districtClosed' };
+    const def = plotDef(action.plot), need = def.district ? DISTRICTS[def.district].minLevel : 0;
+    if (playerLevel(p) < need) return { ok: false, error: `You need level ${need} to buy here.`, code: 'err.needLevel', need, have: playerLevel(p) };
+    const cost = plotPrice(action.plot);
+    if (!transfer(state, acct, 'treasury', cost)) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+    p.stats.spent = r2(p.stats.spent + cost);
     plot.owner = p.id; plot.since = state.day; plot.deed = { tokenId: `${action.plot}-${state.day}-${p.id}`, minted: false };
     p.plot = action.plot;
     addLog(state, `${p.name} bought land.`, 'good', 'log.boughtPlot', { name: p.name, place: { $place: action.plot } });
     emit('deed', { plot: action.plot, tokenId: plot.deed.tokenId, player: p.id, name: p.name, wallet: (p.nearVerified && p.near) || null, day: state.day });
-    return { ok: true, plot: action.plot, price: LAND.price };
+    return { ok: true, plot: action.plot, price: cost };
   }
   if (action.type === 'buildHouse') {
     const plot = state.plots[action.plot];
     if (!plot || plot.owner !== p.id) return { ok: false, error: 'This is not your land.', code: 'err.notYourPlot' };
     if (plot.built) return { ok: false, error: 'Your home is already built.', code: 'err.built' };
-    const b = LAND.build;
+    const b = plotBuild(action.plot);
     if (inv(p, 'lumber') < b.lumber) return { ok: false, error: 'You need more lumber.', code: 'err.needLumber', need: b.lumber, have: inv(p, 'lumber') };
     if (!transfer(state, acct, npcAcct(b.builder), b.fee, { memo: `Emberwick: ${p.name} builds a home on ${action.plot}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
     addInv(p, 'lumber', -b.lumber);
     p.stats.spent = r2(p.stats.spent + b.fee);
     plot.built = true; plot.builtDay = state.day;
+    if (inv(p, 'bed') > 0) { addInv(p, 'bed', -1); plot.bed = true; } // a bed you already bought goes straight in
     addLog(state, `${p.name} built a home.`, 'good', 'log.builtHome', { name: p.name, place: { $place: action.plot } });
     return { ok: true, plot: action.plot };
+  }
+  // ---- renting out a home you built: the rent goes from the tenant to you every morning ----
+  if (action.type === 'listHome') {
+    const plot = state.plots[action.plot];
+    if (!plot || plot.owner !== p.id || !plot.built) return { ok: false, error: 'This is not your home.', code: 'err.notYourPlot' };
+    if (!plot.bed) return { ok: false, error: 'Put a bed in your home first. The carpenter sells beds.', code: 'err.noBedYet' };
+    const rent = Math.round(Math.min(LAND.lease.max, Math.max(LAND.lease.min, Number(action.rent) || 0)));
+    plot.lease = { ...(plot.lease || {}), rent, tenant: (plot.lease && plot.lease.tenant) || null };
+    return { ok: true, rent };
+  }
+  if (action.type === 'unlistHome') {
+    const plot = state.plots[action.plot];
+    if (!plot || plot.owner !== p.id || !plot.lease) return { ok: false, error: 'This is not your home.', code: 'err.notYourPlot' };
+    if (plot.lease.tenant) return { ok: false, error: 'Someone lives there now. They can move out first.', code: 'err.hasTenant' };
+    plot.lease = null;
+    return { ok: true };
+  }
+  if (action.type === 'leaseHome') {
+    const plot = state.plots[action.plot];
+    if (!plot || !plot.lease || plot.lease.tenant || plot.owner === p.id) return { ok: false, error: 'This home is not for rent.', code: 'err.notForRent' };
+    if (p.home || p.lease) return { ok: false, error: 'You already rent a home.', code: 'err.haveHome' };
+    const owner = state.players[plot.owner];
+    if (!transfer(state, acct, 'player:' + plot.owner, plot.lease.rent, { memo: `Emberwick: ${p.name} rents the home of ${owner ? owner.name : '?'} on ${action.plot}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+    p.stats.spent = r2(p.stats.spent + plot.lease.rent);
+    plot.lease.tenant = p.id; plot.lease.since = state.day;
+    p.lease = action.plot;
+    addLog(state, `${p.name} rents a home from ${owner ? owner.name : '?'}.`, 'info', 'log.leased', { name: p.name, owner: owner ? owner.name : '?', place: { $place: action.plot } });
+    return { ok: true, rent: plot.lease.rent };
+  }
+  if (action.type === 'leaveLease') {
+    const plot = p.lease && state.plots[p.lease];
+    if (!plot) return { ok: false, error: 'You do not rent a home.', code: 'err.noHome' };
+    if (plot.lease) plot.lease.tenant = null;
+    p.lease = null;
+    return { ok: true };
   }
   if (action.type === 'propose') return propose(state, acct, action.kind, action);
   if (action.type === 'vote') return vote(state, acct, action.id, action.yes);
@@ -1159,8 +1275,10 @@ function contractAction(state, p, action) {
     if (!isNight(state)) return { ok: false, error: 'It is not night yet. You can sleep once it gets dark.', code: 'err.notNight' };
     if (p.sleep && p.sleep.day === state.day) return { ok: false, error: 'You are already asleep.', code: 'err.asleep' };
     const place = action.place;
-    const own = p.plot && place === p.plot && state.plots[p.plot] && state.plots[p.plot].built;
-    const rented = p.home && place === p.home;
+    const ownPlot = p.plot && place === p.plot && state.plots[p.plot];
+    const own = ownPlot && ownPlot.built && !(ownPlot.lease && ownPlot.lease.tenant);
+    if (own && !ownPlot.bed) return { ok: false, error: 'There is no bed in your home yet. The carpenter sells beds.', code: 'err.noBedYet' };
+    const rented = (p.home && place === p.home) || (p.lease && place === p.lease);
     if (place === 'inn') {
       if (!transfer(state, acct, npcAcct('inn'), RULES.innBed, { memo: `Emberwick: ${p.name} sleeps at the inn` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
       p.stats.spent = r2(p.stats.spent + RULES.innBed);
@@ -1170,7 +1288,9 @@ function contractAction(state, p, action) {
     return { ok: true, place, paid: place === 'inn' ? RULES.innBed : 0 };
   }
   if (action.type === 'rest') {
-    const own = p.plot && state.plots[p.plot] && state.plots[p.plot].built && (!p.home || action.house === p.plot);
+    const mine = p.plot && state.plots[p.plot];
+    const own = mine && mine.built && !(mine.lease && mine.lease.tenant) && (!p.home || action.house === p.plot);
+    if (own && !mine.bed) return { ok: false, error: 'There is no bed in your home yet. The carpenter sells beds.', code: 'err.noBedYet' };
     if (!p.home && !own) return { ok: false, error: 'You do not rent a home.', code: 'err.noHome' };
     if (p.restedDay === state.day) return { ok: false, error: 'You already slept here today.', code: 'err.rested' };
     const before = p.energy;
@@ -1226,7 +1346,7 @@ function playerView(state, p) {
     restedToday: p.restedDay === state.day,
     asleep: !!(p.sleep && p.sleep.day === state.day && isNight(state)), sleepPlace: p.sleep && p.sleep.day === state.day ? p.sleep.place : null,
     cold: !!p.cold, freezing: freezing(state, p), coatLeft: hasCoat(p) ? RULES.coatWinterDays - ((p.wear && p.wear.coat) || 0) : 0,
-    innBed: RULES.innBed,
+    innBed: RULES.innBed, level: playerLevel(p),
     skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,
   };
 }
@@ -1273,10 +1393,16 @@ export function publicView(state, playerId) {
     jobOffers: Object.values(state.jobOffers || {}),
     council: councilView(state, playerId),
     land: LAND,
-    plots: Object.fromEntries(Object.entries(state.plots || {}).map(([id, x]) => [id, {
-      owner: x.owner ? (state.players[x.owner] || {}).name || '?' : null, mine: !!(x.owner && x.owner === playerId),
-      built: x.built, since: x.since || null, deed: x.deed,
-    }])),
+    districts: { open: state.districts || [], defs: DISTRICTS, next: nextDistrict(state), free: freePlots(state) },
+    plots: Object.fromEntries(Object.entries(state.plots || {}).map(([id, x]) => {
+      const d = plotDef(id) || {};
+      return [id, {
+        owner: x.owner ? (state.players[x.owner] || {}).name || '?' : null, mine: !!(x.owner && x.owner === playerId),
+        built: x.built, since: x.since || null, deed: x.deed, bed: !!x.bed,
+        price: plotPrice(id), build: plotBuild(id), district: d.district || 0, villa: !!d.villa, open: plotOpen(state, id), minLevel: d.district ? DISTRICTS[d.district].minLevel : 0,
+        lease: x.lease ? { rent: x.lease.rent, tenant: x.lease.tenant ? (state.players[x.lease.tenant] || {}).name || '?' : null, mine: x.lease.tenant === playerId } : null,
+      }];
+    })),
     // other players who were active recently (about the last game day)
     others: Object.values(state.players).filter((o) => o.id !== playerId && o.seenAt !== undefined && state.tick - o.seenAt < RULES.ticksPerDay)
       .map((o) => ({ id: o.id, name: o.name, path: o.path, where: o.where || 'gate' })),

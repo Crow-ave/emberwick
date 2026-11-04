@@ -25,6 +25,35 @@ export function bigPerson(x, y, s, look, tool = null, cls = '') {
     (toolSvg ? `<g class="swing">${toolSvg}</g>` : '') + `</g>`;
 }
 
+// a person lying in bed, asleep (head on the pillow, blanket up to the chin)
+function sleeper(x, y, s, look) {
+  // (x, y) = the middle of the pillow; the blanket of the bed covers the body
+  return `<g transform="translate(${x} ${y}) scale(${s})"><circle cx="0" cy="-2" r="7.5" fill="${look.skin || '#f0c8a0'}"/><path d="M-7.5 -3 Q0 -12 7.5 -3 Z" fill="${look.hair || '#5a3a22'}"/>` +
+    `<path d="M-4 -1 q1.5 1.5 3 0 M1 -1 q1.5 1.5 3 0" stroke="#2a2a2a" stroke-width="1" fill="none"/></g>` +
+    `<g class="zzz"><text x="${x + 24}" y="${y - 30}" font-size="${9 * s}" font-weight="bold" fill="#4a5a8a">z</text><text x="${x + 46}" y="${y - 58}" font-size="${11 * s}" font-weight="bold" fill="#4a5a8a">z</text><text x="${x + 72}" y="${y - 92}" font-size="${13 * s}" font-weight="bold" fill="#4a5a8a">Z</text></g>`;
+}
+// a bed: frame, mattress, pillow and blanket. (x, y) = the foot end on the floor
+function bedSvg(x, y, w = 260, color = '#3a6ea8') {
+  return `<g>${rect(x, y - 40, w, 40, '#7a5236', 'rx="6"')}${rect(x - 10, y - 96, 22, 96, '#6b4528', 'rx="5"')}${rect(x + w - 12, y - 66, 20, 66, '#6b4528', 'rx="5"')}` +
+    `${rect(x + 6, y - 58, w - 16, 22, '#f4efe4', 'rx="8"')}${rect(x + 14, y - 74, 70, 22, '#ffffff', 'rx="10" stroke="#e0d8c8"')}` +
+    `${rect(x + 78, y - 64, w - 92, 30, color, 'rx="10"')}<path d="M${x + 90} ${y - 52} H${x + w - 22}" stroke="rgba(255,255,255,.35)" stroke-width="3"/></g>`;
+}
+
+// a speech bubble with wrapped text, pointing down at (x, y)
+export function bubble(x, y, text, maxChars = 34) {
+  const words = String(text).split(/\s+/), lines = [];
+  let line = '';
+  for (const w of words) { if ((line + ' ' + w).trim().length > maxChars && line) { lines.push(line); line = w; } else line = (line + ' ' + w).trim(); }
+  if (line) lines.push(line);
+  const shown = lines.slice(0, 5), lh = 26, w = Math.max(...shown.map((l) => l.length)) * 11.4 + 40, h = shown.length * lh + 26;
+  const bx = Math.max(10, Math.min(SW - w - 10, x - w / 2)), by = y - h - 18;
+  const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  return `<g class="bubble"><rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="16" fill="#fffaf2" stroke="#7a5236" stroke-width="2.5"/>` +
+    `<path d="M${x - 12} ${by + h - 1} L${x} ${y - 4} L${x + 12} ${by + h - 1} Z" fill="#fffaf2" stroke="#7a5236" stroke-width="2.5"/><rect x="${x - 11}" y="${by + h - 4}" width="22" height="6" fill="#fffaf2"/>` +
+    shown.map((l, k) => `<text x="${bx + w / 2}" y="${by + 30 + k * lh}" font-size="20" text-anchor="middle" fill="#3a2a1e">${esc(l)}</text>`).join('') + `</g>`;
+}
+export const KEEPER_HEAD = [520, 270];
+
 const rect = (x, y, w, h, f, extra = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" ${extra}/>`;
 
 // ---------- work places ----------
@@ -180,12 +209,45 @@ function shopScene(id, look, view) {
   s += rect(330, 380, 400, 90, '#8a5a3a', 'rx="6"') + rect(320, 372, 420, 16, '#6b4a2e', 'rx="4"');
   if (id === 'inn') s += ITEM_ICON.meal(470, 372) + ITEM_ICON.meal(580, 372);
   if (id === 'bakery') s += ITEM_ICON.bread(450, 372) + ITEM_ICON.bread(490, 372) + ITEM_ICON.bread(610, 372);
-  s += `<g id="you-scene">${bigPerson(250, GROUND + 70, 3.0, look)}</g>`;
+  const me = view.player, asleep = id === 'inn' && me && view.night && me.sleepPlace === 'inn';
+  if (id === 'inn') s += `<g>${bedSvg(40, GROUND + 80, 300, '#7a3b2a')}</g>`; // a guest bed by the window
+  s += asleep ? `<g id="you-scene">${sleeper(40 + 49, GROUND + 80 - 63, 3, look)}</g>` : `<g id="you-scene">${bigPerson(id === 'inn' ? 420 : 250, GROUND + 70, 3.0, look)}</g>`;
+  if (view.night) s += rect(0, 0, SW, SH, 'rgba(20,30,70,.28)');
   if (n.closed) s += rect(0, 0, SW, SH, 'rgba(40,30,20,.45)');
   return s;
 }
 
+// inside a home: a bedroom. With a bed you can sleep; without one the room is bare.
+function homeScene(id, look, view) {
+  const me = view.player || {};
+  const plot = view.plots && view.plots[id], house = view.houses && view.houses[id];
+  const hasBed = house ? true : !!(plot && plot.bed);
+  const asleep = view.night && me.sleepPlace === id;
+  let s = rect(0, 0, SW, SH, '#e8d6b6');
+  for (let x = 0; x < SW; x += 80) s += rect(x, 0, 3, GROUND, '#dcc7a2');
+  s += rect(0, GROUND, SW, SH - GROUND, '#9a7450');
+  for (let x = 0; x < SW; x += 110) s += rect(x, GROUND, 2, SH - GROUND, '#86623f');
+  // window: day sky or night sky with the moon
+  s += `<g>${rect(760, 90, 220, 160, view.night ? '#24305a' : '#9ec7e0', 'rx="8"')}${view.night ? '<circle cx="920" cy="140" r="22" fill="#f4efd0"/><circle cx="800" cy="120" r="2" fill="#fff"/><circle cx="850" cy="200" r="2" fill="#fff"/>' : '<circle cx="930" cy="130" r="20" fill="#f6d25a"/>'}` +
+    `${rect(866, 90, 8, 160, '#7a5236')}${rect(760, 166, 220, 8, '#7a5236')}${rect(752, 82, 236, 176, 'none', 'stroke="#7a5236" stroke-width="12" rx="10"')}</g>`;
+  // a little table with a candle, a rug
+  s += `<ellipse cx="560" cy="${GROUND + 70}" rx="200" ry="34" fill="#b5501e" opacity=".55"/>`;
+  s += `${rect(820, GROUND - 60, 120, 14, '#7a5236', 'rx="4"')}${rect(832, GROUND - 46, 10, 46, '#6b4528')}${rect(918, GROUND - 46, 10, 46, '#6b4528')}${rect(872, GROUND - 92, 12, 32, '#f4efe4')}<ellipse cx="878" cy="${GROUND - 98}" rx="5" ry="9" fill="#f6b23a" class="flick"/>`;
+  if (hasBed) s += bedSvg(90, GROUND + 80, 320, house ? '#4f7a3a' : '#3a6ea8');
+  else s += `<g>${rect(90, GROUND + 40, 300, 60, 'rgba(0,0,0,.08)', 'rx="10" stroke="#9a7450" stroke-dasharray="10 8" stroke-width="3"')}</g>`;
+  s += asleep ? sleeper(90 + 49, GROUND + 80 - 63, 3, look) : `<g id="you-scene">${bigPerson(600, GROUND + 70, 3.0, look)}</g>`;
+  if (view.night) s += rect(0, 0, SW, SH, 'rgba(20,30,70,.3)');
+  return s;
+}
+export const homeHasScene = (id, view) => {
+  const h = view.houses && view.houses[id];
+  if (h) return !!h.mine;
+  const p = view.plots && view.plots[id];
+  return !!(p && p.built && (p.mine || (p.lease && p.lease.mine)));
+};
+
 export function sceneMarkup(id, view, look) {
+  if (homeHasScene(id, view)) return homeScene(id, look, view);
   if (id === 'mine') return mineScene(look);
   if (id === 'forest') return forestScene(look);
   if (id === 'fields') return fieldsScene(look, view);
@@ -193,4 +255,4 @@ export function sceneMarkup(id, view, look) {
   return '';
 }
 
-export const hasScene = (id, view) => id === 'mine' || id === 'forest' || id === 'fields' || !!(view && view.npcs[id]);
+export const hasScene = (id, view) => id === 'mine' || id === 'forest' || id === 'fields' || !!(view && view.npcs[id]) || !!(view && homeHasScene(id, view));

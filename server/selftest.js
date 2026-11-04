@@ -79,6 +79,37 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   state.events.winter = false;
   if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with nights and coats');
 }
+// a bed for the home, renting it out to another player, and a new neighbourhood
+{
+  const owner = state.players[me];
+  const t1 = joinPlayer(state, 'Tenant', 'farmer').id;
+  state.balances['player:' + t1] = (state.balances['player:' + t1] || 0) + 60; state.balances.newcomerFund -= 60;
+  while ((state.tick % RULES.ticksPerDay) / RULES.ticksPerDay < 0.85) tick(state);
+  const noBed = playerAction(state, me, { type: 'sleep', place: owner.plot });
+  while ((state.tick % RULES.ticksPerDay) !== 0) tick(state);
+  state.npcs.carpenter.stock.bed = Math.max(1, state.npcs.carpenter.stock.bed || 0);
+  const bed = playerAction(state, me, { type: 'buy', npc: 'carpenter', good: 'bed', qty: 1 });
+  const list = playerAction(state, me, { type: 'listHome', plot: owner.plot, rent: 8 });
+  if (owner.home) playerAction(state, me, { type: 'leaveHouse' });
+  const ob = state.balances['player:' + me];
+  const lease = playerAction(state, t1, { type: 'leaseHome', plot: owner.plot });
+  for (let i = 0; i < RULES.ticksPerDay; i++) tick(state);
+  const got = Math.round((state.balances['player:' + me] - ob) * 100) / 100;
+  console.log('Home: sleep without bed', noBed.code, '| bed bought', bed.ok, 'installed', bed.installed, '| listed', list.ok, '| leased', lease.ok, '| owner got', got);
+  if (noBed.code !== 'err.noBedYet' || !bed.installed || !list.ok || !lease.ok || got < 16) fail('beds or renting out a home did not work');
+  const before = state.districts.length;
+  const pr = playerAction(state, me, { type: 'propose', kind: 'district' });
+  const prop = state.council.open.find((x) => x.kind === 'district');
+  if (prop) for (const k of Object.keys(prop.aiPlan)) prop.votes[k] = { yes: true, w: 1 }, delete prop.aiPlan[k];
+  if (state.balances.treasury < 3000) { state.balances.treasury += 1000; state.balances.newcomerFund -= 1000; }
+  for (let i = 0; i < RULES.ticksPerDay + 2; i++) tick(state);
+  const d1 = publicView(state, me).plots['d1-12'];
+  console.log('District: proposed', pr.ok, '| open', before, '->', state.districts.length, '| far plot price', d1.price, 'vs centre', publicView(state, me).plots['plot-4'].price);
+  if (!pr.ok || state.districts.length !== before + 1 || !d1.open || d1.price >= 120) fail('a new neighbourhood did not open');
+  const villa = playerAction(state, t1, { type: 'buyPlot', plot: 'd2-1' });
+  if (villa.ok) fail('a closed villa plot could be bought');
+  if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with homes and districts');
+}
 function playerView0() { return publicView(state, me).player; }
 
 // a watchtower: the council orders one, the carpenter is paid, readiness goes up

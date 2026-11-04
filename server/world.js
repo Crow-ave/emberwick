@@ -29,7 +29,8 @@ export const GOODS = {
   plow:    { name: 'Plow',      kind: 'tool', boosts: 'wheat' },
   cart:    { name: 'Cart',      kind: 'tool', boosts: 'carry' },
   shears:  { name: 'Shears',    kind: 'tool', boosts: 'wool' },
-  coat:    { name: 'Winter coat', kind: 'clothing' }, // keeps you warm in winter; wears out after a few winter days
+  coat:    { name: 'Winter coat', kind: 'clothing' },
+  bed:     { name: 'Bed',       kind: 'furniture' }, // a home you built needs one before you can sleep there // keeps you warm in winter; wears out after a few winter days
   meal:    { name: 'Meal',      kind: 'service' },
 };
 
@@ -63,6 +64,7 @@ export const BUILDINGS = [
   { id: 'house-3',    name: 'Large house', type: 'house',     i: 11, j: 10, w: 1, size: 'large' },
   { id: 'pasture',    name: 'Sheep pasture', type: 'gather',  i: 0,  j: 10, w: 2 },
   { id: 'tailor',     name: 'Tailor',      type: 'craftsman', i: 3,  j: 10, w: 1 },
+  { id: 'roadsign',   name: 'Road to the neighbourhoods', type: 'sign', i: 6, j: 13, w: 1 },
   { id: 'gate',       name: 'Village gate',type: 'landmark',  i: 5,  j: 13, w: 1 },
   // building land: four plots around the village players can buy and build a home on
   { id: 'plot-1',     name: 'Plot 1',      type: 'plot',      i: 1,  j: 12, w: 1 },
@@ -74,6 +76,25 @@ export const BUILDINGS = [
   { id: 'watch-2',    name: 'Watchtower',  type: 'watch',     i: 0,  j: 6,  w: 1 },
   { id: 'watch-3',    name: 'Watchtower',  type: 'watch',     i: 12, j: 12, w: 1 },
 ];
+
+// New neighbourhoods outside the village. Each has its own little map. District 1
+// (Ember Lane) is for everyone; district 2 (Villa hill) has big plots and only opens to
+// experienced villagers. The council votes to open them; the treasury pays the work.
+// Land is dearer near the centre: price = LAND.price x the plot's factor.
+export const DISTRICTS = {
+  1: { id: 'lane',  name: 'Ember Lane', cost: 600, needs: 0, minLevel: 0,
+       build: { lumber: 6, fee: 40 }, factors: [0.9, 0.9, 0.85, 0.85, 0.8, 0.8, 0.75, 0.75, 0.7, 0.7, 0.65, 0.65] },
+  2: { id: 'villa', name: 'Villa hill', cost: 1200, needs: 1, minLevel: 5,
+       build: { lumber: 14, fee: 120 }, factors: [3, 3, 2.8, 2.8, 2.6, 2.6] },
+};
+// where the district plots sit on their own map (i, j on a 10x10 grid)
+const LANE_CELLS = [[2, 2], [4, 2], [6, 2], [2, 4], [4, 4], [6, 4], [2, 6], [4, 6], [6, 6], [2, 8], [4, 8], [6, 8]];
+const VILLA_CELLS = [[2, 2], [5, 2], [2, 5], [5, 5], [2, 8], [5, 8]];
+for (const [n, cells] of [[1, LANE_CELLS], [2, VILLA_CELLS]]) {
+  cells.forEach(([i, j], k) => BUILDINGS.push({ id: `d${n}-${k + 1}`, name: `${DISTRICTS[n].name} ${k + 1}`, type: 'plot', district: n, villa: n === 2, i, j, w: n === 2 ? 2 : 1 }));
+}
+// how dear each of the four village plots is (the centre is worth the most)
+export const CENTRE_FACTOR = { 'plot-1': 1.2, 'plot-2': 1.3, 'plot-3': 1.25, 'plot-4': 1.4 };
 
 // The seven craftsmen. They are AI agents with their own wallets.
 // recipe: inputs consumed -> outputs produced, once per production step.
@@ -110,8 +131,8 @@ export const CRAFTSMEN = [
   {
     id: 'carpenter', name: 'Wren the Carpenter', wallet: 450,
     recipe: { in: { lumber: 2 }, out: { cart: 1 } },
-    buys: { lumber: 9 }, sells: { cart: 30 },
-    stock: { lumber: 2, cart: 1 }, target: { lumber: 4, cart: 2 },
+    buys: { lumber: 9 }, sells: { cart: 30, bed: 18 },
+    stock: { lumber: 2, cart: 1, bed: 3 }, target: { lumber: 4, cart: 2, bed: 3 },
     lines: ['Measure twice, cut once.', 'A good cart carries a family through winter.'],
   },
   {
@@ -202,7 +223,7 @@ export const JOBS = {
 // wealth (square root, so the rich cannot simply buy every vote), how long you have
 // lived here and what you have given to the village.
 export const COUNCIL = {
-  kinds: ['grant', 'tax', 'welcome', 'festival', 'tower'],
+  kinds: ['grant', 'tax', 'welcome', 'festival', 'tower', 'district'],
   fee: 2,                  // proposing costs this much, paid to the treasury (stops spam)
   maxOpen: 3,              // open proposals at once
   quorum: 4,               // a decision needs at least this many voters
@@ -218,8 +239,9 @@ export const COUNCIL = {
 // gets a deed, an NFT on NEAR. On their own plot they can build a home with lumber
 // and the carpenter's work. Their own home needs no rent.
 export const LAND = {
-  plots: ['plot-1', 'plot-2', 'plot-3', 'plot-4'],
-  price: 120,                 // EMWK to the treasury
+  plots: ['plot-1', 'plot-2', 'plot-3', 'plot-4'], // the village plots; district plots are added as districts open
+  price: 120,                 // base price; each plot multiplies it by its factor
+  lease: { min: 3, max: 30 }, // daily rent an owner may ask for their home                 // EMWK to the treasury
   build: { lumber: 6, fee: 40, builder: 'carpenter' },
   rest: 99,                   // sleeping in your own home fills your energy
 };

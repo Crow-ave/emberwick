@@ -17,7 +17,8 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - Random events: droughts, winters, dragon warnings and attacks, judged by village readiness
 - Day and night: at night the shops close (the inn stays open), nobody gathers or works shifts, and villagers walk home to sleep
 - Shelter: at night a player sleeps in their rented home, their own house or a paid bed at the inn (5 EMWK) and recovers fast. A night outside means no rest and a cold morning (max energy −3 for the day)
-- Winter comes 2 days in every 8: snow on the ground and roofs, and the bakery needs firewood. Without a coat you are cold: outdoor work costs 1 more energy, you rest at half speed, and winter nights outside drain energy
+- Winter comes 2 days in every 8: snow on the ground and roofs, nothing grows in the fields (no wheat harvest until spring), and the bakery needs firewood. Without a coat you are cold: outdoor work costs 1 more energy, you rest at half speed, and winter nights outside drain energy
+- A craftsman whose purse runs almost empty gets a 150 EMWK hand from the treasury, so one hard winter cannot break the wheat → flour → bread chain
 - The tailor (an eighth AI craftsman) sews winter coats from wool. Wool comes from the sheep pasture (you need shears from the tailor). Coats last 6 winter days; bot villagers buy them too
 - Dragon peak slowly turns red as an attack comes closer
 - Twelve villager bots that keep the economy moving
@@ -51,7 +52,10 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 
 - Four plots of building land are spread around the village (north, east, south and west). A plot costs 120 EMWK, paid to the treasury.
 - The buyer gets a **deed: a NEP-171 NFT** on NEAR (`deeds.emberwick-village.testnet`, near-sdk-rs 4.0 standard contract with events). It goes to the buyer's verified wallet; without one, the village bank holds it and moves it to the wallet once the player verifies.
-- On their own plot a player builds a home with 6 lumber and 40 EMWK for the carpenter. Their own home has no rent and sleeping there fills their energy.
+- On their own plot a player builds a home with 6 lumber and 40 EMWK for the carpenter. To sleep there they need a bed (the carpenter makes and sells beds).
+- Land is dearer near the centre: the four village plots cost 144–168 EMWK; plots in the neighbourhoods are cheaper the further they are from the gate.
+- **Renting out a home:** an owner sets a daily rent and another player moves in. Every morning the rent goes from the tenant straight to the owner, player to player, on NEAR.
+- **Neighbourhoods:** when land runs out, the council votes to open Ember Lane (12 plots, 78–108 EMWK); the treasury pays the carpenter and the woodcutter for roads and clearing. After that, Villa hill (6 big plots, 312–360 EMWK, level 5 needed, a villa takes 14 lumber). The AI villagers propose a new neighbourhood themselves when free plots run low.
 
 ## Watchtowers
 
@@ -112,3 +116,11 @@ npm test   # 100 game days of economy checks, then the NEAR bridge against an in
 ## License
 
 MIT
+
+
+## Roadmap (after the hackathon)
+
+- Transport: a paid village bus and minibus; walking takes longer, so you can be late for work. Later carts and cars that need fuel.
+- Growing businesses: a workshop can grow into a factory (a sword foundry, a large joinery) as its owner levels up; later large workplaces and plazas in the town centre.
+- New craftsmen by vote: if a shop goes broke and its craftsman leaves, the council votes to bring in a new AI craftsman. The old craftsman's money goes back to the treasury.
+- More neighbourhoods that open with levels, each with its own building rules (e.g. villas only on Villa hill).

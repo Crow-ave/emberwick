@@ -1,6 +1,6 @@
-import { setupMap, renderMap, buildGrid, entranceOf, findPath, cellCenter, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
+import { setupMap, renderMap, renderDistrict, buildGrid, entranceOf, findPath, cellCenter, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
 import { t, LANGS, getLang, setLang } from './i18n.js';
-import { sceneMarkup, hasScene, SW, SH } from './scenes.js';
+import { sceneMarkup, hasScene, homeHasScene, bubble, KEEPER_HEAD, SW, SH } from './scenes.js';
 
 const $ = (id) => document.getElementById(id);
 let world, view, playerId = null, pathChoice = 'farmer';
@@ -28,7 +28,10 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const goodName = (g) => t('g.' + g);
 // goods inside a sentence: lower case, except German where nouns keep their capital
 const goodWord = (g) => (getLang() === 'de' ? goodName(g) : goodName(g).toLocaleLowerCase(getLang()));
-const placeName = (id) => t('b.' + id);
+const placeName = (id) => {
+  const m = /^d(\d)-(\d+)$/.exec(id || ''); // neighbourhood plots: "Ember Lane 3"
+  return m ? t('district.' + m[1]) + ' ' + m[2] : t('b.' + id);
+};
 const npcName = (id) => t('npc.' + id);
 const errText = (r) => (r.code ? t(r.code) : r.error);
 // params that must follow the current language are stored as ids and resolved when drawn
@@ -37,6 +40,7 @@ function resolve(p = {}) {
   for (const [k, v] of Object.entries(p)) {
     if (v && v.$place) out[k] = placeName(v.$place);
     else if (v && v.$npc) out[k] = npcName(v.$npc);
+    else if (v && v.$district) out[k] = t('district.' + v.$district);
     else if (v && v.$good) out[k] = goodWord(v.$good);
     else if (v && v.$quest) out[k] = view.player ? questTexts(view.player.questInfo).text : '';
     else out[k] = v;
@@ -191,6 +195,7 @@ function animate(now) {
   const everyone = [...walkers, ...others.values(), ...(you ? [you] : [])];
   const visible = everyone.filter((w) => !w.inside).map((w) => [w, walkerPos(w)]).sort((a, b) => a[1][1] - b[1][1]);
   const sec = now / 1000;
+  if (ui.district) { $('map').querySelector('#walkers').innerHTML = ''; $('map').querySelector('#fx').innerHTML = ''; requestAnimationFrame(animate); return; }
   $('map').querySelector('#walkers').innerHTML = visible.map(([w, [x, y]]) => person(x, y, w.look, sec + (w.cell[0] * 0.3))).join('');
   let over = '';
   if (you && you.inside) {
@@ -225,7 +230,7 @@ function animate(now) {
 function walkYouTo(id, then) {
   if (!you) { if (then) then(); return; }
   const dest = workCellOf(id, 4);
-  if (!dest) return;
+  if (!dest) { if (then) then(); return; } // neighbourhood plots: no walking on the village map
   const enter = () => {
     you.inside = isOpenArea(id) ? null : id;
     if (hasScene(id, view) && ui.selected === id) openScene(id);
@@ -288,26 +293,67 @@ function renderScene() {
   mini.innerHTML = `<span>${t('scene.back')}</span>`;
   mini.setAttribute('aria-label', t('scene.back'));
   const n = view.npcs[id];
-  const key = [id, getLang(), n ? JSON.stringify(n.stock) + n.closed : '', view.events.drought, view.events.winter].join('|');
+  const me0 = view.player || {}, pl = view.plots && view.plots[id];
+  const key = [id, getLang(), n ? JSON.stringify(n.stock) + n.closed : '', view.events.drought, view.events.winter, !!view.night, me0.sleepPlace, pl ? pl.bed : ''].join('|');
   if (key !== sceneKey) {
     sceneKey = key;
     sc.setAttribute('viewBox', `0 0 ${SW} ${SH}`);
     sc.setAttribute('aria-label', placeName(id));
     const look = you ? you.look : PATH_LOOK.farmer;
-    sc.innerHTML = `<g>${sceneMarkup(id, view, look)}</g><g id="scene-fx"></g>`;
+    sc.innerHTML = `<g>${sceneMarkup(id, view, look)}</g><g id="scene-talk"></g><g id="scene-fx"></g>`;
   }
   const me = view.player;
+  // what the keeper (or you, at home) says right now, in a speech bubble inside the picture
+  const said = sceneTalk(id);
+  const talkKey = said ? said.text : '';
+  const talkG = sc.querySelector('#scene-talk');
+  if (talkG && talkG.dataset.k !== talkKey) { talkG.dataset.k = talkKey; talkG.innerHTML = said ? bubble(said.x, said.y, said.text) : ''; }
   if (SPOT_GOOD[id]) {
     const cost = me ? me.costs[id] : SPOT_COST[id];
     const working = status[id] && status[id].key === 'status.working';
-    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))}</b>${working ? esc(t('scene.working', { name: me ? me.name : '' })) : t('scene.ready')}<div class="prog"><div id="scene-prog"></div></div></div>` +
-      `<button class="primary" data-act="gather" data-spot="${id}" ${!me || me.energy < cost || working || me.job || !(me.inv[TOOL_OF[SPOT_GOOD[id]]] > 0) ? 'disabled' : ''}>${t('scene.again', { n: cost })}</button>`;
+    const frozen = id === 'fields' && view.events.winter;
+    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))}</b>${frozen ? esc(t('err.winterFields')) : working ? esc(t('scene.working', { name: me ? me.name : '' })) : t('scene.ready')}<div class="prog"><div id="scene-prog"></div></div></div>` +
+      `<button class="primary" data-act="gather" data-spot="${id}" ${!me || frozen || me.energy < cost || working || me.job || !(me.inv[TOOL_OF[SPOT_GOOD[id]]] > 0) ? 'disabled' : ''}>${t('scene.again', { n: cost })}</button>`;
   } else if (n) {
-    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))} · ${esc(npcName(id))}</b><span class="quote">"${esc(t('line.' + n.lineKey))}"</span><div class="muted" style="font-size:12px;margin-top:4px">${t('scene.tradeHint')}</div></div>`;
+    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))} · ${esc(npcName(id))}</b><span class="quote">"${esc(t('line.' + n.lineKey))}"</span><div class="muted" style="font-size:12px;margin-top:4px">${t('scene.tradeHint')}</div></div>` +
+      (id === 'inn' ? sleepButton('inn') : '');
+  } else if (homeHasScene(id, view)) {
+    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))}</b><span class="quote">${esc(t('scene.home'))}</span></div>` + sleepButton(id);
   }
   placeSceneBar();
 }
 $('mini').addEventListener('click', () => closeScene());
+
+// a sleep button for the scene bar (only at night, only where you may sleep)
+function sleepButton(place) {
+  const me = view.player;
+  if (!me || !view.night || me.sleepPlace) return '';
+  const plot = view.plots[place];
+  if (plot && plot.mine && !plot.bed) return '';
+  const paid = place === 'inn';
+  return `<button class="primary" data-act="sleep" data-place="${place}" ${paid && me.coins < me.innBed ? 'disabled' : ''}>${t(paid ? 'sleep.innBtn' : 'sleep.btn', { n: me.innBed })}</button>`;
+}
+
+// the line in the speech bubble: the result of what you just did, or what fits the moment
+function sceneTalk(id) {
+  const me = view.player;
+  if (!me) return null;
+  const home = homeHasScene(id, view), at = home ? [600, 250] : KEEPER_HEAD;
+  const r = result[id];
+  if (r && !r.bad) return { x: at[0], y: at[1], text: t(r.key, resolve(r.p)) };
+  if (r && r.bad) return { x: at[0], y: at[1], text: t(r.key, resolve(r.p)) };
+  if (home) {
+    const plot = view.plots[id];
+    if (plot && plot.mine && !plot.bed) return { x: at[0], y: at[1], text: t('talk.home.noBed', { p: view.npcs.carpenter.sells.bed }) };
+    if (view.night) return { x: at[0], y: at[1], text: t(me.sleepPlace === id ? 'talk.home.asleep' : 'talk.home.night') };
+    return null;
+  }
+  if (id === 'inn' && view.night) return { x: at[0], y: at[1], text: me.sleepPlace === 'inn' ? t('talk.inn.asleep', { name: me.name }) : t('talk.inn.bed', { n: me.innBed }) };
+  const n = view.npcs[id];
+  if (n && n.shut) return { x: at[0], y: at[1], text: t('talk.shut') };
+  if (id === 'tailor' && view.events.winter && !me.inv.coat) return { x: at[0], y: at[1], text: t('talk.tailor.winter', { p: n.sells.coat }) };
+  return null;
+}
 
 // ---------- side panel ----------
 
@@ -372,7 +418,8 @@ function panelGather(b) {
     (me ? `<p>${t('gather.carry', { n: me.inv[good] || 0, good: goodWord(good) })}</p>` : '') +
     (me && !me.job && !(me.inv[TOOL_OF[good]] > 0) ? `<div class="contract"><p class="small">${t('gather.needTool', { tool: goodWord(TOOL_OF[good]), place: placeName(TOOL_SHOP[TOOL_OF[good]]), p: view.npcs[TOOL_SHOP[TOOL_OF[good]]].sells[TOOL_OF[good]] })}</p><button data-go="${TOOL_SHOP[TOOL_OF[good]]}">${esc(t('go.to', { place: placeName(TOOL_SHOP[TOOL_OF[good]]) }))}</button> <button data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button></div>` :
     me && me.job ? `<div class="contract"><p class="small">${t('job.blocked', { place: placeName(me.job.npc) })}</p><button data-go="${me.job.npc}">${esc(t('go.to', { place: placeName(me.job.npc) }))}</button></div>` :
-    `<button class="primary big" data-act="gather" ${!me || me.energy < energy ? 'disabled' : ''}>${t('gather.btn.' + good, { n: energy })}</button>` +
+    (b.id === 'fields' && view.events.winter ? `<p class="closed">${t('err.winterFields')}</p><p class="small">${t('winter.fieldsTip')}</p>` :
+    `<button class="primary big" data-act="gather" ${!me || me.energy < energy ? 'disabled' : ''}>${t('gather.btn.' + good, { n: energy })}</button>`) +
     (me && me.energy < energy ? tiredHelp(me) : '')) +
     (best ? `<p style="font-size:13px;margin-top:14px">${t('gather.best', { name: esc(npcName(best.id)), p: best.buys[good] })}</p><button data-go="${best.id}">${esc(t('go.to', { place: placeName(best.id) }))}</button>` : '');
 }
@@ -401,6 +448,7 @@ function panelSimple(b) {
   if (b.id === 'council') return panelCouncil();
   if (b.id === 'gate') return title + `<p>${t('gate.text')}</p><button class="primary" data-act="elder">${t('gate.talk')}</button><p class="muted">${t('gate.pop', { n: view.population })}</p>`;
   if (b.type === 'plot') return panelPlot(b);
+  if (b.id === 'roadsign') return panelRoadsign();
   if (b.type === 'house') return panelHouse(b);
   if (b.type === 'watch') {
     const r = world.rules && view.council ? view.council.rules.tower.readiness : 10;
@@ -459,10 +507,12 @@ function panelGuide() {
   if (!me) return `<h2>${t('guide.title')}</h2><p>${t('guide.join')}</p>`;
   const route = world.routes[me.path];
   const steps = [];
-  if (view.night && !me.sleepPlace) {
-    const bed = me.home ? me.home.id : (me.plot && view.plots[me.plot] && view.plots[me.plot].built ? me.plot : 'inn');
-    steps.push({ text: t(bed === 'inn' ? 'guide.nightInn' : 'guide.nightHome', { place: placeName(bed), n: me.innBed }), go: bed, label: t('go.to', { place: placeName(bed) }) });
+  const evening = view.night || view.dayProgress >= 0.7;
+  if (evening && !me.sleepPlace) {
+    steps.push({ text: t(view.night ? 'night.ask' : 'night.evening', { s: toNight() }) });
+    for (const o of bedOptions(me)) steps.push(o);
   }
+  if (view.events.winter && route.spot === 'fields' && !me.job) steps.push({ text: t('winter.fieldsTip'), go: 'pasture', label: t('go.to', { place: placeName('pasture') }) });
   if (me.freezing) steps.push({ text: t('guide.coat', { p: view.npcs.tailor ? view.npcs.tailor.sells.coat : '?' }), go: 'tailor', label: t('go.to', { place: placeName('tailor') }) });
   const carried = ['wheat', 'wood', 'ore', 'wool'].filter((g) => (me.inv[g] || 0) > 0);
   if (carried.length) {
@@ -513,6 +563,7 @@ function renderPanel() {
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
   const b = world.buildings.find((x) => x.id === ui.selected);
+  if (!b && ui.district) { panel.innerHTML = panelRoadsign(); panel.hidden = false; return; }
   if (!b) { panel.innerHTML = panelGuide(); panel.hidden = false; return; }
   let h;
   if (b.type === 'craftsman') h = panelCraftsman(b);
@@ -568,11 +619,38 @@ function jobSection(npc) {
 // at night: go to bed here (your home, your own house, or a paid bed at the inn)
 function sleepBox(place) {
   const me = view.player;
-  if (!me || !view.night) return '';
-  if (me.sleepPlace === place) return `<div class="contract sleep"><b>${t('sleep.asleep')}</b><p class="small">${t('sleep.asleepInfo')}</p></div>`;
+  if (!me) return '';
+  if (view.night && me.sleepPlace === place) return `<div class="contract sleep"><b>${t('sleep.asleep')}</b><p class="small">${t('sleep.asleepInfo')}</p></div>`;
+  if (view.night && me.sleepPlace) return `<div class="contract sleep"><p class="small">${t('sleep.elsewhere', { place: placeName(me.sleepPlace) })}</p></div>`;
   const paid = place === 'inn';
+  const own = me.plot === place, plot = own ? view.plots[place] : null;
+  if (own && plot && !plot.bed) return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small">${t('bed.none', { p: view.npcs.carpenter.sells.bed })}</p><button data-go="carpenter">${esc(t('go.to', { place: placeName('carpenter') }))}</button></div>`;
+  if (!view.night) return `<div class="contract sleep day"><b>${t('sleep.titleDay')}</b><p class="small">${t(paid ? 'sleep.innInfo' : 'sleep.homeInfo', { n: me.innBed })}</p><button disabled>${t('sleep.afterDark', { s: toNight() })}</button></div>`;
   return `<div class="contract sleep"><b>${t('sleep.title')}</b><p class="small">${t(paid ? 'sleep.innInfo' : 'sleep.homeInfo', { n: me.innBed })}</p>` +
     `<button class="primary big" data-act="sleep" data-place="${place}" ${paid && me.coins < me.innBed ? 'disabled' : ''}>${t(paid ? 'sleep.innBtn' : 'sleep.btn', { n: me.innBed })}</button></div>`;
+}
+// real seconds until it gets dark
+function toNight() {
+  const r = world.rules, left = ((view.nightStart || 0.8) - view.dayProgress) * r.ticksPerDay * r.tickMs / 1000;
+  const sec = Math.max(0, Math.round(left));
+  return sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : `${sec} s`;
+}
+// where can this player sleep tonight? (shown by the guide in the evening and at night)
+function bedOptions(me) {
+  const o = [];
+  const plot = me.plot && view.plots[me.plot];
+  if (plot && plot.built && !(plot.lease && plot.lease.tenant)) {
+    if (plot.bed) o.push({ text: t('night.optOwn', { place: placeName(me.plot) }), go: me.plot, label: t('go.to', { place: placeName(me.plot) }) });
+    else o.push({ text: t('night.optBed', { place: placeName(me.plot), p: view.npcs.carpenter.sells.bed }), go: 'carpenter', label: t('go.to', { place: placeName('carpenter') }) });
+  }
+  if (me.home) o.push({ text: t('night.optRented', { place: placeName(me.home.id) }), go: me.home.id, label: t('go.to', { place: placeName(me.home.id) }) });
+  if (me.lease) o.push({ text: t('night.optRented', { place: placeName(me.lease) }), go: me.lease, label: t('go.to', { place: placeName(me.lease) }) });
+  o.push({ text: t('night.optInn', { n: me.innBed }), go: 'inn', label: t('go.to', { place: placeName('inn') }) });
+  if (!me.home && !me.lease && !(plot && plot.built)) {
+    const free = Object.entries(view.houses).find(([, h]) => !h.tenant);
+    if (free) o.push({ text: t('night.optRent', { place: placeName(free[0]), n: free[1].rent }), go: free[0], label: t('go.to', { place: placeName(free[0]) }) });
+  }
+  return o;
 }
 
 function panelHouse(b) {
@@ -591,29 +669,59 @@ function panelHouse(b) {
 }
 
 function panelPlot(b) {
-  const p = view.plots[b.id] || {}, me = view.player, L = view.land;
+  const p = view.plots[b.id] || {}, me = view.player, B = p.build || view.land.build;
   let h = `<h2>${esc(placeName(b.id))}</h2>`;
+  if (p.district) h += `<p class="muted small">${t('district.where.' + p.district)}</p>`;
   const deed = p.deed;
-  const deedLine = () => (deed ? deedCard(b.id, p, false) : '');
   if (p.mine) {
     h += deedCard(b.id, p, true) + `<div class="contract"><b>${t('plot.yours')}</b>`;
     if (p.built) {
-      h += sleepBox(b.id) + `<p class="small">${t('plot.home')}</p>` + (me.restedToday ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary big" data-act="rest">${t('house.restFullBtn')}</button>`);
+      const leased = p.lease && p.lease.tenant;
+      h += `<p class="small">${t(p.bed ? 'bed.yes' : 'bed.none', { p: view.npcs.carpenter.sells.bed })}</p>`;
+      if (!p.bed) h += `<button data-go="carpenter">${esc(t('go.to', { place: placeName('carpenter') }))}</button>`;
+      if (!leased) h += sleepBox(b.id) + (p.bed ? (me.restedToday ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary" data-act="rest">${t('house.restFullBtn')}</button>`) : '');
+      // renting it out
+      h += `<p class="sub2">${t('lease.title')}</p>`;
+      if (leased) h += `<p class="small">${t('lease.tenant', { name: esc(p.lease.tenant), n: p.lease.rent })}</p>`;
+      else if (p.lease) h += `<p class="small">${t('lease.listed', { n: p.lease.rent })}</p><button data-act="unlistHome" data-plot="${b.id}">${t('lease.unlist')}</button>`;
+      else if (p.bed) h += `<p class="muted small">${t('lease.help')}</p><div class="row"><input id="lease-rent" type="number" min="${view.land.lease.min}" max="${view.land.lease.max}" value="8"> EMWK <button class="primary" data-act="listHome" data-plot="${b.id}">${t('lease.list')}</button></div>`;
+      else h += `<p class="muted small">${t('lease.needBed')}</p>`;
     } else {
-      const have = me.inv.lumber || 0, ok = have >= L.build.lumber && me.coins >= L.build.fee;
-      h += `<p class="small">${t('plot.buildInfo', { n: L.build.lumber, have, fee: L.build.fee, place: placeName(L.build.builder) })}</p>` +
+      const have = me.inv.lumber || 0, ok = have >= B.lumber && me.coins >= B.fee;
+      h += `<p class="small">${t('plot.buildInfo', { n: B.lumber, have, fee: B.fee, place: placeName(B.builder || 'carpenter') })}</p>` +
         `<button class="primary big" data-act="buildHouse" ${ok ? '' : 'disabled'}>${t('plot.build')}</button>` +
-        (have < L.build.lumber ? `<p class="muted small">${t('plot.getLumber', { place: placeName('woodcutter') })}</p><button data-go="woodcutter">${esc(t('go.to', { place: placeName('woodcutter') }))}</button>` : '');
+        (have < B.lumber ? `<p class="muted small">${t('plot.getLumber', { place: placeName('woodcutter') })}</p><button data-go="woodcutter">${esc(t('go.to', { place: placeName('woodcutter') }))}</button>` : '');
     }
     h += `</div>`;
   } else if (p.owner) {
-    h += `<p>${t(p.built ? 'plot.homeOf' : 'plot.ownedBy', { name: esc(p.owner) })}</p>` + deedLine();
+    h += `<p>${t(p.built ? 'plot.homeOf' : 'plot.ownedBy', { name: esc(p.owner) })}</p>` + (deed ? deedCard(b.id, p, false) : '');
+    if (p.lease && p.lease.mine) h += sleepBox(b.id) + `<div class="contract"><b>${t('lease.youRent', { n: p.lease.rent })}</b><button class="linkbtn" data-act="leaveLease">${t('lease.leave')}</button></div>`;
+    else if (p.lease && !p.lease.tenant && me) h += `<div class="contract"><b>${t('lease.offer', { name: esc(p.owner), n: p.lease.rent })}</b><p class="small">${t('lease.offerInfo')}</p>` +
+      (me.home || me.lease ? `<p class="muted small">${t('lease.haveHome')}</p>` : `<button class="primary" data-act="leaseHome" data-plot="${b.id}" ${me.coins < p.lease.rent ? 'disabled' : ''}>${t('lease.rentIt', { n: p.lease.rent })}</button>`) + `</div>`;
+  } else if (!p.open) {
+    h += `<p class="closed">${t('district.notOpen')}</p><button data-go="council">${esc(t('go.to', { place: placeName('council') }))}</button>`;
   } else {
-    h += `<p>${t('plot.forSale', { n: L.price })}</p><p class="muted small">${t('plot.deedInfo')}</p>`;
-    if (me && me.plot) h += `<p class="muted small">${t('plot.haveOne', { place: placeName(me.plot) })}</p>`;
-    else h += `<button class="primary big" data-act="buyPlot" ${!me || me.coins < L.price ? 'disabled' : ''}>${t('plot.buy', { n: L.price })}</button>`;
+    h += `<p>${t('plot.forSale', { n: p.price })}</p><p class="muted small">${t(p.district ? 'plot.priceFar' : 'plot.priceCentre')}</p><p class="muted small">${t('plot.deedInfo')}</p>`;
+    if (p.minLevel && me && me.level < p.minLevel) h += `<p class="closed small">${t('plot.needLevel', { n: p.minLevel, have: me.level })}</p>`;
+    else if (me && me.plot) h += `<p class="muted small">${t('plot.haveOne', { place: placeName(me.plot) })}</p>`;
+    else h += `<button class="primary big" data-act="buyPlot" ${!me || me.coins < p.price ? 'disabled' : ''}>${t('plot.buy', { n: p.price })}</button>`;
   }
-  return h + `<p class="muted small">${t('plot.note', { n: L.build.lumber, fee: L.build.fee })}</p>`;
+  return h + `<p class="muted small">${t('plot.note', { n: B.lumber, fee: B.fee })}</p>`;
+}
+
+// the signpost by the gate: the neighbourhoods and how to open them
+function panelRoadsign() {
+  const d = view.districts;
+  let h = `<h2>${t('b.roadsign')}</h2><p>${t('district.intro', { free: d.free })}</p>`;
+  for (const n of Object.keys(d.defs).map(Number)) {
+    const def = d.defs[n], open = d.open.includes(n);
+    const plots = Object.values(view.plots).filter((x) => x.district === n), freeN = plots.filter((x) => !x.owner).length;
+    const prices = plots.map((x) => x.price);
+    h += `<div class="contract"><b>${t('district.' + n)}</b><p class="small">${t('district.about.' + n, { min: Math.min(...prices), max: Math.max(...prices), lvl: def.minLevel })}</p>` +
+      (open ? `<p class="small ok">${t('district.isOpen', { n: freeN, all: plots.length })}</p>` : `<p class="small">${t(d.next === n ? 'district.canOpen' : 'district.later', { cost: def.cost })}</p>`) +
+      `<button class="primary" data-go="go-d${n}">${t('district.visit', { name: t('district.' + n) })}</button></div>`;
+  }
+  return h;
 }
 
 // where each plot lies, in words (shown on the deed)
@@ -627,7 +735,7 @@ function deedCard(id, p, mine) {
   if (deed.minted && d.contract) {
     const held = c.accounts && deed.owner === c.accounts.bank;
     cls = held ? 'held' : 'ok';
-    st = held ? t('deed.st.held') : t('deed.st.ok', { id: esc(deed.owner) });
+    st = held ? t(mine ? 'deed.st.held' : 'deed.st.heldOther') : t('deed.st.ok', { id: esc(deed.owner) });
   } else if (d.status === 'need-funds') st = t('deed.st.funds', { n: d.detail && d.detail.amount, addr: esc((d.detail && d.detail.address) || '') });
   else if (d.status === 'error') st = t('deed.st.error');
   else if (!c.status || c.status !== 'ready') st = t('deed.st.offline');
@@ -635,7 +743,7 @@ function deedCard(id, p, mine) {
   const link = deed.minted && d.contract ? exLink('nft-token/' + d.contract + '/' + encodeURIComponent(deed.tokenId), t('plot.deedLink')) : '';
   const wallet = mine && cls === 'held' ? `<p class="small">${me.near && !me.nearVerified ? t('deed.verifyHint') : t('deed.connectHint')}</p><button data-act="open-near">${t('deed.openNear')}</button>` : '';
   const meteor = mine && cls === 'ok' ? `<p class="muted small">${t('deed.meteorHint')}</p>` : '';
-  return `<div class="deed"><div class="deed-head"><span class="seal">✦</span><div><b>${t('deed.title')}</b><div class="small">${esc(placeName(id))} · ${t('deed.side.' + (PLOT_SIDE[id] || 'west'))}</div></div></div>` +
+  return `<div class="deed"><div class="deed-head"><span class="seal">✦</span><div><b>${t('deed.title')}</b><div class="small">${esc(placeName(id))} · ${p.district ? t('district.' + p.district) : t('deed.side.' + (PLOT_SIDE[id] || 'west'))}</div></div></div>` +
     `<div class="deed-rows"><div><span>${t('deed.owner')}</span><b>${esc(p.owner || '')}</b></div><div><span>${t('deed.since')}</span><b>${t('ui.day', { n: p.since || '?' })}</b></div><div><span>${t('deed.nft')}</span><code>${esc(deed.tokenId)}</code></div></div>` +
     `<p class="deed-st ${cls}">${st}</p>${link ? `<p class="small">${link}</p>` : ''}${wallet}${meteor}</div>`;
 }
@@ -648,8 +756,9 @@ function boardSection() {
   if (me && me.job) h += `<div class="trow"><span><b>${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</b></span><button data-go="${me.job.npc}">${t('board.go')}</button></div>`;
   h += `<p class="sub2">${t('board.homes')}</p>` + Object.entries(view.houses).map(([id, x]) =>
     `<div class="trow"><span>${esc(t('board.homeRow', { place: placeName(id), r: x.rent }))} · <span class="${x.tenant ? 'muted' : 'ok'}">${x.mine ? t('board.yours') : x.tenant ? esc(x.tenant) : t('house.free')}</span></span><button data-go="${id}">${t('board.go')}</button></div>`).join('');
-  h += `<p class="sub2">${t('board.land')}</p>` + Object.entries(view.plots || {}).map(([id, x]) =>
-    `<div class="trow"><span>${esc(placeName(id))} · <span class="${x.owner ? 'muted' : 'ok'}">${x.mine ? t('board.yours') : x.owner ? esc(x.owner) : t('plot.price', { n: view.land.price })}</span></span><button data-go="${id}">${t('board.go')}</button></div>`).join('');
+  h += `<p class="sub2">${t('board.land')}</p>` + Object.entries(view.plots || {}).filter(([, x]) => x.open && (!x.owner || x.mine || (x.lease && !x.lease.tenant))).slice(0, 8).map(([id, x]) =>
+    `<div class="trow"><span>${esc(placeName(id))} · <span class="${x.owner ? 'muted' : 'ok'}">${x.mine ? t('board.yours') : x.lease && !x.lease.tenant ? t('lease.forRent', { n: x.lease.rent }) : t('plot.price', { n: x.price })}</span></span><button data-go="${id}">${t('board.go')}</button></div>`).join('') +
+    `<div class="trow"><span class="muted small">${t('district.boardHint', { n: view.districts.free })}</span><button data-go="roadsign">${t('board.go')}</button></div>`;
   return h;
 }
 
@@ -663,6 +772,7 @@ function proposalText(x) {
   if (x.kind === 'welcome') return t('prop.welcome', { n: p.amount });
   if (x.kind === 'festival') return t('prop.festival', { n: p.amount });
   if (x.kind === 'tower') return t('prop.tower', { n: p.cost });
+  if (x.kind === 'district') return t('prop.district', { name: t('district.' + p.n), n: p.cost });
   return x.kind;
 }
 const voterLabel = (who) => (who.startsWith('npc:') ? npcName(who.slice(4)) : who);
@@ -696,7 +806,8 @@ function panelCouncil() {
     if (k === 'tax') h += `<input id="prop-rate" type="number" min="${r.tax.min * 100}" max="${r.tax.max * 100}" step="1" value="${Math.round(c.taxRate * 100)}"> %`;
     if (k === 'welcome') h += `<input id="prop-amount" type="number" min="${r.welcome.min}" max="${r.welcome.max}" value="200">`;
     if (k === 'festival') h += `<input id="prop-amount" type="number" min="${r.festival.min}" max="${r.festival.max}" value="4">`;
-    h += `<p class="muted small">${t('prop.help.' + k, { n: r.tower ? r.tower.cost : 250, r: r.tower ? r.tower.readiness : 10 })}</p><button class="primary" data-act="propose" ${c.open.length >= r.maxOpen ? 'disabled' : ''}>${t('council.submit', { n: r.fee })}</button></div>`;
+    const nd = view.districts.next, ndef = nd && view.districts.defs[nd];
+    h += `<p class="muted small">${k === 'district' ? (nd ? t('prop.help.district', { name: t('district.' + nd), n: ndef.cost, free: view.districts.free }) : t('err.noDistrict')) : t('prop.help.' + k, { n: r.tower ? r.tower.cost : 250, r: r.tower ? r.tower.readiness : 10 })}</p><button class="primary" data-act="propose" ${c.open.length >= r.maxOpen ? 'disabled' : ''}>${t('council.submit', { n: r.fee })}</button></div>`;
     if (c.open.length >= r.maxOpen) h += `<p class="muted small">${t('council.full')}</p>`;
   }
 
@@ -932,12 +1043,12 @@ function avatarSvg(path) {
 function renderHud() {
   const me = view.player;
   if (!me) { $('me').innerHTML = `<p class="muted" style="margin:0">${t('me.join')}</p>`; $('quest').hidden = true; return; }
-  $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('rank.' + String(me.rank).toLowerCase())}</div></div></div>` +
+  $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('rank.' + String(me.rank).toLowerCase())} · ${t('me.level', { n: me.level })}</div></div></div>` +
     `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
     `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
-    `<div class="shortcuts"><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button></div>` +
-    (me.job || me.home || me.plot ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
+    `<div class="shortcuts"><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button></div>` +
+    (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
     (me.job ? `<div class="jobinfo">${t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage })}</div>` : '') +
     (me.home ? `<div class="jobinfo">${t('me.homeInfo', { r: me.home.rent, left: dayLeftText() })}</div>` : '');
   const q = me.questInfo;
@@ -1049,8 +1160,22 @@ function renderChrome() {
   else banner.hidden = true;
 }
 
-function renderMapNow() { ui.closedTag = t('ui.closedTag'); ui.nightTag = t('closed.night'); ui.mineTag = t('plot.mineTag'); renderMap($('map'), world, view, ui); }
-function render() { if (world && view) syncOthers(); renderHud(); renderMapNow(); renderChrome(); renderPanel(); renderDock(); renderScene(); }
+function renderMapNow() {
+  ui.closedTag = t('ui.closedTag'); ui.nightTag = t('closed.night'); ui.mineTag = t('plot.mineTag'); ui.nameOf = placeName;
+  if (ui.district && view.districts) {
+    ui.backTag = '← ' + t('district.back'); ui.villaTag = t('district.2') + ' →'; ui.laneTag = t('district.1') + ' →';
+    ui.districtTitle = t('district.' + ui.district); ui.closedDistrict = t('district.closedTag');
+    renderDistrict($('map'), world, view, ui);
+  } else renderMap($('map'), world, view, ui);
+}
+function render() {
+  // when night falls and you are not in bed yet, the guide asks where you will sleep
+  if (view && view.player && view.night && !ui.wasNight && !view.player.sleepPlace) {
+    toast(t('night.toast'), 'bad');
+    if (!ui.selected || ui.selected === 'guide') ui.selected = 'guide';
+  }
+  if (view) ui.wasNight = !!view.night;
+  if (world && view) syncOthers(); renderHud(); renderMapNow(); renderChrome(); renderPanel(); renderDock(); renderScene(); }
 
 // ---------- static page text and the language menu ----------
 
@@ -1108,6 +1233,14 @@ async function act(type, extra = {}) {
 
 function explain(type, extra, r) {
   const place = type === 'gather' ? extra.spot : extra.npc || extra.house || extra.plot;
+  if (type === 'listHome' || type === 'unlistHome' || type === 'leaseHome' || type === 'leaveLease') {
+    result[extra.plot] = { key: 'result.' + type, p: { n: r.rent || 0 } };
+    return;
+  }
+  if (type === 'buy' && r.installed) {
+    result[extra.npc] = { key: 'result.bedIn', p: { place: { $place: r.installed } }, next: { key: 'go.to', p: { place: { $place: r.installed } }, go: r.installed } };
+    return;
+  }
   if (type === 'sleep') {
     result[extra.place] = { key: r.paid ? 'result.sleptInn' : 'result.slept', p: { n: r.paid } };
     if (you) you.inside = extra.place;
@@ -1179,6 +1312,11 @@ function flash(what) {
 }
 
 function select(id) {
+  // moving between the village and the neighbourhoods
+  if (id === 'go-village') { ui.district = 0; ui.selected = 'roadsign'; render(); return; }
+  if (id === 'go-d1' || id === 'go-d2') { ui.district = Number(id.slice(4)); ui.selected = null; render(); return; }
+  const bdef = world.buildings.find((x) => x.id === id);
+  ui.district = bdef && bdef.district ? bdef.district : (bdef ? 0 : ui.district);
   if (ui.scene && ui.scene !== id) { ui.scene = null; sceneKey = null; }
   ui.selected = id;
   walkYouTo(id);
@@ -1284,6 +1422,11 @@ document.body.addEventListener('click', (e) => {
   else if (a === 'takeJob' || a === 'shift' || a === 'quitJob') { const npc = btn.dataset.npc || ui.selected; delete result[npc]; goAndDo(npc, a, () => act(a, { npc })); }
   else if (a === 'buyPlot' || a === 'buildHouse') { const plot = ui.selected; delete result[plot]; goAndDo(plot, a, () => act(a, { plot })); }
   else if (a === 'rentHouse' || a === 'leaveHouse' || a === 'rest') { const house = ui.selected; delete result[house]; goAndDo(house, a, () => act(a, { house })); }
+  else if (a === 'listHome' || a === 'unlistHome' || a === 'leaseHome' || a === 'leaveLease') {
+    const plot = btn.dataset.plot || ui.selected, extra = { plot };
+    if (a === 'listHome') extra.rent = Number(($('lease-rent') || {}).value) || 8;
+    delete result[plot]; goAndDo(plot, a, () => act(a, extra));
+  }
   else if (a === 'sleep') { const place = btn.dataset.place; delete result[place]; goAndDo(place, 'sleep', () => act('sleep', { place, house: place })); }
   else if (a === 'gather') { const spot = btn.dataset.spot || ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
   else { const npc = btn.dataset.npc || ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
