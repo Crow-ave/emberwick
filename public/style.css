@@ -398,3 +398,11 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   background: rgba(255, 250, 242, .97); border: 1px solid #e3d2b3; border-radius: 16px; padding: 14px 16px; box-shadow: 0 8px 26px rgba(60, 40, 20, .2); }
 .map-card .close { position: sticky; top: 0; float: right; border: none; background: none; font-size: 22px; line-height: 1; padding: 2px 6px; color: var(--muted); cursor: pointer; }
 .map-card table { width: 100%; border-collapse: collapse; font-size: 13px; } .map-card td { padding: 3px 2px; border-top: 1px solid #efe3cc; } .map-card td.n { text-align: right; }
+
+/* exchange (v37) */
+.tabs { display: flex; gap: 4px; margin: 8px 0 6px; border-bottom: 1px solid #e3d2b3; }
+.tab { border: none; background: none; padding: 6px 10px; font: inherit; font-size: 13px; color: #7a5a36; border-bottom: 3px solid transparent; cursor: pointer; }
+.tab.on { color: #8a3b12; font-weight: 700; border-bottom-color: #d9622b; }
+.exform { flex-wrap: wrap; gap: 6px; align-items: center; }
+.exform input { width: 64px; } .exform select { max-width: 150px; }
+.bld.far { cursor: pointer; } .bld.far:hover path { filter: brightness(1.06); }

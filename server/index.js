@@ -58,12 +58,17 @@ async function startNear() {
   onTransfer((from, to, amount, note) => bridge.onTransfer(from, to, amount, note));
   // a land deed goes to the buyer's wallet, or is held by the village bank until they link one
   onGameEvent((type, d) => {
+    if (type === 'deedMove') { // a deed sold on the exchange: from the bank's escrow to the buyer's wallet
+      if (bridge.root && d.wallet) bridge.moveDeed({ plot: d.plot, tokenId: d.tokenId, owner: d.wallet });
+      return;
+    }
     if (type !== 'deed' || !bridge.root) return;
     bridge.mintDeed({ plot: d.plot, tokenId: d.tokenId, owner: d.wallet || bridge.root, title: `Emberwick land deed: ${d.plot}`, description: `Plot ${d.plot} in the village of Emberwick, bought by ${d.name} on game day ${d.day}. Held for player ${d.player}.` });
   });
   let lastStatus = '';
   const loop = async () => {
     await bridge.step();
+    state.nearBank = bridge.root || null; // the exchange checks that a deed for sale sits with the bank
     if (bridge.status !== lastStatus) {
       lastStatus = bridge.status;
       if (bridge.status === 'need-funds') {
@@ -96,6 +101,51 @@ function moveHeldDeeds(pid) {
 }
 const chainView = () => (bridge ? bridge.view() : { status: 'off' });
 const view = (pid) => ({ ...publicView(state, pid), chain: chainView() });
+
+// ---------- NEAR Intents (1Click API) for the change desk ----------
+const ONECLICK = 'https://1click.chaindefuser.com/v0';
+const SHOW = [['NEAR', 'near'], ['USDC', 'near'], ['BTC', 'btc'], ['ETH', 'eth'], ['SOL', 'sol']];
+let tokenCache = { at: 0, list: null }, quoteCache = new Map();
+async function getJson(url, opts = {}) {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 9000);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctl.signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(opts.headers || {}) } });
+    const text = await r.text();
+    let j = null; try { j = JSON.parse(text); } catch { /* not json */ }
+    if (!r.ok) throw new Error((j && (j.message || j.error)) || `HTTP ${r.status}`);
+    return j;
+  } finally { clearTimeout(timer); }
+}
+async function intentsTokens() {
+  if (tokenCache.list && Date.now() - tokenCache.at < 60000) return tokenCache.list;
+  const all = await getJson(`${ONECLICK}/tokens`);
+  const pick = (sym, chain) => all.find((t) => t.symbol === sym && t.blockchain === chain) || (sym === 'NEAR' ? all.find((t) => t.assetId === 'nep141:wrap.near') : null);
+  tokenCache = { at: Date.now(), list: SHOW.map(([sym, chain]) => pick(sym, chain)).filter(Boolean).map((t) => ({ symbol: t.symbol, chain: t.blockchain, assetId: t.assetId, decimals: t.decimals, price: t.price, updated: t.priceUpdatedAt })) };
+  return tokenCache.list;
+}
+async function intentsPrices() {
+  try { return { ok: true, source: 'NEAR Intents 1Click API', tokens: await intentsTokens() }; } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 120) }; }
+}
+async function intentsQuote(toSym, amount) {
+  try {
+    amount = Math.min(1000, Math.max(0.1, amount));
+    const key = `${toSym}|${amount}`, hit = quoteCache.get(key);
+    if (hit && Date.now() - hit.at < 30000) return hit.res;
+    const list = await intentsTokens();
+    const from = list.find((t) => t.symbol === 'NEAR'), to = list.find((t) => t.symbol === toSym);
+    if (!from || !to || to === from) return { ok: false, error: 'unknown asset' };
+    const units = (BigInt(Math.round(amount * 1000)) * 10n ** BigInt(from.decimals)) / 1000n;
+    const q = await getJson(`${ONECLICK}/quote`, { method: 'POST', body: JSON.stringify({
+      dry: true, swapType: 'EXACT_INPUT', slippageTolerance: 100,
+      originAsset: from.assetId, depositType: 'INTENTS', destinationAsset: to.assetId, amount: units.toString(),
+      refundTo: 'intents.near', refundType: 'INTENTS', recipient: 'intents.near', recipientType: 'INTENTS',
+      deadline: new Date(Date.now() + 10 * 60000).toISOString(),
+    }) });
+    const res = { ok: true, dry: true, from: 'NEAR', to: toSym, chain: to.chain, amountIn: amount, amountOut: q.quote && (q.quote.amountOutFormatted || q.quote.amountOut), usdOut: q.quote && q.quote.amountOutUsd, timeEstimate: q.quote && q.quote.timeEstimate, source: 'NEAR Intents 1Click API (dry run)' };
+    quoteCache.set(key, { at: Date.now(), res });
+    return res;
+  } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160) }; }
+}
 
 function save() {
   fs.mkdirSync(path.dirname(SAVE), { recursive: true });
@@ -158,6 +208,25 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 
+  // the seller sent their deed NFT to the village bank; check it on chain, then put it up for sale
+  if (req.method === 'POST' && url.pathname === '/api/market/escrow') {
+    const body = await readBody(req);
+    const plot = state.plots && state.plots[body.plot];
+    if (!bridge || !plot || !plot.deed || plot.owner !== body.player) return sendJson(res, 400, { ok: false, code: 'err.notYourPlot' });
+    let owner = null;
+    for (let i = 0; i < 6 && owner !== bridge.root; i++) { // the transfer may take a few seconds to land
+      try { owner = await bridge.deedOwner(plot.deed.tokenId); } catch { owner = null; }
+      if (owner !== bridge.root) await new Promise((r) => setTimeout(r, 2500));
+    }
+    if (owner !== bridge.root) return sendJson(res, 400, { ok: false, code: 'err.escrowMissing', state: view(body.player) });
+    setDeed(state, body.plot, { owner: bridge.root });
+    const r = playerAction(state, body.player, { type: 'listDeed', plot: body.plot, price: body.price });
+    if (r.ok) { save(); broadcast(); }
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
+  }
+  // the change desk: live prices and cross-chain quotes from NEAR Intents (1Click API, dry run: nothing is swapped)
+  if (url.pathname === '/api/exchange/prices') return sendJson(res, 200, await intentsPrices());
+  if (url.pathname === '/api/exchange/quote') return sendJson(res, 200, await intentsQuote(url.searchParams.get('to'), Number(url.searchParams.get('amount')) || 1));
   if (req.method === 'POST' && url.pathname === '/api/near/link') {
     const body = await readBody(req);
     if (bridge && bridge.status === 'ready') {

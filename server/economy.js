@@ -3,7 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
-import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND, DISTRICTS, CENTRE_FACTOR } from './world.js';
+import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND, DISTRICTS, CENTRE_FACTOR, MARKET } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -250,7 +250,7 @@ export function plotPrice(id) {
   return Math.round(LAND.price * f);
 }
 const plotBuild = (id) => { const d = plotDef(id); return d && d.district ? { ...LAND.build, ...DISTRICTS[d.district].build } : LAND.build; };
-const districtOpen = (state, n) => !n || (state.districts || []).includes(n);
+const districtOpen = (state, n) => !n || !!(DISTRICTS[n] && DISTRICTS[n].alwaysOpen) || (state.districts || []).includes(n);
 const plotOpen = (state, id) => { const d = plotDef(id); return !!d && districtOpen(state, d.district); };
 const nextDistrict = (state) => Object.keys(DISTRICTS).map(Number).find((n) => !districtOpen(state, n) && districtOpen(state, DISTRICTS[n].needs)) || null;
 const freePlots = (state) => PLOT_DEFS.filter((d) => plotOpen(state, d.id) && !(state.plots[d.id] || {}).owner).length;
@@ -532,6 +532,7 @@ export function tick(state) {
   else for (const b of Object.values(state.bots)) b.energy = Math.min(RULES.energyMax, r2(b.energy + RULES.energyPerTick));
   runCouncil(state, newDay);
   if (!night) runCraftsmen(state); // workshops are shut for the night
+  if (!night && state.tick % 3 === 0) runMarket(state);
   runInn(state);
   adjustPrices(state);
   updateReadiness(state);
@@ -590,7 +591,7 @@ const TOOL_MAKER = {
   woodcutter: { good: 'axe', in: { wood: 3 } },
   mill: { good: 'plow', in: { wheat: 2 } },
   tailor: { good: 'shears', in: { ore: 1 } },
-  carpenter: { good: 'bed', in: { lumber: 2 } },
+  carpenter: [{ good: 'bed', in: { lumber: 2 } }, { good: 'rod', in: { lumber: 1 } }],
 };
 
 function runCraftsmen(state) {
@@ -607,11 +608,18 @@ function runCraftsmen(state) {
     }
 
     // tools are made only when the shelf runs low, so they keep their value
-    const tool = TOOL_MAKER[def.id];
-    if (tool && (npc.stock[tool.good] || 0) < def.target[tool.good] && rng(state) < 0.08 &&
-        Object.entries(tool.in).every(([g, q]) => (npc.stock[g] || 0) >= q)) {
-      for (const [g, q] of Object.entries(tool.in)) npc.stock[g] -= q;
-      npc.stock[tool.good] = (npc.stock[tool.good] || 0) + 1;
+    for (const tool of [].concat(TOOL_MAKER[def.id] || [])) {
+      if ((npc.stock[tool.good] || 0) < def.target[tool.good] && rng(state) < 0.08 &&
+          Object.entries(tool.in).every(([g, q]) => (npc.stock[g] || 0) >= q)) {
+        for (const [g, q] of Object.entries(tool.in)) npc.stock[g] -= q;
+        npc.stock[tool.good] = (npc.stock[tool.good] || 0) + 1;
+      }
+    }
+    // a second recipe (the inn also cooks fish)
+    if (def.alt && (npc.stock[Object.keys(def.alt.out)[0]] || 0) < targetFor(state, def.id, Object.keys(def.alt.out)[0]) * 1.5 &&
+        Object.entries(def.alt.in).every(([g, q]) => (npc.stock[g] || 0) >= q) && rng(state) < 0.4) {
+      for (const [g, q] of Object.entries(def.alt.in)) npc.stock[g] -= q;
+      for (const [g, q] of Object.entries(def.alt.out)) npc.stock[g] = (npc.stock[g] || 0) + q;
     }
 
     // produce
@@ -1051,6 +1059,7 @@ export function ensureContracts(state) {
   if (!state.plots) state.plots = {};
   for (const d of PLOT_DEFS) if (!state.plots[d.id]) state.plots[d.id] = { owner: null, built: false, deed: null };
   if (!state.districts) state.districts = [];
+  if (!state.market) state.market = { orders: [], nextId: 1, trades: [] };
   // shops learn new goods added in later versions (e.g. the carpenter's beds)
   for (const c of CRAFTSMEN) {
     const n = state.npcs[c.id];
@@ -1221,6 +1230,8 @@ function contractAction(state, p, action) {
     p.lease = null;
     return { ok: true };
   }
+  const m = marketAction(state, p, action);
+  if (m) return m;
   if (action.type === 'propose') return propose(state, acct, action.kind, action);
   if (action.type === 'vote') return vote(state, acct, action.id, action.yes);
   if (action.type === 'takeJob' || action.type === 'apply') {
@@ -1333,6 +1344,121 @@ function contractAction(state, p, action) {
   return null;
 }
 
+// ---------- the exchange: player market and land-deed market ----------
+function recordTrade(state, t) {
+  state.market.trades.unshift({ day: state.day, ...t });
+  state.market.trades.length = Math.min(state.market.trades.length, 14);
+}
+// a buyer (player, bot or craftsman account) fills part or all of an order
+function fillOrder(state, buyerAcct, buyerHolder, order, qty, buyerName) {
+  qty = Math.min(qty, order.qty);
+  if (qty < 1) return { ok: false, error: 'Nothing left in that order.', code: 'err.orderGone' };
+  const total = r2(order.price * qty), fee = r2(total * MARKET.fee);
+  const seller = state.players[order.seller];
+  if (!transfer(state, buyerAcct, 'player:' + order.seller, total, { memo: `Emberwick exchange: ${qty} ${order.good} from ${seller ? seller.name : '?'} to ${buyerName}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+  transfer(state, 'player:' + order.seller, 'treasury', fee);
+  if (buyerHolder) addInv(buyerHolder, order.good, qty);
+  order.qty -= qty;
+  if (seller) { seller.stats.earned = r2((seller.stats.earned || 0) + total - fee); seller.stats.sold = (seller.stats.sold || 0) + qty; }
+  recordTrade(state, { good: order.good, qty, price: order.price, seller: seller ? seller.name : '?', buyer: buyerName });
+  state.market.orders = state.market.orders.filter((o) => o.qty > 0);
+  return { ok: true, qty, total, fee };
+}
+function marketAction(state, p, action) {
+  const acct = 'player:' + p.id, mk = state.market;
+  if (action.type === 'postOrder') {
+    const good = action.good, qty = Math.floor(Number(action.qty) || 0), unit = r2(Number(action.price) || 0);
+    if (!MARKET.goods.includes(good)) return { ok: false, error: 'That cannot be sold on the exchange.', code: 'err.notTradable' };
+    if (qty < 1 || inv(p, good) < qty) return { ok: false, error: 'You do not have enough.', code: 'err.notEnough' };
+    if (unit < 1 || unit > MARKET.maxPrice) return { ok: false, error: 'Choose a price between 1 and 500 EMWK.', code: 'err.badPrice' };
+    if (mk.orders.filter((o) => o.seller === p.id).length >= MARKET.maxOrders) return { ok: false, error: 'You have too many open orders.', code: 'err.tooManyOrders' };
+    addInv(p, good, -qty); // the goods wait in the exchange until someone buys them
+    const o = { id: mk.nextId++, seller: p.id, good, qty, price: unit, day: state.day };
+    mk.orders.push(o);
+    return { ok: true, id: o.id, good, qty, price: unit };
+  }
+  if (action.type === 'cancelOrder') {
+    const o = mk.orders.find((x) => x.id === Number(action.id) && x.seller === p.id);
+    if (!o) return { ok: false, error: 'That order is gone.', code: 'err.orderGone' };
+    addInv(p, o.good, o.qty);
+    mk.orders = mk.orders.filter((x) => x !== o);
+    return { ok: true, good: o.good, qty: o.qty };
+  }
+  if (action.type === 'fillOrder') {
+    const o = mk.orders.find((x) => x.id === Number(action.id));
+    if (!o) return { ok: false, error: 'That order is gone.', code: 'err.orderGone' };
+    if (o.seller === p.id) return { ok: false, error: 'That is your own order.', code: 'err.ownOrder' };
+    const res = fillOrder(state, acct, p, o, Math.max(1, Math.floor(Number(action.qty) || 1)), p.name);
+    if (res.ok) { p.stats.spent = r2(p.stats.spent + res.total); res.good = o.good; }
+    return res;
+  }
+  // ---- land deeds ----
+  if (action.type === 'listDeed') {
+    const plot = state.plots[action.plot];
+    if (!plot || plot.owner !== p.id) return { ok: false, error: 'This is not your land.', code: 'err.notYourPlot' };
+    const price = Math.round(Number(action.price) || 0);
+    if (price < 1 || price > MARKET.deedMax) return { ok: false, error: 'Choose a price between 1 and 5000 EMWK.', code: 'err.badPrice' };
+    // a deed that already sits in the player's own wallet must first go to the village bank (escrow)
+    if (plot.deed && plot.deed.minted && state.nearBank && plot.deed.owner && plot.deed.owner !== state.nearBank) return { ok: false, error: 'Send the deed NFT to the village bank first, so the buyer can receive it.', code: 'err.deedInWallet', bank: state.nearBank, tokenId: plot.deed.tokenId };
+    plot.sale = { price, since: state.day };
+    return { ok: true, price };
+  }
+  if (action.type === 'unlistDeed') {
+    const plot = state.plots[action.plot];
+    if (!plot || plot.owner !== p.id || !plot.sale) return { ok: false, error: 'This is not your land.', code: 'err.notYourPlot' };
+    plot.sale = null;
+    return { ok: true };
+  }
+  if (action.type === 'buyDeed') {
+    const plot = state.plots[action.plot];
+    if (!plot || !plot.sale || !plot.owner) return { ok: false, error: 'This land is not for sale.', code: 'err.notForSale' };
+    if (plot.owner === p.id) return { ok: false, error: 'This is your own land.', code: 'err.ownOrder' };
+    if (p.plot) return { ok: false, error: 'You already own a plot.', code: 'err.havePlot' };
+    const def = plotDef(action.plot), need = def && def.district ? DISTRICTS[def.district].minLevel : 0;
+    if (playerLevel(p) < need) return { ok: false, error: `You need level ${need} to buy here.`, code: 'err.needLevel', need };
+    const seller = state.players[plot.owner], price = plot.sale.price, fee = r2(price * MARKET.fee);
+    if (!transfer(state, acct, 'player:' + plot.owner, price, { memo: `Emberwick exchange: deed ${action.plot} from ${seller ? seller.name : '?'} to ${p.name}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+    transfer(state, 'player:' + plot.owner, 'treasury', fee);
+    if (seller) { seller.plot = null; if (seller.sleep && seller.sleep.place === action.plot) seller.sleep = null; }
+    if (plot.lease && plot.lease.tenant === p.id) { plot.lease = null; p.lease = null; } // the tenant bought the house
+    plot.owner = p.id; plot.sale = null; plot.since = state.day;
+    p.plot = action.plot; p.stats.spent = r2(p.stats.spent + price);
+    recordTrade(state, { deed: action.plot, qty: 1, price, seller: seller ? seller.name : '?', buyer: p.name });
+    addLog(state, `${p.name} bought land from ${seller ? seller.name : '?'} on the exchange.`, 'good', 'log.deedSold', { name: p.name, seller: seller ? seller.name : '?', place: { $place: action.plot } });
+    if (plot.deed) emit('deedMove', { plot: action.plot, tokenId: plot.deed.tokenId, wallet: (p.nearVerified && p.near) || null });
+    return { ok: true, plot: action.plot, price };
+  }
+  return null;
+}
+// the AI craftsmen and villagers also buy on the exchange when an order is cheaper than the shops
+function runMarket(state) {
+  const mk = state.market;
+  if (!mk || !mk.orders.length) return;
+  for (const o of [...mk.orders]) {
+    if (state.day - o.day >= MARKET.days) { // expired: the goods go back to the seller
+      const s = state.players[o.seller];
+      if (s) addInv(s, o.good, o.qty);
+      mk.orders = mk.orders.filter((x) => x !== o);
+      continue;
+    }
+    if (rng(state) > 0.25) continue;
+    // a craftsman who uses this good and would pay at least the asking price
+    const npc = Object.values(state.npcs).find((n) => n.buys[o.good] !== undefined && price(n.buys[o.good]) >= o.price && (n.stock[o.good] || 0) < targetFor(state, n.id, o.good) * 1.5 && !(n.damagedUntil > state.day));
+    if (npc) {
+      const before = npc.stock[o.good] || 0;
+      const r = fillOrder(state, npcAcct(npc.id), null, o, Math.min(o.qty, 3), npc.id);
+      if (r.ok) npc.stock[o.good] = before + r.qty;
+      continue;
+    }
+    // villagers buy bread or a coat if it is cheaper than at the shop
+    const shop = Object.values(state.npcs).find((n) => n.sells[o.good] !== undefined && ['bread', 'coat'].includes(o.good));
+    if (shop && o.price < price(shop.sells[o.good])) {
+      const b = Object.values(state.bots)[Math.floor(rng(state) * Object.keys(state.bots).length)];
+      if (b && (o.good === 'bread' || !inv(b, 'coat'))) fillOrder(state, 'bot:' + b.id, b, o, 1, b.name);
+    }
+  }
+}
+
 function resolveAttack(state) {
   const ev = state.events;
   ev.attackDay = null;
@@ -1415,6 +1541,11 @@ export function publicView(state, playerId) {
     readiness: state.readiness,
     treasury: Math.round(balance(state, 'treasury')),
     books: treasuryView(state),
+    market: state.market ? {
+      fee: MARKET.fee, goods: MARKET.goods, maxOrders: MARKET.maxOrders, days: MARKET.days,
+      orders: state.market.orders.map((o) => ({ ...o, sellerName: (state.players[o.seller] || {}).name || '?', mine: o.seller === playerId, left: MARKET.days - (state.day - o.day) })),
+      trades: state.market.trades.map((x) => ({ ...x, buyer: x.buyer && state.npcs[x.buyer] ? { $npc: x.buyer } : x.buyer })),
+    } : null,
     totalMoney: totalMoney(state),
     population: Object.keys(state.players).length + Object.keys(state.bots).length,
     npcs,
@@ -1432,6 +1563,7 @@ export function publicView(state, playerId) {
         owner: x.owner ? (state.players[x.owner] || {}).name || '?' : null, mine: !!(x.owner && x.owner === playerId),
         built: x.built, since: x.since || null, deed: x.deed, bed: !!x.bed,
         price: plotPrice(id), build: plotBuild(id), district: d.district || 0, villa: !!d.villa, open: plotOpen(state, id), minLevel: d.district ? DISTRICTS[d.district].minLevel : 0,
+        sale: x.sale ? { price: x.sale.price, since: x.sale.since } : null,
         lease: x.lease ? { rent: x.lease.rent, tenant: x.lease.tenant ? (state.players[x.lease.tenant] || {}).name || '?' : null, mine: x.lease.tenant === playerId } : null,
       }];
     })),

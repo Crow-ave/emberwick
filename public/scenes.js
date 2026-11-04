@@ -41,11 +41,15 @@ function bedSvg(x, y, w = 260, color = '#3a6ea8') {
 
 // a speech bubble with wrapped text, pointing down at (x, y)
 export function bubble(x, y, text, maxChars = 34) {
-  const words = String(text).split(/\s+/), lines = [];
+  // Chinese and Japanese have no spaces: wrap by character, and count each as about two letters wide
+  const cjk = /[\u2e80-\u9fff\uff00-\uffef]/.test(text);
+  const len = (t) => [...t].reduce((a, c) => a + (/[\u2e80-\u9fff\uff00-\uffef]/.test(c) ? 1.9 : 1), 0);
+  const words = cjk ? [...String(text)] : String(text).split(/\s+/), lines = [];
+  const join = (a, b) => (cjk ? a + b : (a + ' ' + b).trim());
   let line = '';
-  for (const w of words) { if ((line + ' ' + w).trim().length > maxChars && line) { lines.push(line); line = w; } else line = (line + ' ' + w).trim(); }
+  for (const w of words) { if (len(join(line, w)) > maxChars && line) { lines.push(line); line = w.trim(); } else line = join(line, w); }
   if (line) lines.push(line);
-  const shown = lines.slice(0, 5), lh = 26, w = Math.max(...shown.map((l) => l.length)) * 11.4 + 40, h = shown.length * lh + 26;
+  const shown = lines.slice(0, 5), lh = 26, w = Math.max(...shown.map((l) => len(l))) * 11.4 + 40, h = shown.length * lh + 26;
   const bx = Math.max(10, Math.min(SW - w - 10, x - w / 2)), by = y - h - 18;
   const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   return `<g class="bubble"><rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="16" fill="#fffaf2" stroke="#7a5236" stroke-width="2.5"/>` +
@@ -148,6 +152,8 @@ const ITEM_ICON = {
   cart: (x, y) => rect(x - 18, y - 16, 36, 12, '#a87a4a') + `<circle cx="${x - 10}" cy="${y - 3}" r="5" fill="#3a2a1a"/><circle cx="${x + 10}" cy="${y - 3}" r="5" fill="#3a2a1a"/>`,
   coat: (x, y) => `<path d="M${x - 6} ${y - 28} L${x - 16} ${y - 22} L${x - 14} ${y} L${x + 14} ${y} L${x + 16} ${y - 22} L${x + 6} ${y - 28} L${x} ${y - 22} Z" fill="#3a6ea8" stroke="#2a4e78"/><path d="M${x} ${y - 22} V${y}" stroke="#e9d8c2" stroke-width="1.5"/>`,
   shears: (x, y) => `<circle cx="${x - 6}" cy="${y - 5}" r="5" fill="none" stroke="#c4473a" stroke-width="2.5"/><circle cx="${x + 6}" cy="${y - 5}" r="5" fill="none" stroke="#c4473a" stroke-width="2.5"/><path d="M${x - 3} ${y - 9} L${x + 4} ${y - 30} M${x + 3} ${y - 9} L${x - 4} ${y - 30}" stroke="#9aa0a8" stroke-width="3"/>`,
+  rod: (x, y) => `<path d="M${x - 14} ${y} L${x + 14} ${y - 34}" stroke="#7a5236" stroke-width="3"/><path d="M${x + 14} ${y - 34} Q${x + 20} ${y - 20} ${x + 18} ${y - 6}" stroke="#ccc" stroke-width="1" fill="none"/>`,
+  bed: (x, y) => `<rect x="${x - 18}" y="${y - 12}" width="36" height="12" rx="3" fill="#7a5236"/><rect x="${x - 16}" y="${y - 18}" width="12" height="7" rx="3" fill="#fff"/><rect x="${x - 4}" y="${y - 16}" width="20" height="6" rx="3" fill="#3a6ea8"/>`,
   meal: (x, y) => `<ellipse cx="${x}" cy="${y - 3}" rx="15" ry="5" fill="#f4efe4"/><ellipse cx="${x}" cy="${y - 7}" rx="9" ry="5" fill="#a84a2a"/>`,
 };
 

@@ -10,6 +10,8 @@ export function cellCenter(i, j) {
   return [OX + (i - j) * TW / 2, OY + (i + j) * TH / 2 + TH / 2];
 }
 
+// text width in letters (Chinese characters count about double)
+const tlen = (t) => [...String(t)].reduce((a, c) => a + (/[\u2e80-\u9fff\uff00-\uffef]/.test(c) ? 1.85 : 1), 0);
 const pts = (a) => a.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' ');
 const poly = (a, fill, extra = '') => `<polygon points="${pts(a)}" fill="${fill}" stroke="rgba(60,40,20,.35)" stroke-width=".6" ${extra}/>`;
 const diamond = (cx, cy, hw, hh) => [[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]];
@@ -125,6 +127,7 @@ function sign(x, y, icon, bg = '#efe4cf') {
     axe: `<rect x="${x - .8}" y="${y - 6}" width="1.6" height="13" fill="#7a5236"/><path d="M${x} ${y - 6} q7 1 6 7 q-4 -2 -6 -1 z" fill="#9aa0a8"/>`,
     mug: `<rect x="${x - 5}" y="${y - 5}" width="8" height="10" rx="1.5" fill="#e2b640"/><rect x="${x - 5}" y="${y - 6}" width="8" height="3" rx="1.5" fill="#fff"/><path d="M${x + 3} ${y - 3} q4 0 4 3 q0 3 -4 3" stroke="#e2b640" stroke-width="1.6" fill="none"/>`,
     coin: `<circle cx="${x}" cy="${y}" r="5.5" fill="#e2b640" stroke="#a07a20"/><text x="${x}" y="${y + 2.6}" font-size="7" text-anchor="middle" fill="#8a5a10" font-weight="bold">E</text>`,
+    fish: `<path d="M${x - 7} ${y} Q${x - 1} ${y - 6} ${x + 5} ${y} Q${x - 1} ${y + 6} ${x - 7} ${y} Z" fill="#5aa0d8"/><path d="M${x + 4} ${y} l5 -4 v8 z" fill="#5aa0d8"/><circle cx="${x - 3}" cy="${y - 1}" r=".9" fill="#1a2a3a"/>`,
     coat: `<path d="M${x - 3} ${y - 6} L${x - 7} ${y - 3} L${x - 6} ${y + 6} L${x + 6} ${y + 6} L${x + 7} ${y - 3} L${x + 3} ${y - 6} L${x} ${y - 3} Z" fill="#3a6ea8"/><path d="M${x} ${y - 3} V${y + 6}" stroke="#f4efe4" stroke-width=".8"/><circle cx="${x + 1.5}" cy="${y}" r=".7" fill="#e2b640"/><circle cx="${x + 1.5}" cy="${y + 3}" r=".7" fill="#e2b640"/>`,
     wheat: `<path d="M${x} ${y + 6} V${y - 5}" stroke="#a8841e" stroke-width="1.2"/><ellipse cx="${x - 2}" cy="${y - 2}" rx="1.6" ry="3" fill="#e8c83c"/><ellipse cx="${x + 2}" cy="${y - 3}" rx="1.6" ry="3" fill="#e8c83c"/><ellipse cx="${x}" cy="${y - 6}" rx="1.6" ry="3" fill="#e8c83c"/>`,
   }[icon] || '';
@@ -372,6 +375,16 @@ const DRAW = {
   'plot-2'(cx, cy, v) { return plotArt('plot-2', cx, cy, v); },
   'plot-3'(cx, cy, v) { return plotArt('plot-3', cx, cy, v); },
   'plot-4'(cx, cy, v) { return plotArt('plot-4', cx, cy, v); },
+  pond(cx, cy) {
+    // a wooden jetty, a little rowing boat and a fishing rod over the water
+    let s = `<polygon points="${pts([[cx - 30, cy + 10], [cx - 6, cy - 2], [cx + 2, cy + 2], [cx - 22, cy + 14]])}" fill="#a87a4a" stroke="#7a5236" stroke-width=".8"/>`;
+    for (let k = 0; k < 4; k++) s += `<line x1="${cx - 28 + k * 6}" y1="${cy + 11 - k * 3}" x2="${cx - 20 + k * 6}" y2="${cy + 15 - k * 3}" stroke="#7a5236" stroke-width=".6"/>`;
+    s += `<rect x="${cx - 8}" y="${cy - 2}" width="2" height="8" fill="#6b4528"/><rect x="${cx - 24}" y="${cy + 12}" width="2" height="8" fill="#6b4528"/>`;
+    s += `<path d="M${cx + 14} ${cy + 6} q12 6 26 0 l-4 6 q-9 4 -18 0 z" fill="#8a5a3a" stroke="#5a3a22" stroke-width=".8"/><line x1="${cx + 26}" y1="${cy + 4}" x2="${cx + 34}" y2="${cy - 10}" stroke="#5a3a22" stroke-width="1"/>`;
+    s += `<line x1="${cx - 10}" y1="${cy - 2}" x2="${cx + 6}" y2="${cy - 26}" stroke="#7a5236" stroke-width="1.4"/><path d="M${cx + 6} ${cy - 26} Q${cx + 14} ${cy - 18} ${cx + 12} ${cy - 4}" stroke="#e8e2d6" stroke-width=".6" fill="none"/><circle cx="${cx + 12}" cy="${cy - 3}" r="1.6" fill="#d9622b"/>`;
+    s += `<path d="M${cx + 2} ${cy - 10} q3 -3 6 0 q-3 3 -6 0 z" fill="#7ec0ee" opacity=".8"/>`;
+    return s + sign(cx - 40, cy - 10, 'fish', '#e8f4fa');
+  },
   roadsign(cx, cy, v) {
     // a signpost by the gate: arrows to the new neighbourhoods
     const open = (v.districts && v.districts.open) || [];
@@ -399,7 +412,7 @@ for (let j = 5; j <= 8; j++) ROAD.add(`7,${j}`);
 for (let i = 6; i <= 11; i++) ROAD.add(`${i},12`);  // the new lane to the southern homes
 for (let j = 5; j <= 6; j++) ROAD.add(`11,${j}`);   // a path to the eastern plot
 for (let j = 9; j <= 11; j++) ROAD.add(`2,${j}`);   // a path past the mill to the western plot
-const WATER = new Set(['8,7', '9,7', '8,8']);
+const WATER = new Set(['8,7', '9,7', '8,8', '9,8']);
 
 let blocked = null, entrances = {}, workCells = {};
 const OPEN_AREAS = new Set(['gate', 'fields', 'forest', 'pasture', 'watch-1', 'watch-2', 'watch-3']); // people can walk inside these
@@ -552,18 +565,38 @@ function backdrop(view) {
   return s + '</g>';
 }
 
+// the neighbourhoods far away on the left, so you can see there is more beyond the village
+function distant(view, ui) {
+  const open = (view.districts && view.districts.open) || [];
+  const plots = view.plots || {};
+  const built = (n) => Object.values(plots).filter((p) => p.district === n && p.built).length;
+  const place = (id, x, y, art, label, on) => `<g class="bld far" data-id="${id}" tabindex="0" role="button" aria-label="${label}"><title>${label}</title>` +
+    `<path d="M${x - 92} ${y + 26} Q${x - 40} ${y - 26} ${x} ${y - 22} Q${x + 50} ${y - 28} ${x + 96} ${y + 26} Z" fill="${view.events.winter ? '#dbe4dc' : '#a9d47e'}" opacity=".95"/>${art}` +
+    `<g pointer-events="none"><rect x="${x - tlen(label) * 3.4 - 10}" y="${y + 22}" width="${tlen(label) * 6.8 + 20}" height="18" rx="9" fill="rgba(255,250,242,.9)" stroke="rgba(120,90,60,.3)"/><text x="${x}" y="${y + 35}" font-size="11" font-weight="bold" text-anchor="middle" fill="${on ? '#5a3a22' : '#8a7a68'}">${label}${on ? '' : ' 🔒'}</text></g></g>`;
+  const hut = (x, y, c, k = 1) => `<rect x="${x - 5 * k}" y="${y - 7 * k}" width="${10 * k}" height="${7 * k}" fill="#efe2c8"/><polygon points="${x - 7 * k},${y - 7 * k} ${x},${y - 13 * k} ${x + 7 * k},${y - 7 * k}" fill="${c}"/>`;
+  const L = [70, 150], V = [330, 44], E = [200, 84];
+  const lane = [[-34, 2], [-16, -4], [2, -6], [20, -2], [36, 4]].slice(0, Math.max(2, Math.min(5, built(1) + 2))).map(([dx, dy], k) => hut(L[0] + dx, L[1] - 8 + dy, ['#c4473a', '#3a6ea8', '#4f7a3a', '#8c3a2a', '#7a3b8a'][k])).join('');
+  const villa = [[-28, 0], [6, -8], [34, 2]].map(([dx, dy]) => hut(V[0] + dx, V[1] - 8 + dy, '#2f4f6f', 1.5) + `<rect x="${V[0] + dx + 8}" y="${V[1] - 11 + dy}" width="8" height="3" fill="#6ec3ea"/>`).join('');
+  const ex0 = E[0] - 22, ey = E[1] - 26;
+  const ex = `<rect x="${ex0}" y="${ey}" width="44" height="18" fill="#f1ead9" stroke="#c9bfa8"/>${[0, 1, 2, 3, 4].map((k) => `<rect x="${ex0 + 3 + k * 8.4}" y="${ey + 2}" width="3" height="16" fill="#fbf8f0"/>`).join('')}<path d="M${ex0 + 8} ${ey} Q${E[0]} ${ey - 20} ${ex0 + 36} ${ey} Z" fill="#4f9a82"/><rect x="${E[0] - 1}" y="${ey - 24}" width="2" height="8" fill="#e2b640"/><circle cx="${E[0]}" cy="${ey - 25}" r="2" fill="#e2b640"/>`;
+  return `<g opacity=".97">` + place('go-d2', V[0], V[1], villa, ui.villaName || 'Villa hill', open.includes(2)) + place('go-d3', E[0], E[1], ex, ui.exName || 'Exchange', true) +
+    place('go-d1', L[0], L[1], lane, ui.laneName || 'Ember Lane', open.includes(1)) + `</g>`;
+}
+
 let groundCache = { key: null, svg: '' };
-function ground(world, view) {
+const distantKey = (view, ui) => [(view.districts && view.districts.open || []).join(','), Object.values(view.plots || {}).filter((p) => p.district && p.built).length, ui.laneName].join('/');
+function ground(world, view, ui = {}) {
   const winter = view.events.winter, dry = view.events.drought > 0;
   const threat = Math.round((view.threat || 0) * 20) / 20;
-  const key = `${winter}|${dry}|${view.events.dragon > 0 || !!view.events.attackDay}|${threat}`;
+  const far = distantKey(view, ui);
+  const key = `${winter}|${dry}|${view.events.dragon > 0 || !!view.events.attackDay}|${threat}|${far}`;
   if (groundCache.key === key) return groundCache.svg;
   const used = new Set();
   for (const b of world.buildings) if (!b.district) for (let i = b.i; i < b.i + b.w; i++) for (let j = b.j; j < b.j + b.w; j++) used.add(`${i},${j}`);
   // the island: a thick earth edge under the grass makes the village a plateau
   const T = corner(0, 0), R = corner(N, 0), B = corner(N, N), L = corner(0, N), D = 30;
   const down = (p, d = D) => [p[0], p[1] + d];
-  let s = backdrop(view) + `<ellipse cx="${B[0]}" cy="${B[1] + D + 6}" rx="${(R[0] - L[0]) * 0.42}" ry="20" fill="rgba(40,60,20,.16)"/>`;
+  let s = backdrop(view) + distant(view, ui) + `<ellipse cx="${B[0]}" cy="${B[1] + D + 6}" rx="${(R[0] - L[0]) * 0.42}" ry="20" fill="rgba(40,60,20,.16)"/>`;
   s += poly([L, B, down(B), down(L)], winter ? '#b9aa94' : '#8a6a46') + poly([B, R, down(R), down(B)], winter ? '#a6977f' : '#6f5236');
   s += poly([down(L, 12), down(B, 12), down(B), down(L)], winter ? '#a39684' : '#735638', 'opacity=".55"') + poly([down(B, 12), down(R, 12), down(R), down(B)], winter ? '#938670' : '#5c432c', 'opacity=".55"');
   const greens = winter ? ['#cfdcc8', '#c6d5bf', '#d8e3d2'] : dry ? ['#a9c36a', '#a0bb62', '#b3ca74'] : ['#86c457', '#7dbd4f', '#90cb60'];
@@ -612,7 +645,7 @@ function ground(world, view) {
 
 export function renderMap(svg, world, view, ui) {
   SNOW = !!view.events.winter;
-  let s = ground(world, view);
+  let s = ground(world, view, ui);
   const order = world.buildings.filter((b) => !b.district).sort((a, b) => (a.i + a.j + a.w) - (b.i + b.j + b.w));
   let labels = '';
   for (const b of order) {
@@ -629,7 +662,7 @@ export function renderMap(svg, world, view, ui) {
     if (show) {
       const label = (myPlot && ui.mineTag ? '✦ ' + ui.mineTag + ' · ' : '') + nm + (closed ? ' ' + (ui.closedTag || '(closed)') : shut ? ' ' + (ui.nightTag || '(closed)') : '');
       const peak = b.id === 'dragonpeak';
-      const lx = peak ? PEAK[0] : cx, ly = peak ? PEAK[1] + 150 : cy + (b.w > 1 ? TH * 1.25 : TH * 0.85), lw = label.length * 7.4 + 16;
+      const lx = peak ? PEAK[0] : cx, ly = peak ? PEAK[1] + 150 : cy + (b.w > 1 ? TH * 1.25 : TH * 0.85), lw = tlen(label) * 7.4 + 16;
       labels += `<g class="lbl${ui.selected === b.id ? ' sel' : ''}" pointer-events="none"><rect x="${lx - lw / 2}" y="${ly - 14}" width="${lw}" height="20" rx="10" fill="rgba(255,250,242,.92)" stroke="rgba(120,90,60,.3)"/>` +
         `<text class="tag" x="${lx}" y="${ly}" text-anchor="middle">${label}</text></g>`;
     }
@@ -669,7 +702,32 @@ function villaArt(id, cx, cy, v) {
   return plotArt(id, cx, cy, v, 1.9);
 }
 
+// the exchange hall: a stone hall with columns, a green dome, a ticker board and banners
+function exchangeArt(cx, cy, v) {
+  const sc = 2.1, h = 34;
+  let s = shadow(cx, cy, 70) + poly(diamond(cx, cy + 6, 120, 60), '#d9cdb6') + poly(diamond(cx, cy + 6, 104, 52), '#e9dfcc');
+  s += house(cx, cy - 4, sc, h, '#f1ead9', '#d6ccb6', '#3f7a6a', '#2f6656', 12);
+  const f = frame(cx, cy - 4, sc, h);
+  for (let k = 0; k < 6; k++) { // columns along the front
+    const p = mid(f.L, f.B, 0.08 + k * 0.168);
+    s += `<rect x="${p[0] - 2.6}" y="${p[1] - h + 3}" width="5.2" height="${h - 3}" fill="#fbf8f0" stroke="#c9bfa8" stroke-width=".6"/><rect x="${p[0] - 3.6}" y="${p[1] - h}" width="7.2" height="3" fill="#e6dcc6"/>`;
+  }
+  for (let k = 0; k < 3; k++) s += windowAt(mid(f.B, f.R, 0.12 + k * 0.3), f.R, h * 0.4, 1.2);
+  // dome
+  const top = [cx + 6, cy - h - 52];
+  s += `<ellipse cx="${top[0]}" cy="${top[1] + 16}" rx="26" ry="8" fill="#2f6656"/><path d="M${top[0] - 24} ${top[1] + 16} Q${top[0]} ${top[1] - 22} ${top[0] + 24} ${top[1] + 16} Z" fill="#4f9a82"/><path d="M${top[0] - 10} ${top[1] + 2} Q${top[0] - 4} ${top[1] - 10} ${top[0] + 4} ${top[1] - 12}" stroke="#9fdcc6" stroke-width="2" fill="none"/>`;
+  s += `<rect x="${top[0] - 1}" y="${top[1] - 22}" width="2" height="14" fill="#e2b640"/><circle cx="${top[0]}" cy="${top[1] - 24}" r="3" fill="#e2b640"/>`;
+  // ticker board in front
+  const bx = cx - 70, by = cy + 30, rows = ['NEAR', 'EMWK', 'BTC'];
+  s += `<rect x="${bx - 2}" y="${by - 30}" width="4" height="32" fill="#4a3a2a"/><rect x="${bx + 52}" y="${by - 30}" width="4" height="32" fill="#4a3a2a"/><rect x="${bx - 6}" y="${by - 58}" width="66" height="32" rx="3" fill="#1f2a2a" stroke="#4a3a2a" stroke-width="2"/>`;
+  rows.forEach((r, k) => { s += `<text x="${bx}" y="${by - 48 + k * 9}" font-size="7" fill="#9fdcc6" font-family="monospace">${r}</text><text x="${bx + 54}" y="${by - 48 + k * 9}" font-size="7" text-anchor="end" fill="${k === 1 ? '#f2b04a' : '#6ee08a'}" font-family="monospace">${k === 1 ? '▲' : '▲'}</text>`; });
+  // banners
+  for (const [x, c] of [[cx + 64, '#3f7a6a'], [cx + 82, '#e2b640']]) s += `<rect x="${x}" y="${cy - 30}" width="2" height="34" fill="#5a4a38"/><path d="M${x + 2} ${cy - 30} h12 v16 l-6 -4 l-6 4 z" fill="${c}"/>`;
+  return s + sign(cx - 96, cy - 6, 'coin', '#eef8f4');
+}
+
 const DROADS = {
+  3: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 7 || j === 1 || j === 7) ,
   1: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i % 2 === 1 || j % 2 === 1),
   2: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 4 || i === 7 || j === 1 || j === 4 || j === 7),
 };
@@ -677,7 +735,7 @@ const DN = 10, DOY = 120;
 const dcell = (i, j) => [OX + (i - j) * TW / 2, DOY + (i + j) * TH / 2];
 
 export function renderDistrict(svg, world, view, ui) {
-  const n = ui.district, open = (view.districts.open || []).includes(n), def = view.districts.defs[n];
+  const n = ui.district, def = view.districts.defs[n], open = (view.districts.open || []).includes(n) || !!(def && def.alwaysOpen);
   const winter = view.events.winter, greens = winter ? ['#cfdcc8', '#c6d5bf', '#d8e3d2'] : ['#86c457', '#7dbd4f', '#90cb60'];
   const corner = (i, j) => [OX + (i - j) * TW / 2, DOY - TH / 2 + (i + j) * TH / 2];
   const T = corner(0, 0), R = corner(DN, 0), B = corner(DN, DN), L = corner(0, DN), D = 26;
@@ -697,33 +755,34 @@ export function renderDistrict(svg, world, view, ui) {
   const items = world.buildings.filter((b) => b.district === n).sort((a, b) => (a.i + a.j) - (b.i + b.j));
   let labels = '';
   for (const b of items) {
-    const [cx, cy] = b.w > 1 ? dcell(b.i + 0.5, b.j + 0.5) : dcell(b.i, b.j);
+    const [cx, cy] = b.w > 1 ? dcell(b.i + (b.w - 1) / 2, b.j + (b.w - 1) / 2) : dcell(b.i, b.j);
     const nm = ui.nameOf ? ui.nameOf(b.id) : b.name;
-    const art = b.villa ? villaArt(b.id, cx, cy, view) : plotArt(b.id, cx, cy, view);
+    const art = b.id === 'exchange' ? exchangeArt(cx, cy, view) : b.villa ? villaArt(b.id, cx, cy, view) : plotArt(b.id, cx, cy, view);
     s += `<g class="bld" data-id="${b.id}" tabindex="0" role="button" aria-label="${nm}"><title>${nm}</title><g transform="translate(${cx} ${cy}) scale(${K}) translate(${-cx} ${-cy})">${art}</g></g>`;
     const pl = view.plots[b.id] || {};
-    if (ui.hover === b.id || ui.selected === b.id || pl.mine) {
-      const label = (pl.mine && ui.mineTag ? '✦ ' + ui.mineTag + ' · ' : '') + nm, lw = label.length * 7.4 + 16, ly = cy + TH * (b.w > 1 ? 1.4 : 0.9);
+    if (ui.hover === b.id || ui.selected === b.id || pl.mine || b.id === 'exchange') {
+      const label = (pl.mine && ui.mineTag ? '✦ ' + ui.mineTag + ' · ' : '') + nm, lw = tlen(label) * 7.4 + 16, ly = cy + TH * (b.w > 1 ? 1.4 : 0.9);
       labels += `<g class="lbl" pointer-events="none"><rect x="${cx - lw / 2}" y="${ly - 14}" width="${lw}" height="20" rx="10" fill="rgba(255,250,242,.92)" stroke="rgba(120,90,60,.3)"/><text class="tag" x="${cx}" y="${ly}" text-anchor="middle">${label}</text></g>`;
     }
   }
   // signposts: back to the village, and on to the other neighbourhood
   const post = (id, i, j, text, dir) => {
-    const [cx, cy] = dcell(i, j), w = text.length * 6.6 + 18, x0 = dir < 0 ? cx - w : cx;
+    const [cx, cy] = dcell(i, j), w = tlen(text) * 6.6 + 18, x0 = dir < 0 ? cx - w : cx;
     return `<g class="bld" data-id="${id}" tabindex="0" role="button" aria-label="${text}"><title>${text}</title><rect x="${cx - 2}" y="${cy - 46}" width="4" height="48" fill="#5a3a22"/>` +
       `<polygon points="${dir < 0 ? `${x0 - 8},${cy - 38} ${x0},${cy - 47} ${cx + 2},${cy - 47} ${cx + 2},${cy - 29} ${x0},${cy - 29}` : `${cx - 2},${cy - 47} ${cx + w},${cy - 47} ${cx + w + 8},${cy - 38} ${cx + w},${cy - 29} ${cx - 2},${cy - 29}`}" fill="#efe4cf" stroke="#7a5236" stroke-width="1.4"/>` +
       `<text x="${dir < 0 ? x0 + w / 2 : cx + w / 2}" y="${cy - 34}" font-size="11" text-anchor="middle" fill="#5a3a22" font-weight="bold">${text}</text></g>`;
   };
   s += post('go-village', 0, 9, ui.backTag || 'Village', -1);
   if (n === 1) s += post('go-d2', 9, 0, ui.villaTag || 'Villa hill', 1);
+  else if (n === 2) s += post('go-d3', 9, 0, ui.exTag || 'Exchange', 1);
   else s += post('go-d1', 9, 0, ui.laneTag || 'Ember Lane', 1);
   // a closed neighbourhood: a fence and a sign
   if (!open) {
     s += `<polygon points="${pts([T, R, B, L])}" fill="rgba(60,50,40,.35)" pointer-events="none"/>`;
-    const [cx, cy] = dcell(4.5, 4.5), msg = ui.closedDistrict || 'Not open yet', w = msg.length * 7.6 + 30;
+    const [cx, cy] = dcell(4.5, 4.5), msg = ui.closedDistrict || 'Not open yet', w = tlen(msg) * 7.6 + 30;
     labels += `<g pointer-events="none"><rect x="${cx - w / 2}" y="${cy - 26}" width="${w}" height="36" rx="10" fill="#fff8ec" stroke="#b5501e" stroke-width="2"/><text x="${cx}" y="${cy - 3}" font-size="15" font-weight="bold" text-anchor="middle" fill="#8a3b12">${msg}</text></g>`;
   }
-  const title = ui.districtTitle || def.name, tw = title.length * 9 + 40;
+  const title = ui.districtTitle || def.name, tw = tlen(title) * 9 + 40;
   labels += `<g pointer-events="none"><rect x="${OX - tw / 2}" y="${DOY - 92}" width="${tw}" height="34" rx="17" fill="rgba(255,250,242,.95)" stroke="rgba(120,90,60,.35)"/><text x="${OX}" y="${DOY - 69}" font-size="17" font-weight="bold" text-anchor="middle" fill="#5a3a22">${title}</text></g>`;
   svg.querySelector('#ground').innerHTML = s;
   svg.querySelector('#labels').innerHTML = labels;

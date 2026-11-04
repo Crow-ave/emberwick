@@ -4,7 +4,7 @@
 
 The dragon burned Emberwick to ash. Years later, a few craftsmen came back and relit the embers. Newcomers gather wood, wheat and iron ore, sell them to the village's craftsmen, and help the village get ready before the dragon returns.
 
-Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what they need, make what they sell and change their prices as stock runs short or piles up. A drought, a hard winter or smoke over Dragon peak ripples through the whole village with no patch from the developers.
+Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what they need, make what they sell and change their prices as stock runs short or piles up. A drought, a hard winter or smoke over Dragon peak ripples through the whole village with no patch from the developers.
 
 ## What works today (stage 1)
 
@@ -22,7 +22,8 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - The tailor (an eighth AI craftsman) sews winter coats from wool. Wool comes from the sheep pasture (you need shears from the tailor). Coats last 6 winter days; bot villagers buy them too
 - Dragon peak slowly turns red as an attack comes closer
 - Twelve villager bots that keep the economy moving
-- Four languages: English, Türkçe, Français, Deutsch (menu in the top bar; add more in `public/i18n.js`)
+- Six languages: English, Türkçe, Français, Deutsch, Русский, 中文 (menu in the top bar; add more in `public/i18n.js`)
+- Fishing at the pond (a rod from the carpenter); the innkeeper cooks meals from fish
 - A fixed supply of 25,000 EMWK. Money only moves between accounts and never appears from nowhere (checked by `npm test`)
 
 ## A living market
@@ -62,6 +63,33 @@ Nobody sets the prices. Seven AI craftsmen, each with their own wallet, buy what
 - Anyone can propose "Build a watchtower" at the council. If it passes, the treasury pays the carpenter 250 EMWK and a new tower goes up on one of three free spots on the map.
 - Each extra tower adds 10% to village readiness against the dragon. The AI villagers propose and back towers when danger is high.
 
+## The Exchange quarter
+
+Always open, reached from the signpost by the gate (or the hills on the horizon). The exchange hall has three counters:
+
+- **Goods market (player to player):** put your goods up for sale at your own price. Other players buy them; the AI craftsmen and villagers also buy when your price beats the shops. The goods wait in the exchange until sold or for 3 days. 2% of each sale goes to the treasury.
+- **Land deeds (NFT):** sell your land, with its house, bed and tenant, to another player. The deed NFT is held in escrow by the village bank: if it is already in your own wallet you send it there first (one Meteor signature, checked on chain), and after the sale the bank sends it to the buyer's verified wallet.
+- **Change desk:** move EMWK between the game and your wallet (cash-out and deposit), and see live prices and real cross-chain quotes (NEAR → USDC, BTC, ETH, SOL) from the **NEAR Intents 1Click API** in dry-run mode: real solver prices, nothing is swapped. EMWK is a testnet game token, so it has no market price of its own.
+
+## Hackathon tracks
+
+| Track | What in Emberwick |
+|---|---|
+| Games With Real Economies | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token |
+| Unstoppable DeFi | The Exchange quarter: player order book, deed escrow, NEAR Intents quotes |
+| NFTs That Do Something | Land deeds (NEP-171): a deed earns rent from a tenant, lets you sleep at home, and can be sold on the exchange |
+| Open Innovation | A village DAO where AI villagers vote with reasons, recorded on NEAR |
+
+## Try it as a judge (do X, see Y)
+
+1. `npm install && npm run demo`, open http://localhost:3000, type a name, pick **Miner**. → You stand at the gate; the guide on the right says what to do.
+2. Click the **Mine**, press the big button twice. → Ore in your bag; the guide points to the best buyer.
+3. Click the **Smithy**. → The scene opens, the smith greets you in a speech bubble; sell on the counter card. Watch prices move in "Prices now".
+4. Click the **Treasury**. → The books open over the map: balance, locked reserve, where money came from this week.
+5. Click **Neighbourhoods** (or the hills top left) → **Exchange quarter**. Sell an item on the **Goods market**; open **Change desk** and press **Get a live quote**. → A real NEAR Intents quote (dry run).
+6. Wait for evening (≈1.5 min in demo mode). → The guide asks where you will sleep; at the inn take a bed, your character lies down.
+7. Click the **Council hall**, propose **Build a watchtower**. → AI villagers vote with reasons; the result is recorded on NEAR with a 0.01 EMWK memo transfer.
+
 ## On NEAR
 
 EMWK is a real NEP-141 token on NEAR testnet, and the game ledger is mirrored onto it.
@@ -79,6 +107,7 @@ EMWK is a real NEP-141 token on NEAR testnet, and the game ledger is mirrored on
 
 - Items as NEP-245 tokens
 - Haggling with the AI craftsmen
+- Real swaps on the change desk (mainnet)
 
 ## Run it
 

@@ -17,10 +17,10 @@ const PATH_LOOK = {
   woodcutter: { color: '#a0522d', hair: '#5a3a22' },
   apprentice: { color: '#3a6ec0', hair: '#c98a3a' },
 };
-const CARRY = { wheat: '#e8c83c', ore: '#7a7a80', wood: '#8a5a3a', wool: '#f4f1ea' };
+const CARRY = { wheat: '#e8c83c', ore: '#7a7a80', wood: '#8a5a3a', wool: '#f4f1ea', fish: '#5aa0d8' };
 const PATH_GOOD = { farmer: 'wheat', miner: 'ore', woodcutter: 'wood', apprentice: 'wood' };
-const SPOT_GOOD = { fields: 'wheat', forest: 'wood', mine: 'ore', pasture: 'wool' };
-const SPOT_COST = { fields: 2, forest: 2, mine: 3, pasture: 2 };
+const SPOT_GOOD = { fields: 'wheat', forest: 'wood', mine: 'ore', pasture: 'wool', pond: 'fish' };
+const SPOT_COST = { fields: 2, forest: 2, mine: 3, pasture: 2, pond: 2 };
 
 // ---------- text helpers ----------
 
@@ -477,9 +477,93 @@ function panelTreasury() {
   return h + `<p class="muted small">${t('treasury.note')}</p>`;
 }
 
+// ---------- the exchange: player market, land deeds, and the change desk (NEAR Intents) ----------
+function panelExchange() {
+  const me = view.player, mk = view.market;
+  const tab = ui.exTab || 'goods';
+  let h = `<h2>${t('b.exchange')}</h2><p class="muted small">${t('ex.intro', { fee: Math.round(mk.fee * 100) })}</p>`;
+  h += `<div class="tabs">${['goods', 'deeds', 'change'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
+  if (tab === 'goods') {
+    const mine = me ? mk.goods.filter((g) => (me.inv[g] || 0) > 0) : [];
+    const shopPrice = (g) => { const n = Object.values(view.npcs).find((x) => x.sells[g] !== undefined); return n ? n.sells[g] : null; };
+    const buyPrice = (g) => { const ns = Object.values(view.npcs).filter((x) => x.buys[g] !== undefined); return ns.length ? Math.max(...ns.map((x) => x.buys[g])) : null; };
+    if (me) {
+      const g0 = ui.exGood && mine.includes(ui.exGood) ? ui.exGood : mine[0];
+      h += `<p class="sub2">${t('ex.sellTitle')}</p>`;
+      if (!g0) h += `<p class="muted small">${t('ex.nothingToSell')}</p>`;
+      else {
+        const sug = shopPrice(g0) || buyPrice(g0) || 5;
+        h += `<div class="row exform"><select id="ex-good">${mine.map((g) => `<option value="${g}"${g === g0 ? ' selected' : ''}>${goodName(g)} (${me.inv[g]})</option>`).join('')}</select>` +
+          `<input id="ex-qty" type="number" min="1" max="${me.inv[g0]}" value="${me.inv[g0]}" title="${t('ex.qty')}"> × <input id="ex-price" type="number" min="1" max="500" value="${sug}" title="${t('ex.price')}"> EMWK` +
+          `<button class="primary" data-act="postOrder">${t('ex.post')}</button></div>` +
+          `<p class="muted small">${t('ex.priceHint', { shop: shopPrice(g0) ?? '–', buy: buyPrice(g0) ?? '–' })}</p>`;
+      }
+    }
+    h += `<p class="sub2">${t('ex.book')}</p>`;
+    h += mk.orders.length ? `<table>${mk.orders.map((o) => `<tr><td><b>${goodName(o.good)}</b> × ${o.qty}<div class="muted small">${esc(o.sellerName)} · ${t('ex.left', { n: o.left })}</div></td><td class="n">${o.price} EMWK${shopPrice(o.good) ? `<div class="muted small">${t('ex.shop', { n: shopPrice(o.good) })}</div>` : ''}</td><td class="n">` +
+      (o.mine ? `<button data-act="cancelOrder" data-id="${o.id}">${t('ex.cancel')}</button>` : `<button class="primary" data-act="fillOrder" data-id="${o.id}" ${!me || me.coins < o.price ? 'disabled' : ''}>${t('ex.buy1')}</button>`) + `</td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noOrders')}</p>`;
+    const tr = mk.trades.filter((x) => x.good);
+    if (tr.length) h += `<p class="sub2">${t('ex.trades')}</p><ul class="decided">${tr.slice(0, 6).map((x) => `<li>${x.qty} ${goodName(x.good)} · ${x.price} EMWK · ${esc(x.seller)} → ${esc(typeof x.buyer === 'object' ? npcName(x.buyer.$npc) : x.buyer)} <span class="muted small">(${t('ui.day', { n: x.day })})</span></li>`).join('')}</ul>`;
+  }
+  if (tab === 'deeds') {
+    const sale = Object.entries(view.plots).filter(([, x]) => x.sale && !x.mine);
+    h += `<p class="sub2">${t('ex.deedsForSale')}</p>`;
+    h += sale.length ? `<table>${sale.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${esc(x.owner)} · ${x.built ? t(x.bed ? 'ex.withHouseBed' : 'ex.withHouse') : t('ex.bareLand')}${x.lease && x.lease.tenant ? ' · ' + t('ex.rented', { n: x.lease.rent }) : ''}</div></td><td class="n">${x.sale.price} EMWK</td><td class="n">` +
+      `<button class="primary" data-act="buyDeed" data-plot="${id}" ${!me || me.plot || me.coins < x.sale.price || (x.minLevel && me.level < x.minLevel) ? 'disabled' : ''}>${t('ex.buy1')}</button></td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noDeeds')}</p>`;
+    if (me && me.plot) {
+      const x = view.plots[me.plot];
+      h += `<p class="sub2">${t('ex.myDeed', { place: placeName(me.plot) })}</p>`;
+      if (x.sale) h += `<p class="small">${t('ex.listedAt', { n: x.sale.price })}</p><button data-act="unlistDeed" data-plot="${me.plot}">${t('ex.unlist')}</button>`;
+      else h += `<p class="muted small">${t('ex.sellDeedHelp')}</p><div class="row exform"><input id="ex-deed-price" type="number" min="1" max="5000" value="${Math.round((x.price || 120) * (x.built ? 1.6 : 1.1))}"> EMWK <button class="primary" data-act="listDeed" data-plot="${me.plot}">${t('ex.listDeed')}</button></div>`;
+    }
+    const dt = mk.trades.filter((x) => x.deed);
+    if (dt.length) h += `<p class="sub2">${t('ex.trades')}</p><ul class="decided">${dt.slice(0, 5).map((x) => `<li>${esc(placeName(x.deed))} · ${x.price} EMWK · ${esc(x.seller)} → ${esc(x.buyer)}</li>`).join('')}</ul>`;
+    h += `<p class="muted small">${t('ex.deedNote')}</p>`;
+  }
+  if (tab === 'change') {
+    h += `<p class="sub2">${t('ex.bridgeTitle')}</p><p class="small">${t('ex.bridgeHelp', { n: me ? Math.floor(me.coins) : 0 })}</p><button class="primary" data-act="open-near">${t('ex.openNear')}</button>`;
+    const pr = ui.exPrices;
+    h += `<p class="sub2">${t('ex.pricesTitle')}</p>`;
+    if (!pr) h += `<p class="muted small">${t('ex.loading')}</p>`;
+    else if (!pr.ok) h += `<p class="muted small">${t('ex.offline')}</p>`;
+    else h += `<table>${pr.tokens.map((x) => `<tr><td><b>${esc(x.symbol)}</b> <span class="muted small">${esc(x.chain)}</span></td><td class="n">$${Number(x.price).toLocaleString(undefined, { maximumFractionDigits: x.price < 10 ? 3 : 0 })}</td></tr>`).join('')}</table><p class="muted small">${t('ex.pricesSource')}</p>`;
+    h += `<p class="sub2">${t('ex.quoteTitle')}</p><div class="row exform"><input id="ex-q-amount" type="number" min="0.1" max="1000" step="0.1" value="${ui.exQAmount || 1}"> NEAR → <select id="ex-q-to">${['USDC', 'BTC', 'ETH', 'SOL'].map((k) => `<option${ui.exQTo === k ? ' selected' : ''}>${k}</option>`).join('')}</select><button class="primary" data-act="exQuote">${t('ex.getQuote')}</button></div>`;
+    const q = ui.exQuote;
+    if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
+    else if (q && q.ok) h += `<div class="contract"><b>${t('ex.quoteOut', { a: q.amountIn, b: q.amountOut, sym: q.to, chain: q.chain })}</b>${q.usdOut ? `<div class="small">≈ $${q.usdOut}</div>` : ''}<p class="muted small">${t('ex.quoteNote')}</p></div>`;
+    else if (q) h += `<p class="muted small">${t('ex.offline')} (${esc(q.error || '')})</p>`;
+    h += `<p class="muted small">${t('ex.changeNote')}</p>`;
+  }
+  return h;
+}
+async function loadExPrices() {
+  try { ui.exPrices = await (await fetch('/api/exchange/prices')).json(); } catch { ui.exPrices = { ok: false }; }
+  ui.exPricesAt = Date.now();
+  if (ui.selected === 'exchange') renderPanel();
+}
+// market actions answer back here; selling a deed that is in your own wallet first sends it to the bank
+async function exAct(type, extra) {
+  if (!playerId) return toast(t('toast.join'), 'bad');
+  let r = await post('/api/action', { player: playerId, type, ...extra });
+  if (!r.ok && r.code === 'err.deedInWallet') {
+    const W = window.EmberwickWallet, c = view.chain;
+    if (!W || !c || !c.deeds || !c.deeds.contract) return toast(errText(r), 'bad');
+    toast(t('ex.escrowAsk'), '');
+    try {
+      await W.nftTransfer(c.network, c.deeds.contract, r.bank, r.tokenId, 'Emberwick: deed to the exchange for sale');
+      toast(t('ex.escrowCheck'), '');
+      r = await post('/api/market/escrow', { player: playerId, plot: extra.plot, price: extra.price });
+    } catch (e) { return toast(t('ex.escrowFailed'), 'bad'); }
+  }
+  if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
+  if (r.ok) toast(t('ex.done.' + type, { n: r.price || r.total || r.qty || '', good: r.good ? goodName(r.good) : '' }), 'win');
+  else toast(errText(r), 'bad');
+}
+
 function panelSimple(b) {
   const title = `<h2>${esc(placeName(b.id))}</h2>`;
   if (b.id === 'treasury') return title + panelTreasury();
+  if (b.id === 'exchange') return panelExchange();
   if (b.id === 'council') return panelCouncil();
   if (b.id === 'gate') return title + `<p>${t('gate.text')}</p><button class="primary" data-act="elder">${t('gate.talk')}</button><p class="muted">${t('gate.pop', { n: view.population })}</p>`;
   if (b.type === 'plot') return panelPlot(b);
@@ -549,7 +633,7 @@ function panelGuide() {
   }
   if (view.events.winter && route.spot === 'fields' && !me.job) steps.push({ text: t('winter.fieldsTip'), go: 'pasture', label: t('go.to', { place: placeName('pasture') }) });
   if (me.freezing) steps.push({ text: t('guide.coat', { p: view.npcs.tailor ? view.npcs.tailor.sells.coat : '?' }), go: 'tailor', label: t('go.to', { place: placeName('tailor') }) });
-  const carried = ['wheat', 'wood', 'ore', 'wool'].filter((g) => (me.inv[g] || 0) > 0);
+  const carried = ['wheat', 'wood', 'ore', 'wool', 'fish'].filter((g) => (me.inv[g] || 0) > 0);
   if (carried.length) {
     for (const g of carried) {
       const best = bestBuyer(g);
@@ -590,7 +674,7 @@ function panelGuide() {
 const closeBtn = () => `<button class="close" data-act="close" aria-label="${t('ui.close')}">×</button>`;
 
 // big places (treasury, council) open as a card over the map, so nothing is lost below the side panel
-const MAP_CARD = new Set(['treasury', 'council']);
+const MAP_CARD = new Set(['treasury', 'council', 'exchange']);
 function renderMapCard(id, top, html) {
   const card = $('map-card');
   if (!card) return false;
@@ -747,6 +831,7 @@ function panelPlot(b) {
     h += `</div>`;
   } else if (p.owner) {
     h += `<p>${t(p.built ? 'plot.homeOf' : 'plot.ownedBy', { name: esc(p.owner) })}</p>` + (deed ? deedCard(b.id, p, false) : '');
+    if (p.sale && me) h += `<div class="contract"><b>${t('ex.deedForSale', { n: p.sale.price })}</b>` + (me.plot ? `<p class="muted small">${t('plot.haveOne', { place: placeName(me.plot) })}</p>` : `<button class="primary" data-act="buyDeed" data-plot="${b.id}" ${me.coins < p.sale.price ? 'disabled' : ''}>${t('ex.buyDeed', { n: p.sale.price })}</button>`) + `</div>`;
     if (p.lease && p.lease.mine) h += sleepBox(b.id) + `<div class="contract"><b>${t('lease.youRent', { n: p.lease.rent })}</b><button class="linkbtn" data-act="leaveLease">${t('lease.leave')}</button></div>`;
     else if (p.lease && !p.lease.tenant && me) h += `<div class="contract"><b>${t('lease.offer', { name: esc(p.owner), n: p.lease.rent })}</b><p class="small">${t('lease.offerInfo')}</p>` +
       (me.home || me.lease ? `<p class="muted small">${t('lease.haveHome')}</p>` : `<button class="primary" data-act="leaseHome" data-plot="${b.id}" ${me.coins < p.lease.rent ? 'disabled' : ''}>${t('lease.rentIt', { n: p.lease.rent })}</button>`) + `</div>`;
@@ -766,7 +851,8 @@ function panelRoadsign() {
   const d = view.districts;
   let h = `<h2>${t('b.roadsign')}</h2><p>${t('district.intro', { free: d.free })}</p>`;
   for (const n of Object.keys(d.defs).map(Number)) {
-    const def = d.defs[n], open = d.open.includes(n);
+    const def = d.defs[n], open = d.open.includes(n) || def.alwaysOpen;
+    if (def.alwaysOpen) { h += `<div class="contract"><b>${t('district.' + n)}</b><p class="small">${t('district.about.3')}</p><button class="primary" data-go="go-d${n}">${t('district.visit', { name: t('district.' + n) })}</button></div>`; continue; }
     const plots = Object.values(view.plots).filter((x) => x.district === n), freeN = plots.filter((x) => !x.owner).length;
     const prices = plots.map((x) => x.price);
     h += `<div class="contract"><b>${t('district.' + n)}</b><p class="small">${t('district.about.' + n, { min: Math.min(...prices), max: Math.max(...prices), lvl: def.minLevel })}</p>` +
@@ -1116,8 +1202,8 @@ function renderHud() {
 
 // ---------- the bottom panel: bag, wealth, skills, this shop ----------
 
-const TOOL_SHOP = { pickaxe: 'smithy', axe: 'woodcutter', plow: 'mill', shears: 'tailor' };
-const TOOL_OF = { ore: 'pickaxe', wood: 'axe', wheat: 'plow', wool: 'shears' };
+const TOOL_SHOP = { pickaxe: 'smithy', axe: 'woodcutter', plow: 'mill', shears: 'tailor', rod: 'carpenter' };
+const TOOL_OF = { ore: 'pickaxe', wood: 'axe', wheat: 'plow', wool: 'shears', fish: 'rod' };
 
 function goodValue(g) {
   const b = bestBuyer(g);
@@ -1214,9 +1300,10 @@ function renderChrome() {
 
 function renderMapNow() {
   ui.closedTag = t('ui.closedTag'); ui.nightTag = t('closed.night'); ui.mineTag = t('plot.mineTag'); ui.nameOf = placeName;
+  ui.laneName = t('district.1'); ui.villaName = t('district.2'); ui.exName = t('district.3');
   if (ui.district && view.districts) {
     ui.backTag = '← ' + t('district.back'); ui.villaTag = t('district.2') + ' →'; ui.laneTag = t('district.1') + ' →';
-    ui.districtTitle = t('district.' + ui.district); ui.closedDistrict = t('district.closedTag');
+    ui.districtTitle = t('district.' + ui.district); ui.closedDistrict = t('district.closedTag'); ui.exTag = t('district.3') + ' →';
     renderDistrict($('map'), world, view, ui);
   } else renderMap($('map'), world, view, ui);
 }
@@ -1366,7 +1453,7 @@ function flash(what) {
 function select(id) {
   // moving between the village and the neighbourhoods
   if (id === 'go-village') { ui.district = 0; ui.selected = 'roadsign'; render(); return; }
-  if (id === 'go-d1' || id === 'go-d2') { ui.district = Number(id.slice(4)); ui.selected = null; render(); return; }
+  if (/^go-d\d$/.test(id)) { ui.district = Number(id.slice(4)); ui.selected = ui.district === 3 ? 'exchange' : null; render(); return; }
   const bdef = world.buildings.find((x) => x.id === id);
   ui.district = bdef && bdef.district ? bdef.district : (bdef ? 0 : ui.district);
   if (ui.scene && ui.scene !== id) { ui.scene = null; sceneKey = null; }
@@ -1417,6 +1504,7 @@ document.addEventListener('toggle', (e) => {
 }, true);
 document.addEventListener('change', (e) => {
   if (e.target.id === 'prop-kind') { ui.propKind = e.target.value; e.target.blur(); renderPanel(); }
+  if (e.target.id === 'ex-good') { ui.exGood = e.target.value; e.target.blur(); renderPanel(); }
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && ui.scene) { closeScene(); return; }
@@ -1436,6 +1524,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
+  const tabBtn = e.target.closest('[data-extab]');
+  if (tabBtn) { ui.exTab = tabBtn.dataset.extab; if (ui.exTab === 'change' && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) loadExPrices(); renderPanel(); return; }
   if (e.target.closest('[data-board]')) { ui.selected = 'board'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('#wallet-btn')) {
     ui.selected = 'near'; renderMapNow(); renderPanel();
@@ -1448,6 +1538,15 @@ document.body.addEventListener('click', (e) => {
   if (!btn) return;
   const a = btn.dataset.act;
   if (a === 'vote') { if (!playerId) return toast(t('toast.join'), 'bad'); goAndDo('council', 'vote', () => councilAct('vote', { id: Number(btn.dataset.id), yes: btn.dataset.yes === '1' })); return; }
+  if (a === 'postOrder') { exAct('postOrder', { good: $('ex-good').value, qty: Number($('ex-qty').value), price: Number($('ex-price').value) }); return; }
+  if (a === 'cancelOrder' || a === 'fillOrder') { exAct(a, { id: Number(btn.dataset.id), qty: 1 }); return; }
+  if (a === 'listDeed') { exAct('listDeed', { plot: btn.dataset.plot, price: Number(($('ex-deed-price') || {}).value) || 0 }); return; }
+  if (a === 'unlistDeed' || a === 'buyDeed') { exAct(a, { plot: btn.dataset.plot }); return; }
+  if (a === 'exQuote') {
+    ui.exQAmount = Number($('ex-q-amount').value) || 1; ui.exQTo = $('ex-q-to').value; ui.exQuote = 'wait'; renderPanel();
+    fetch(`/api/exchange/quote?to=${encodeURIComponent(ui.exQTo)}&amount=${ui.exQAmount}`).then((r) => r.json()).then((q) => { ui.exQuote = q; renderPanel(); }).catch(() => { ui.exQuote = { ok: false }; renderPanel(); });
+    return;
+  }
   if (a === 'open-near') { ui.selected = 'near'; renderMapNow(); renderPanel(); return; }
   if (a === 'propose') {
     if (!playerId) return toast(t('toast.join'), 'bad');

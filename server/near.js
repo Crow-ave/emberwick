@@ -83,6 +83,8 @@ export class Bridge {
   // ---- land deeds: an NFT contract next to the token ----
   get deedsId() { return this.root && 'deeds.' + this.root; }
   mintDeed(d) { this.deedQueue.push({ kind: 'mint', ...d }); }
+  // who holds a deed NFT on chain right now (used to check a deed is in the bank's escrow before it is sold)
+  async deedOwner(tokenId) { return this.adapter.nftOwner && this.root ? this.adapter.nftOwner(this.deedsId, tokenId) : null; }
   moveDeed(d) { this.deedQueue.push({ kind: 'move', ...d }); }
 
   async setupDeeds() {
@@ -471,6 +473,9 @@ export async function makeNearAdapter(secretKeyRef) {
     async isTokenReady(id) {
       // a contract that is deployed but not initialised answers with an error
       try { const m = await view(id, 'ft_metadata', {}); return !!(m && m.symbol); } catch (e) { if (e instanceof RpcError) return false; throw e; }
+    },
+    async nftOwner(contractId, tokenId) {
+      try { const t = await view(contractId, 'nft_token', { token_id: tokenId }); return t ? t.owner_id : null; } catch (e) { if (e instanceof RpcError) return null; throw e; }
     },
     async isNftReady(id) {
       try { const m = await view(id, 'nft_metadata', {}); return !!(m && m.symbol); } catch (e) { if (e instanceof RpcError) return false; throw e; }

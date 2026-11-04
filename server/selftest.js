@@ -110,6 +110,26 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   if (villa.ok) fail('a closed villa plot could be bought');
   if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with homes and districts');
 }
+// the exchange: a sell order filled by another player, and a deed sold player to player
+{
+  const a = joinPlayer(state, 'Seller', 'woodcutter').id, b2 = joinPlayer(state, 'Buyer', 'farmer').id;
+  state.balances['player:' + b2] += 400; state.balances.newcomerFund -= 400;
+  while ((state.tick % RULES.ticksPerDay) / RULES.ticksPerDay > 0.5) tick(state);
+  state.players[a].inv.lumber = 5;
+  const post = playerAction(state, a, { type: 'postOrder', good: 'lumber', qty: 5, price: 7 });
+  const sb = state.balances['player:' + a];
+  const fill = playerAction(state, b2, { type: 'fillOrder', id: post.id, qty: 2 });
+  const got = Math.round((state.balances['player:' + a] - sb) * 100) / 100;
+  const cancel = playerAction(state, a, { type: 'cancelOrder', id: post.id });
+  console.log('Exchange: posted', post.ok, '| filled', fill.ok, fill.qty, '| seller got', got, '| cancelled back', cancel.qty, '| buyer lumber', state.players[b2].inv.lumber);
+  if (!post.ok || !fill.ok || got !== 13.72 || cancel.qty !== 3 || state.players[b2].inv.lumber !== 2) fail('the exchange did not work');
+  const owner = state.players[me], plotId = owner.plot;
+  const list = playerAction(state, me, { type: 'listDeed', plot: plotId, price: 200 });
+  const buy = playerAction(state, b2, { type: 'buyDeed', plot: plotId });
+  console.log('Deed market: listed', list.ok, '| bought', buy.ok, '| new owner', state.plots[plotId].owner === b2, '| seller plot', owner.plot);
+  if (!list.ok || !buy.ok || state.plots[plotId].owner !== b2 || owner.plot) fail('the deed market did not work');
+  if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed on the exchange');
+}
 function playerView0() { return publicView(state, me).player; }
 
 // a watchtower: the council orders one, the carpenter is paid, readiness goes up

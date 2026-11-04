@@ -51,4 +51,13 @@ window.EmberwickWallet = {
     });
     return findHash(out);
   },
+  // the player sends their land-deed NFT (e.g. to the village bank, to put it up for sale)
+  async nftTransfer(network, contractId, receiverId, tokenId, memo) {
+    const w = await wallet(network);
+    const out = await w.signAndSendTransaction({
+      receiverId: contractId,
+      actions: [actionCreators.functionCall('nft_transfer', { receiver_id: receiverId, token_id: tokenId, memo }, 30000000000000n, 1n)],
+    });
+    return findHash(out);
+  },
 };

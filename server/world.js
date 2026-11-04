@@ -20,6 +20,7 @@ export const GOODS = {
   wood:    { name: 'Wood',      kind: 'raw' },
   ore:     { name: 'Iron ore',  kind: 'raw' },
   wool:    { name: 'Wool',      kind: 'raw' },
+  fish:    { name: 'Fish',      kind: 'raw' },
   lumber:  { name: 'Lumber',    kind: 'made' },
   flour:   { name: 'Flour',     kind: 'made' },
   bread:   { name: 'Bread',     kind: 'made' },
@@ -29,6 +30,7 @@ export const GOODS = {
   plow:    { name: 'Plow',      kind: 'tool', boosts: 'wheat' },
   cart:    { name: 'Cart',      kind: 'tool', boosts: 'carry' },
   shears:  { name: 'Shears',    kind: 'tool', boosts: 'wool' },
+  rod:     { name: 'Fishing rod', kind: 'tool', boosts: 'fish' },
   coat:    { name: 'Winter coat', kind: 'clothing' },
   bed:     { name: 'Bed',       kind: 'furniture' }, // a home you built needs one before you can sleep there // keeps you warm in winter; wears out after a few winter days
   meal:    { name: 'Meal',      kind: 'service' },
@@ -41,6 +43,7 @@ export const GATHER_SPOTS = {
   fields: { good: 'wheat', energy: 2, base: 2 },
   mine:   { good: 'ore',   energy: 3, base: 1 },
   pasture: { good: 'wool', energy: 2, base: 2 },
+  pond:    { good: 'fish', energy: 2, base: 1 },
 };
 
 // Map layout on a 14x14 isometric grid. (i, j) = grid cell, w = footprint.
@@ -63,6 +66,7 @@ export const BUILDINGS = [
   { id: 'house-2',    name: 'Small house', type: 'house',     i: 8,  j: 11,  w: 1, size: 'small' },
   { id: 'house-3',    name: 'Large house', type: 'house',     i: 11, j: 10, w: 1, size: 'large' },
   { id: 'pasture',    name: 'Sheep pasture', type: 'gather',  i: 0,  j: 10, w: 2 },
+  { id: 'pond',       name: 'Fishing pond', type: 'gather',  i: 8,  j: 7,  w: 2 },
   { id: 'tailor',     name: 'Tailor',      type: 'craftsman', i: 3,  j: 10, w: 1 },
   { id: 'roadsign',   name: 'Road to the neighbourhoods', type: 'sign', i: 6, j: 13, w: 1 },
   { id: 'gate',       name: 'Village gate',type: 'landmark',  i: 5,  j: 13, w: 1 },
@@ -84,6 +88,7 @@ export const BUILDINGS = [
 export const DISTRICTS = {
   1: { id: 'lane',  name: 'Ember Lane', cost: 600, needs: 0, minLevel: 0,
        build: { lumber: 6, fee: 40 }, factors: [0.9, 0.9, 0.85, 0.85, 0.8, 0.8, 0.75, 0.75, 0.7, 0.7, 0.65, 0.65] },
+  3: { id: 'exchange', name: 'Exchange quarter', alwaysOpen: true, cost: 0, needs: 0, minLevel: 0, build: {}, factors: [] },
   2: { id: 'villa', name: 'Villa hill', cost: 1200, needs: 1, minLevel: 5,
        build: { lumber: 14, fee: 120 }, factors: [3, 3, 2.8, 2.8, 2.6, 2.6] },
 };
@@ -93,6 +98,20 @@ const VILLA_CELLS = [[2, 2], [5, 2], [2, 5], [5, 5], [2, 8], [5, 8]];
 for (const [n, cells] of [[1, LANE_CELLS], [2, VILLA_CELLS]]) {
   cells.forEach(([i, j], k) => BUILDINGS.push({ id: `d${n}-${k + 1}`, name: `${DISTRICTS[n].name} ${k + 1}`, type: 'plot', district: n, villa: n === 2, i, j, w: n === 2 ? 2 : 1 }));
 }
+// the exchange hall in the Exchange quarter: player market, land-deed market and the change desk
+BUILDINGS.push({ id: 'exchange', name: 'Exchange', type: 'civic', district: 3, i: 3, j: 3, w: 3 });
+
+// The exchange: players post sell orders for goods; anyone (players, AI craftsmen, villagers) can fill
+// them. Deeds can be sold too. A small fee goes to the treasury.
+export const MARKET = {
+  goods: ['wheat', 'wood', 'ore', 'wool', 'fish', 'rod', 'lumber', 'flour', 'bread', 'coat', 'sword', 'bed', 'pickaxe', 'axe', 'plow', 'shears'],
+  fee: 0.02,          // of every sale on the exchange, to the treasury
+  maxOrders: 5,       // open orders per player
+  days: 3,            // orders run this long, then the goods go back
+  maxPrice: 500,
+  deedMax: 5000,
+};
+
 // how dear each of the four village plots is (the centre is worth the most)
 export const CENTRE_FACTOR = { 'plot-1': 1.2, 'plot-2': 1.3, 'plot-3': 1.25, 'plot-4': 1.4 };
 
@@ -131,15 +150,16 @@ export const CRAFTSMEN = [
   {
     id: 'carpenter', name: 'Wren the Carpenter', wallet: 450,
     recipe: { in: { lumber: 2 }, out: { cart: 1 } },
-    buys: { lumber: 9 }, sells: { cart: 30, bed: 18 },
-    stock: { lumber: 2, cart: 1, bed: 3 }, target: { lumber: 4, cart: 2, bed: 3 },
+    buys: { lumber: 9 }, sells: { cart: 30, bed: 18, rod: 12 },
+    stock: { lumber: 2, cart: 1, bed: 3, rod: 3 }, target: { lumber: 4, cart: 2, bed: 3, rod: 3 },
     lines: ['Measure twice, cut once.', 'A good cart carries a family through winter.'],
   },
   {
     id: 'inn', name: 'Marta the Innkeeper', wallet: 500,
     recipe: { in: { bread: 1 }, out: { meal: 2 } },
-    buys: { bread: 6 }, sells: { meal: 9 },
-    stock: { bread: 4, meal: 2 }, target: { bread: 6, meal: 4 },
+    alt: { in: { fish: 2 }, out: { meal: 3 } }, // fish from the pond makes good meals too
+    buys: { bread: 6, fish: 4 }, sells: { meal: 9 },
+    stock: { bread: 4, meal: 2, fish: 0 }, target: { bread: 6, meal: 4, fish: 6 },
     lines: ['Travellers bring coin and stories.', 'Full tables mean a full purse.'],
   },
   {
@@ -274,5 +294,5 @@ export const QUESTS = [
 ];
 
 // Which skill each raw good trains.
-export const SKILL_OF = { wheat: 'farming', wood: 'woodcutting', ore: 'mining', wool: 'farming' };
+export const SKILL_OF = { wheat: 'farming', wood: 'woodcutting', ore: 'mining', wool: 'farming', fish: 'farming' };
 export const SKILLS = ['farming', 'woodcutting', 'mining', 'trading'];
