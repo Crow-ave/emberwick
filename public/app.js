@@ -576,7 +576,7 @@ async function exAct(type, extra) {
       r = await post('/api/market/escrow', { player: playerId, plot: extra.plot, price: extra.price });
     } catch (e) { return toast(t('ex.escrowFailed'), 'bad'); }
   }
-  if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
+  if (r.state && newer(r.state)) { view = r.state; render(); }
   play(r.ok ? 'coin' : 'bad');
   if (r.ok) toast(t('ex.done.' + type, { n: r.price || r.total || r.qty || '', good: r.good ? goodName(r.good) : '' }), 'win');
   else toast(errText(r), 'bad');
@@ -1059,7 +1059,7 @@ function councilTx(id) {
 
 async function councilAct(type, extra) {
   const r = await post('/api/action', { player: playerId, type, ...extra });
-  if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
+  if (r.state && newer(r.state)) { view = r.state; render(); }
   if (r.ok) toast(type === 'vote' ? t('toast.voted', { n: r.weight }) : t('toast.proposed', { n: r.id }), 'win');
   else toast(errText(r), 'bad');
 }
@@ -1456,7 +1456,7 @@ async function act(type, extra = {}) {
   const body = { player: playerId, type, ...extra };
   if (type === 'sell') body.qty = view.player.inv[extra.good] || 0;
   const r = await post('/api/action', body);
-  if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
+  if (r.state && newer(r.state)) { view = r.state; render(); }
   if (r.ok && type !== 'visit') { explain(type, extra, r); if (ui.scene) renderScene(); }
   if (r.ok) play(type === 'buildHouse' || type === 'buyBed' ? 'build' : type === 'sleep' || type === 'rest' ? 'sleep' : /sell|buy|meal|rent|lease|Plot|shift/i.test(type) ? 'coin' : '');
   else if (r.code !== 'err.turnedDown') play('bad');
@@ -1604,7 +1604,8 @@ function walkerAt(p) {
   }
   return best;
 }
-$('map').addEventListener('mousemove', (e) => {
+$('map').addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') return;
   const svg = $('map'), pt = svg.createSVGPoint();
   pt.x = e.clientX; pt.y = e.clientY;
   const w = walkerAt(pt.matrixTransform(svg.getScreenCTM().inverse()));
@@ -1613,6 +1614,7 @@ $('map').addEventListener('mousemove', (e) => {
 });
 $('map').addEventListener('mouseleave', () => { for (const x of walkers) x.hold = false; });
 $('map').addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'mouse' && e.target.closest('.bld')) return; // on a phone, a tap on a building opens the building
   const svg = $('map');
   const pt = svg.createSVGPoint();
   pt.x = e.clientX; pt.y = e.clientY;
@@ -1640,7 +1642,8 @@ $('map').addEventListener('keydown', (e) => {
   const g = e.target.closest('.bld');
   if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); select(g.dataset.id); }
 });
-$('map').addEventListener('mousemove', (e) => {
+$('map').addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') return; // no hover on touch screens: re-drawing mid-tap would swallow the tap
   const g = e.target.closest('.bld');
   const id = g ? g.dataset.id : null;
   if (id !== ui.hover) { ui.hover = id; renderMapNow(); $('hint').hidden = true; }
@@ -1757,6 +1760,10 @@ function makeYou() {
 
 // ---------- live connection ----------
 
+// is this state newer than what the page shows? After a server restart the counter starts again,
+// so a different boot id always counts as newer (otherwise the page would freeze on old data)
+const newer = (st) => !view || st.boot !== view.boot || (st.rev || 0) >= (view.rev || 0);
+
 let source;
 function connect() {
   if (source) source.close();
@@ -1766,7 +1773,7 @@ function connect() {
   src.onmessage = (m) => {
     if (src !== source || forPlayer !== playerId) return; // a message from an old connection
     const next = JSON.parse(m.data);
-    if ((next.rev || 0) < (view.rev || 0)) return; // an older update arrived late
+    if (!newer(next)) return; // an older update arrived late
     view = next;
     if (playerId && !view.player) { playerId = null; you = null; showJoin(); }
     render();

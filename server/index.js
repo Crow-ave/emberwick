@@ -101,7 +101,9 @@ function moveHeldDeeds(pid) {
   }
 }
 const chainView = () => (bridge ? bridge.view() : { status: 'off' });
-const view = (pid) => ({ ...publicView(state, pid), chain: chainView() });
+// a new id every time the server starts: pages that were open before a restart know to start over
+const BOOT = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const view = (pid) => ({ ...publicView(state, pid), chain: chainView(), boot: BOOT });
 
 // ---------- NEAR Intents (1Click API) for the change desk ----------
 const ONECLICK = 'https://1click.chaindefuser.com/v0';
