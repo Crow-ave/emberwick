@@ -454,7 +454,8 @@ export function hereBadge(x, y, text) {
 }
 
 export function speech(x, y, text) {
-  const words = text.split(' '), lines = [];
+  // long words (and Chinese, which has no spaces) are cut into pieces so the bubble can wrap
+  const words = text.split(' ').flatMap((w) => (w.length > 28 ? w.match(/[\s\S]{1,16}/gu) : [w])), lines = [];
   let line = '';
   for (const w of words) { if ((line + ' ' + w).trim().length > 30) { lines.push(line.trim()); line = w; } else line += ' ' + w; }
   if (line.trim()) lines.push(line.trim());

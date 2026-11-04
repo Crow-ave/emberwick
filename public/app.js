@@ -125,7 +125,7 @@ function syncOthers() {
     let w = others.get(o.id);
     if (!w) {
       w = makeWalker({ ...PATH_LOOK[o.path], name: o.name, other: true, scale: 1 }, [], entranceOf('gate'));
-      w.name = o.name; w.role = o.path; w.k = others.size + 5; w.player = true;
+      w.name = o.name; w.role = o.path; w.k = others.size + 5; w.player = true; w.pid = o.id;
       others.set(o.id, w);
     }
     if (w.where !== o.where) {
@@ -207,7 +207,7 @@ function animate(now) {
       over += hereBadge(bx, by - (b.w > 1 ? 70 : 62), esc(`${you.look.name}: ${t('ui.youHere')}`));
     }
   }
-  for (const [w, [x, y]] of visible) if (w.say && w.say.until > now) over += speech(x, y - 12, t(w.say.key, w.say.p));
+  for (const [w, [x, y]] of visible) if (w.say && w.say.until > now) over += speech(x, y - 12, w.say.raw != null ? w.say.raw : t(w.say.key, w.say.p));
   for (let k = fx.length - 1; k >= 0; k--) if (now - fx[k].t0 > 1800) fx.splice(k, 1);
   over += fx.map((f) => {
     const p = (now - f.t0) / 1800;
@@ -634,6 +634,12 @@ function lineFor(w) {
 
 function talk(w) {
   if (w.role === 'elder') { openElder(); return; }
+  if (w.player) { // another real player: show who they are and offer to write to them
+    const o = (view.others || []).find((x) => x.id === w.pid) || {};
+    ui.selected = 'talk';
+    ui.talk = { name: w.name, role: w.role, player: true, level: o.level || 1, where: o.where };
+    renderMapNow(); renderPanel(); return;
+  }
   const line = lineFor(w);
   w.say = { ...line, until: performance.now() + 5000 };
   ui.selected = 'talk';
@@ -644,6 +650,9 @@ function talk(w) {
 
 function panelTalk() {
   const tk = ui.talk;
+  if (tk.player) return `<h2>${esc(tk.name)}</h2><div class="muted">${t('path.' + tk.role)} · ${t('me.level', { n: tk.level })}</div>` +
+    `<p class="small">${t('chat.playerNote')}${tk.where ? ' ' + esc(t('chat.isAt', { place: placeName(tk.where) })) : ''}</p>` +
+    `<button class="primary" data-chatto="${esc(tk.name)}">${t('chat.write')}</button>`;
   return `<h2>${esc(tk.name)}</h2><div class="muted">${t('role.' + tk.role)}</div><div class="quote">"${esc(t(tk.line.key, tk.line.p))}"</div>` +
     (tk.go ? `<button data-go="${tk.go}">${esc(t('go.to', { place: placeName(tk.go) }))}</button>` : '') +
     `<p class="muted" style="font-size:12px;margin-top:12px">${t('talk.note')}</p>`;
@@ -1380,6 +1389,7 @@ function renderChrome() {
   renderNearPill();
   renderWalletBtn();
   $('view').classList.toggle('night', view.dayProgress > 0.8);
+  renderChat();
   $('log').innerHTML = view.log.map((l) => `<li class="${l.kind}">${t('log.day', { n: l.day })}: ${esc(logText(l))}</li>`).join('');
   const e = view.events, banner = $('banner');
   if (view.ff && view.ff.running) { banner.className = 'banner ff'; banner.textContent = t('ff.running', { d: Math.min(7, Math.floor(view.ff.done / world.rules.ticksPerDay) + 1), p: Math.round((view.ff.done / view.ff.total) * 100) }); banner.hidden = false; }
@@ -1574,6 +1584,8 @@ function select(id) {
   walkYouTo(id);
   render();
   if (playerId && id === ui.target && id !== 'gate') act('visit', { place: id });
+  // tell the server where you are going, so other players see you walk there too
+  else if (playerId && bdef && !bdef.district) post('/api/action', { player: playerId, type: 'visit', place: id }).catch(() => {});
 }
 
 function openElder() {
@@ -1596,7 +1608,7 @@ let ignoreClick = false;
 // the villager under the mouse (a generous area around the little figure)
 function walkerAt(p) {
   let best = null, bestD = 1e9;
-  for (const w of walkers) {
+  for (const w of [...walkers, ...others.values()]) {
     if (w.inside) continue;
     const [x, y] = walkerPos(w);
     const dx = Math.abs(p.x - x), dy = y - p.y;
@@ -1610,6 +1622,7 @@ $('map').addEventListener('pointermove', (e) => {
   pt.x = e.clientX; pt.y = e.clientY;
   const w = walkerAt(pt.matrixTransform(svg.getScreenCTM().inverse()));
   for (const x of walkers) x.hold = x === w;
+  for (const x of others.values()) x.hold = false;
   svg.style.cursor = w ? 'pointer' : '';
 });
 $('map').addEventListener('mouseleave', () => { for (const x of walkers) x.hold = false; });
@@ -1663,6 +1676,10 @@ document.body.addEventListener('click', (e) => {
     post('/api/fastforward', { player: playerId }).then((r) => { if (!r.ok) toast(errText(r), 'bad'); else toast(t('ff.started'), 'win'); });
     return;
   }
+  const lt = e.target.closest('[data-logtab]');
+  if (lt) { showLogTab(lt.dataset.logtab); return; }
+  const cto = e.target.closest('[data-chatto]');
+  if (cto) { showLogTab('chat'); const inp = $('chat-input'); inp.value = '@' + cto.dataset.chatto + ' '; inp.focus(); inp.scrollIntoView({ block: 'nearest' }); return; }
   if (e.target.closest('[data-trade]')) { ui.selected = 'trade'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('[data-board]')) { ui.selected = 'board'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('#wallet-btn')) {
@@ -1757,6 +1774,53 @@ function makeYou() {
   if (!me) { you = null; return; }
   you = { look: { ...PATH_LOOK[me.path], name: me.name, you: true, scale: 1.05 }, route: [], cell: entranceOf('gate'), path: [], prog: 0, wait: 0 };
 }
+
+
+// ---------- village chat ----------
+let chatSeen = null; // the newest message id already shown as a bubble
+function renderChat() {
+  const list = view.chat || [];
+  const box = $('chat-list');
+  if (!box) return;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+  box.innerHTML = list.length ? list.map((m) => {
+    const mention = view.player && m.text.toLowerCase().includes('@' + view.player.name.toLowerCase());
+    return `<li class="${m.me ? 'mine' : ''}${mention ? ' mention' : ''}"><b>${esc(m.me ? t('near.you') : m.name)}</b> <span class="muted small">${t('log.day', { n: m.day })}</span><br>${esc(m.text)}</li>`;
+  }).join('') : `<li class="muted small">${t('chat.empty')}</li>`;
+  if (atBottom || ui.logTab === 'chat') box.scrollTop = box.scrollHeight;
+  const newest = list.length ? list[list.length - 1].id : 0;
+  if (chatSeen === null) chatSeen = newest; // do not replay old messages when the page opens
+  const fresh = list.filter((m) => m.id > chatSeen);
+  for (const m of fresh) {
+    const w = m.me ? you : others.get(m.pid);
+    if (w) w.say = { raw: m.text.length > 90 ? m.text.slice(0, 88) + '…' : m.text, until: performance.now() + 7000 };
+  }
+  if (fresh.length && ui.logTab !== 'chat' && fresh.some((m) => !m.me)) ui.chatUnread = (ui.chatUnread || 0) + fresh.filter((m) => !m.me).length;
+  if (fresh.length && fresh.some((m) => !m.me)) play('clink');
+  chatSeen = Math.max(chatSeen, newest);
+  const badge = $('chat-new');
+  if (badge) { badge.hidden = !ui.chatUnread; badge.textContent = ui.chatUnread || ''; }
+  const inp = $('chat-input');
+  if (inp) { inp.disabled = !playerId; inp.placeholder = t(playerId ? 'chat.placeholder' : 'chat.join'); }
+}
+function showLogTab(tab) {
+  ui.logTab = tab;
+  for (const b of document.querySelectorAll('[data-logtab]')) b.classList.toggle('on', b.dataset.logtab === tab);
+  $('log').hidden = tab !== 'news';
+  $('chat').hidden = tab !== 'chat';
+  if (tab === 'chat') { ui.chatUnread = 0; renderChat(); }
+}
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'chat-form') return;
+  e.preventDefault();
+  const inp = $('chat-input'), text = inp.value.trim();
+  if (!text) return;
+  if (!playerId) return toast(t('toast.join'), 'bad');
+  const r = await post('/api/action', { player: playerId, type: 'chat', text });
+  if (!r.ok) return toast(errText(r), 'bad');
+  inp.value = '';
+  if (r.state && newer(r.state)) { view = r.state; render(); }
+});
 
 // ---------- live connection ----------
 

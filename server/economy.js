@@ -416,9 +416,24 @@ export function playerAction(state, playerId, action) {
   return res;
 }
 
+const CHAT = { maxLen: 140, gapMs: 2500, keep: 60 };
+
 function doAction(state, p, actor, action, qty) {
   const c = contractAction(state, p, action);
   if (c) return c;
+  // village chat: short public messages, a few seconds apart, the last 60 are kept
+  if (action.type === 'chat') {
+    const text = String(action.text || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT.maxLen);
+    if (!text) return { ok: false, error: 'Write something first.', code: 'err.chatEmpty' };
+    const now = Date.now();
+    if (p.lastChat && now - p.lastChat < CHAT.gapMs) return { ok: false, error: 'Wait a moment before sending another message.', code: 'err.chatSlow' };
+    p.lastChat = now;
+    state.chat = state.chat || [];
+    state.chatId = (state.chatId || 0) + 1;
+    state.chat.push({ id: state.chatId, pid: p.id, name: p.name, text, day: state.day });
+    if (state.chat.length > CHAT.keep) state.chat.splice(0, state.chat.length - CHAT.keep);
+    return { ok: true, silent: true, id: state.chatId };
+  }
   if (action.type === 'visit') {
     if (!BUILDINGS.some((b) => b.id === action.place)) return { ok: false, error: 'Unknown place.', code: 'err.unknownPlace' };
     p.stats.visited[action.place] = true;
@@ -1718,7 +1733,8 @@ export function publicView(state, playerId) {
     })),
     // other players who were active recently (about the last game day)
     others: Object.values(state.players).filter((o) => o.id !== playerId && o.seenAt !== undefined && state.tick - o.seenAt < RULES.ticksPerDay)
-      .map((o) => ({ id: o.id, name: o.name, path: o.path, where: o.where || 'gate' })),
+      .map((o) => ({ id: o.id, name: o.name, path: o.path, where: o.where || 'gate', level: playerLevel(o) })),
+    chat: (state.chat || []).slice(-40).map((m) => ({ id: m.id, pid: m.pid, name: m.name, text: m.text, day: m.day, me: m.pid === playerId })),
     houses: Object.fromEntries(Object.entries(HOUSES).map(([id, h]) => {
       const st = (state.houses || {})[id] || {};
       return [id, { ...h, tenant: st.tenant ? (state.players[st.tenant] || {}).name || '?' : null, mine: !!(st.tenant && st.tenant === playerId) }];

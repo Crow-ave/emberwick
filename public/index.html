@@ -44,7 +44,14 @@
 
     <aside class="side">
       <div class="card panel" id="panel" hidden></div>
-      <section class="card log"><h3 data-i18n="ui.news">Village news</h3><ul id="log"></ul></section>
+      <section class="card log">
+        <div class="logtabs"><button type="button" class="ltab on" data-logtab="news" data-i18n="ui.news">Village news</button><button type="button" class="ltab" data-logtab="chat"><span data-i18n="chat.tab">Chat</span> <span class="unread" id="chat-new" hidden></span></button></div>
+        <ul id="log"></ul>
+        <div id="chat" hidden>
+          <ul id="chat-list"></ul>
+          <form id="chat-form" autocomplete="off"><input id="chat-input" maxlength="140" data-i18n-ph="chat.placeholder"><button type="submit" class="primary" data-i18n="chat.send">Send</button></form>
+        </div>
+      </section>
     </aside>
   </main>
 
