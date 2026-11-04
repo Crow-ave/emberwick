@@ -468,3 +468,42 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .view.scene-on #me.hud .shortcuts, .view.scene-on #me.hud .contracts { display: none; }
 .view.scene-on #me.hud { width: 250px; }
 #quest.hud p { display: none; }
+
+/* ---------- phones (v46) ---------- */
+@media (max-width: 700px) {
+  .topbar { gap: 8px; padding: 6px 10px; }
+  .stage { margin: 6px; gap: 6px; }
+  .view { height: 440px; min-height: 0; border-radius: 12px; }
+  .side { order: 2; margin: 0; } .bottom { order: 3; }
+  .dock { grid-template-columns: 1fr 1fr; gap: 6px; }
+  /* player card: a slim bar across the top of the game screen */
+  .hud-right { top: 6px; left: 6px; right: 6px; bottom: 6px; width: auto; align-items: stretch; gap: 6px; }
+  #me.hud { width: auto; padding: 6px 10px; border-radius: 12px; }
+  #me.hud .avatar { width: 28px; height: 28px; }
+  #me.hud .sub { display: none; }
+  #me.hud h3 { font-size: 14px; }
+  #me.hud .coins { font-size: 17px; }
+  #me.hud .energy { margin-top: 3px; font-size: 11px; }
+  #me.hud .shortcuts, #me.hud .contracts { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
+  #me.hud .shortcuts::-webkit-scrollbar, #me.hud .contracts::-webkit-scrollbar { display: none; }
+  #me.hud .chip { flex: none; }
+  /* goal: one line at the bottom */
+  #quest.hud { left: 6px; right: 6px; bottom: 6px; width: auto; padding: 6px 10px; display: flex; align-items: center; gap: 8px; }
+  #quest.hud .step, #quest.hud .prog, #quest.hud .prog + .reward, #quest.hud .qrow .linkbtn { display: none; }
+  #quest.hud h4 { flex: 1; min-width: 0; margin: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #quest.hud .qrow { margin: 0; }
+  /* the village fills the space between the two bars */
+  .view:not(.card-on) #map { transform: none; }
+  .view:not(.scene-on) #map { top: 96px; bottom: 50px; height: auto; }
+  .view.card-on #map { transform: none; opacity: .35; }
+  .hint, .view .hint { display: none; }
+  .view .banner { left: 8px; right: 8px; top: auto; bottom: 56px; font-size: 12px; }
+  /* inside a place */
+  .mini { width: 84px; height: 54px; top: 6px; left: 6px; } .mini span { font-size: 10px; padding: 2px 6px; margin-bottom: 3px; }
+  .view.scene-on .hud-right { left: 96px; }
+  .view.scene-on #scene { top: 66px; bottom: 96px; height: auto; }
+  .scene-bar { position: absolute; left: 6px; right: 6px; bottom: 6px; margin: 0; padding: 8px 10px; gap: 8px; flex-wrap: wrap; }
+  .scene-bar .info { font-size: 12px; } .scene-bar .quote { display: none; }
+  .hud-right .scene-menu { width: 100%; max-height: 40%; font-size: 12px; }
+  .hud-right .map-card { width: 100%; }
+}

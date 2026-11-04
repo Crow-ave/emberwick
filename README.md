@@ -2,6 +2,15 @@
 
 **A living village economy on NEAR.** Built at NEAR HACKATHON.
 
+**▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** — works on desktop and phone. Open it in two browsers to see two villagers in the same village. (Free hosting: the first visit after a quiet spell can take about a minute to wake up, and the village starts again from day 1 after a restart. The live demo runs with the NEAR bridge off; the on-chain side is shown below and in the video.)
+
+**On NEAR testnet (live records):**
+- Token contract (NEP-141): [emwk.emberwick-village.testnet](https://testnet.nearblocks.io/address/emwk.emberwick-village.testnet)
+- Land deeds (NFT): [deeds.emberwick-village.testnet](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet)
+- Village bank: [emberwick-village.testnet](https://testnet.nearblocks.io/address/emberwick-village.testnet)
+- Treasury: [treasury.emberwick-village.testnet](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet)
+- An AI craftsman's own account: [tailor.emberwick-village.testnet](https://testnet.nearblocks.io/address/tailor.emberwick-village.testnet)
+
 The dragon burned Emberwick to ash. Years later, a few craftsmen came back and relit the embers. Newcomers gather wood, wheat and iron ore, sell them to the village's craftsmen, and help the village get ready before the dragon returns.
 
 Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what they need, make what they sell and change their prices as stock runs short or piles up. A drought, a hard winter or smoke over Dragon peak ripples through the whole village with no patch from the developers.
