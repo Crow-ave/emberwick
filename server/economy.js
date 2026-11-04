@@ -77,8 +77,39 @@ function transfer(state, from, to, amount, note = null) {
   if (balance(state, from) + 1e-9 < amount) return false;
   state.balances[from] = r2(balance(state, from) - amount);
   state.balances[to] = r2(balance(state, to) + amount);
+  if (from === 'treasury' || to === 'treasury') noteTreasury(state, from === 'treasury' ? 'out' : 'in', from === 'treasury' ? to : from, amount, note);
   for (const w of watchers) w(from, to, amount, note);
   return true;
+}
+
+// ---------- the treasury's books: what came in, what went out, and to whom ----------
+const flowKind = (who) => who.startsWith('player:') || who.startsWith('bot:') ? 'villagers' : who === 'npc:tower' ? 'guards' : who.startsWith('npc:') ? 'craftsmen'
+  : who === 'newcomerFund' ? 'newcomers' : who === 'adventurerFund' ? 'travellers' : who === 'deposits' ? 'deposits' : 'other';
+function noteTreasury(state, dir, who, amount, note) {
+  const day = state.day;
+  const b = (state.tBooks = state.tBooks || { days: {}, recent: [] });
+  const d = (b.days[day] = b.days[day] || { in: {}, out: {} });
+  const k = flowKind(who);
+  d[dir][k] = r2((d[dir][k] || 0) + amount);
+  for (const old of Object.keys(b.days)) if (Number(old) < day - 6) delete b.days[old];
+  if (amount >= 1) { // small market taxes are summed per day, not listed one by one
+    b.recent.unshift({ day, dir, who, amount: r2(amount), memo: note && note.memo ? String(note.memo).replace(/^Emberwick( council #\d+)?: ?/, '').slice(0, 80) : null });
+    b.recent.length = Math.min(b.recent.length, 12);
+  }
+}
+function treasuryView(state) {
+  const b = state.tBooks || { days: {}, recent: [] };
+  const name = (who) => who.startsWith('player:') ? (state.players[who.slice(7)] || {}).name || '?' : who.startsWith('bot:') ? (state.bots[who.slice(4)] || {}).name || '?' : who;
+  const week = { in: {}, out: {} };
+  for (const d of Object.values(b.days)) for (const dir of ['in', 'out']) for (const [k, v] of Object.entries(d[dir])) week[dir][k] = r2((week[dir][k] || 0) + v);
+  const days = Object.keys(b.days).map(Number).sort((a, c) => a - c).map((day) => {
+    const d = b.days[day], sum = (o) => r2(Object.values(o).reduce((a, v) => a + v, 0));
+    return { day, in: sum(d.in), out: sum(d.out) };
+  });
+  return {
+    balance: r2(balance(state, 'treasury')), reserve: RULES.treasuryReserve, spare: r2(Math.max(0, balance(state, 'treasury') - RULES.treasuryReserve)),
+    tax: taxRate(state), week, days, recent: b.recent.map((x) => ({ ...x, name: name(x.who) })),
+  };
 }
 
 // ---------- NEAR wallet link and cash-out ----------
@@ -1383,6 +1414,7 @@ export function publicView(state, playerId) {
     events: state.events,
     readiness: state.readiness,
     treasury: Math.round(balance(state, 'treasury')),
+    books: treasuryView(state),
     totalMoney: totalMoney(state),
     population: Object.keys(state.players).length + Object.keys(state.bots).length,
     npcs,

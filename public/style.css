@@ -371,3 +371,30 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 @keyframes zzz { 0%, 100% { opacity: .2; transform: translateY(4px); } 50% { opacity: 1; transform: translateY(-4px); } }
 #scene .bubble { animation: pop .25s ease-out; }
 @keyframes pop { from { opacity: 0; } to { opacity: 1; } }
+
+/* the shop counter inside the scene (v36) */
+.scene-menu { position: absolute; top: 14px; right: 14px; width: min(330px, 38%); max-height: calc(100% - 130px); overflow: auto; z-index: 4;
+  background: rgba(255, 250, 242, .96); border: 1px solid #e3d2b3; border-radius: 14px; padding: 10px 12px; box-shadow: 0 6px 20px rgba(60, 40, 20, .18); font-size: 13px; }
+.scene-menu .sm-head { font-weight: 700; margin-bottom: 4px; }
+.scene-menu h4 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #8a3b12; }
+.scene-menu table { width: 100%; border-collapse: collapse; }
+.scene-menu td { padding: 3px 2px; border-top: 1px solid #efe3cc; }
+.scene-menu button { font-size: 12px; padding: 4px 8px; }
+.scene-menu .big { font-size: 13px; padding: 6px 10px; }
+
+/* treasury books (v36) */
+.books-top { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 6px 0; }
+.books-top div { background: #f6ecdb; border-radius: 10px; padding: 6px 8px; display: flex; flex-direction: column; }
+.books-top b { font-size: 16px; }
+.bchart { display: flex; gap: 6px; align-items: flex-end; height: 64px; padding: 4px 0; }
+.bday { display: flex; gap: 2px; align-items: flex-end; position: relative; padding-bottom: 14px; }
+.bday span { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 10px; color: #8a7a68; }
+.bb { width: 9px; border-radius: 3px 3px 0 0; min-height: 2px; }
+.bb.in, .dot.in { background: #3d8a46; } .bb.out, .dot.out { background: #c4473a; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 3px 0 8px; }
+
+/* treasury and council open as a card over the map (v36) */
+.map-card { position: absolute; top: 14px; right: 14px; bottom: 14px; width: min(460px, 46%); overflow: auto; z-index: 4;
+  background: rgba(255, 250, 242, .97); border: 1px solid #e3d2b3; border-radius: 16px; padding: 14px 16px; box-shadow: 0 8px 26px rgba(60, 40, 20, .2); }
+.map-card .close { position: sticky; top: 0; float: right; border: none; background: none; font-size: 22px; line-height: 1; padding: 2px 6px; color: var(--muted); cursor: pointer; }
+.map-card table { width: 100%; border-collapse: collapse; font-size: 13px; } .map-card td { padding: 3px 2px; border-top: 1px solid #efe3cc; } .map-card td.n { text-align: right; }
