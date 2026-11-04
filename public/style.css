@@ -411,3 +411,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .view.card-on #map { transform: translateX(-23%); transition: transform .35s ease; }
 #map { transition: transform .35s ease; }
 .ai-note { color: #4a5a8a; }
+
+/* fast-forward (v40) */
+.ffbtn { background: #2f6656; color: #fff; border: none; border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.ffbtn:hover { background: #3f7a6a; } .ffbtn:disabled { opacity: .7; cursor: default; }
+.banner.ff { background: #2f6656; color: #eafaf4; }

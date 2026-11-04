@@ -570,6 +570,21 @@ async function exAct(type, extra) {
   else toast(errText(r), 'bad');
 }
 
+// what happened in the fast-forwarded week
+function panelWeek() {
+  const w = view.week;
+  const arrow = (c) => (c > 0 ? `<span class="bad">▲ ${c}%</span>` : c < 0 ? `<span class="ok">▼ ${-c}%</span>` : `<span class="muted">=</span>`);
+  let h = `<h2>${t('ff.doneTitle', { a: w.fromDay, b: w.toDay })}</h2><p class="muted small">${t('ff.doneIntro')}</p>`;
+  h += `<div class="books-top"><div><span class="muted small">${t('books.balance')}</span><b>${Math.round(w.treasury.from)} → ${Math.round(w.treasury.to)}</b></div><div><span class="muted small">${t('ui.readiness')}</span><b>${w.readiness.from}% → ${w.readiness.to}%</b></div><div><span class="muted small">${t('ff.decisions')}</span><b>${w.decisions.length}</b></div></div>`;
+  h += `<p class="sub2">${t('ff.prices')}</p><table>${w.prices.filter((x) => x.from).map((x) => `<tr><td>${goodName(x.good)} <span class="muted small">${t(x.side === 'sells' ? 'ff.sells' : 'ff.buys', { name: npcName(x.npc) })}</span></td><td class="n">${Math.round(x.from)} → ${Math.round(x.to)}</td><td class="n">${arrow(x.change)}</td></tr>`).join('')}</table>`;
+  h += `<p class="sub2">${t('ff.ai')}</p><ul class="decided">` +
+    w.winners.map((x) => `<li class="ok">${npcName(x.npc)}: +${Math.round(x.change)} EMWK</li>`).join('') + w.losers.filter((x) => x.change < 0).map((x) => `<li class="bad">${npcName(x.npc)}: ${Math.round(x.change)} EMWK</li>`).join('') +
+    w.upgrades.map((x) => `<li>${t('log.upgraded', { name: npcName(x.npc), n: x.level })}</li>`).join('') + `</ul>`;
+  if (w.decisions.length) h += `<p class="sub2">${t('council.closed')}</p><ul class="decided">${w.decisions.map((x) => `<li><span class="res ${x.result}">${t('council.res.' + x.result)}</span> #${x.id} ${esc(proposalText(x))}</li>`).join('')}</ul>`;
+  if (w.events.length) h += `<p class="sub2">${t('ui.news')}</p><ul class="decided">${w.events.map((l) => `<li>${esc(t('ui.day', { n: l.day }))}: ${esc(l.key ? t(l.key, resolve(l.p || {})) : l.text)}</li>`).join('')}</ul>`;
+  return h + `<p class="muted small">${t('ff.note')}</p>`;
+}
+
 function panelSimple(b) {
   const title = `<h2>${esc(placeName(b.id))}</h2>`;
   if (b.id === 'treasury') return title + panelTreasury();
@@ -684,7 +699,7 @@ function panelGuide() {
 const closeBtn = () => `<button class="close" data-act="close" aria-label="${t('ui.close')}">×</button>`;
 
 // big places (treasury, council) open as a card over the map, so nothing is lost below the side panel
-const MAP_CARD = new Set(['treasury', 'council', 'exchange']);
+const MAP_CARD = new Set(['treasury', 'council', 'exchange', 'week']);
 function renderMapCard(id, top, html) {
   const card = $('map-card');
   if (!card) return false;
@@ -704,6 +719,7 @@ function renderPanel() {
   if (ui.selected === 'board') { panel.innerHTML = closeBtn() + boardSection(); panel.hidden = false; return; }
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
+  if (ui.selected === 'week' && view.week && renderMapCard('week', '', panelWeek())) { panel.innerHTML = closeBtn() + `<h2>${t('ff.title')}</h2><p class="muted small">${t('card.onMap')}</p>`; panel.hidden = false; return; }
   const b = world.buildings.find((x) => x.id === ui.selected);
   if (!b && ui.district) { panel.innerHTML = panelRoadsign(); panel.hidden = false; return; }
   if (!b) { panel.innerHTML = panelGuide(); panel.hidden = false; return; }
@@ -1304,7 +1320,8 @@ function renderChrome() {
   $('view').classList.toggle('night', view.dayProgress > 0.8);
   $('log').innerHTML = view.log.map((l) => `<li class="${l.kind}">${t('log.day', { n: l.day })}: ${esc(logText(l))}</li>`).join('');
   const e = view.events, banner = $('banner');
-  if (e.attackDay) { banner.className = 'banner danger'; banner.textContent = t('banner.attack', { day: e.attackDay, ready: view.readiness }); banner.hidden = false; }
+  if (view.ff && view.ff.running) { banner.className = 'banner ff'; banner.textContent = t('ff.running', { d: Math.min(7, Math.floor(view.ff.done / world.rules.ticksPerDay) + 1), p: Math.round((view.ff.done / view.ff.total) * 100) }); banner.hidden = false; }
+  else if (e.attackDay) { banner.className = 'banner danger'; banner.textContent = t('banner.attack', { day: e.attackDay, ready: view.readiness }); banner.hidden = false; }
   else if (e.drought > 0) { banner.className = 'banner warn'; banner.textContent = t('banner.drought'); banner.hidden = false; }
   else if (view.night) { banner.className = 'banner night'; banner.textContent = t('banner.night'); banner.hidden = false; }
   else if (e.winter) { banner.className = 'banner winter'; banner.textContent = t('banner.winter'); banner.hidden = false; }
@@ -1327,6 +1344,15 @@ function render() {
     if (!ui.selected || ui.selected === 'guide') ui.selected = 'guide';
   }
   if (view) ui.wasNight = !!view.night;
+  const ffb = $('ff-btn');
+  if (ffb && view) {
+    const run = view.ff && view.ff.running;
+    ffb.textContent = run ? t('ff.btnRunning', { p: Math.round((view.ff.done / view.ff.total) * 100) }) : t('ff.btn');
+    ffb.disabled = !!run || !playerId;
+    ffb.title = t('ff.title');
+  }
+  // when a fast-forward ends, its summary opens over the map once
+  if (view && view.week && ui.weekSeen !== view.week.toDay && !(view.ff && view.ff.running)) { ui.weekSeen = view.week.toDay; if (ui.ffAsked) { ui.selected = 'week'; ui.scene = null; } }
   if (world && view) syncOthers(); renderHud(); renderMapNow(); renderChrome(); renderPanel(); renderDock(); renderScene(); }
 
 // ---------- static page text and the language menu ----------
@@ -1539,6 +1565,12 @@ document.body.addEventListener('click', (e) => {
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
   const tabBtn = e.target.closest('[data-extab]');
   if (tabBtn) { ui.exTab = tabBtn.dataset.extab; if (ui.exTab === 'change' && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) loadExPrices(); renderPanel(); return; }
+  if (e.target.closest('#ff-btn')) {
+    if (!playerId) return toast(t('toast.join'), 'bad');
+    ui.ffAsked = true;
+    post('/api/fastforward', { player: playerId }).then((r) => { if (!r.ok) toast(errText(r), 'bad'); else toast(t('ff.started'), 'win'); });
+    return;
+  }
   if (e.target.closest('[data-board]')) { ui.selected = 'board'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('#wallet-btn')) {
     ui.selected = 'near'; renderMapNow(); renderPanel();

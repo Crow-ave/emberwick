@@ -1517,6 +1517,35 @@ function runMarket(state) {
   }
 }
 
+// ---------- fast-forward: a week of village life in about a minute (for players and judges) ----------
+const WATCH = [['bakery', 'bread', 'sells'], ['mill', 'flour', 'sells'], ['smithy', 'sword', 'sells'], ['tailor', 'coat', 'sells'], ['mill', 'wheat', 'buys'], ['smithy', 'ore', 'buys'], ['woodcutter', 'wood', 'buys'], ['tailor', 'wool', 'buys']];
+export function weekSnapshot(state) {
+  return {
+    day: state.day, tick: state.tick, treasury: r2(balance(state, 'treasury')), readiness: state.readiness,
+    prices: Object.fromEntries(WATCH.map(([npc, g, side]) => [`${npc}.${g}`, state.npcs[npc] ? r2(state.npcs[npc][side][g]) : null])),
+    levels: Object.fromEntries(Object.entries(state.npcs).map(([id, n]) => [id, n.level || 1])),
+    wallets: Object.fromEntries(Object.keys(state.npcs).map((id) => [id, r2(balance(state, npcAcct(id)))])),
+    decided: (state.council && state.council.closed || []).map((x) => x.id),
+    trades: state.market ? state.market.trades.length : 0, towers: (state.watchtowers || []).length, districts: (state.districts || []).length,
+  };
+}
+export function weekSummary(state, before) {
+  const after = weekSnapshot(state);
+  const prices = WATCH.map(([npc, g, side]) => {
+    const k = `${npc}.${g}`, a = before.prices[k], b = after.prices[k];
+    return { npc, good: g, side, from: a, to: b, change: a ? Math.round(((b - a) / a) * 100) : 0 };
+  });
+  const upgrades = Object.keys(after.levels).filter((id) => after.levels[id] > (before.levels[id] || 1)).map((id) => ({ npc: id, level: after.levels[id] }));
+  const richest = Object.keys(after.wallets).map((id) => ({ npc: id, change: r2(after.wallets[id] - (before.wallets[id] || 0)) })).sort((a, b) => b.change - a.change);
+  const decisions = (state.council && state.council.closed || []).filter((x) => !before.decided.includes(x.id)).map((x) => ({ id: x.id, kind: x.kind, params: x.params, result: x.result }));
+  return {
+    days: after.day - before.day, fromDay: before.day, toDay: after.day,
+    treasury: { from: before.treasury, to: after.treasury }, readiness: { from: before.readiness, to: after.readiness },
+    prices, upgrades, winners: richest.slice(0, 2), losers: richest.slice(-2).reverse(), decisions,
+    events: state.log.filter((l) => l.day > before.day || (l.day === before.day && l.key && /smoke|repelled|burned|drought|winter|towerBuilt|districtOpen|upgraded|bailout/.test(l.key))).slice(0, 10),
+  };
+}
+
 function resolveAttack(state) {
   const ev = state.events;
   ev.attackDay = null;
@@ -1605,6 +1634,8 @@ export function publicView(state, playerId) {
     readiness: state.readiness,
     treasury: Math.round(balance(state, 'treasury')),
     books: treasuryView(state),
+    ff: state.ff ? { running: !!state.ff.running, done: state.ff.done || 0, total: state.ff.total, startDay: state.ff.startDay, by: state.ff.by } : null,
+    week: state.ffResult || null,
     market: state.market ? {
       fee: MARKET.fee, goods: MARKET.goods, maxOrders: MARKET.maxOrders, days: MARKET.days,
       orders: state.market.orders.map((o) => ({ ...o, sellerName: (state.players[o.seller] || {}).name || '?', mine: o.seller === playerId, left: MARKET.days - (state.day - o.day) })),

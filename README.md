@@ -95,7 +95,8 @@ Always open, reached from the signpost by the gate (or the hills on the horizon)
 4. Click the **Treasury**. → The books open over the map: balance, locked reserve, where money came from this week.
 5. Click **Neighbourhoods** (or the hills top left) → **Exchange quarter**. Sell an item on the **Goods market**; open **Change desk** and press **Get a live quote**. → A real NEAR Intents quote (dry run).
 6. Wait for evening (≈1.5 min in demo mode). → The guide asks where you will sleep; at the inn take a bed, your character lies down.
-7. Click the **Council hall**, propose **Build a watchtower**. → AI villagers vote with reasons; the result is recorded on NEAR with a 0.01 EMWK memo transfer.
+7. Press **⏩ 1 week** in the top bar. → One week of village life runs in about a minute with nobody touching the prices; a summary then shows how prices moved, which AI craftsmen won or lost, workshop upgrades and council decisions.
+8. Click the **Council hall**, propose **Build a watchtower**. → AI villagers vote with reasons; the result is recorded on NEAR with a 0.01 EMWK memo transfer.
 
 ## On NEAR
 

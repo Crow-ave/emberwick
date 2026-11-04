@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, tick, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, weekSnapshot, weekSummary, tick, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -19,6 +19,7 @@ let state;
 try {
   state = JSON.parse(fs.readFileSync(SAVE, 'utf8'));
   ensureContracts(state); // bring older saves up to date (new shops, plots, council)
+  if (state.ff) state.ff.running = false; // a fast-forward cut off by a restart just stops
   console.log(`Loaded saved village (day ${state.day}).`);
 } catch {
   state = createState();
@@ -160,10 +161,35 @@ function broadcast() {
 }
 
 setInterval(() => {
+  if (state.ff && state.ff.running) return; // the fast-forward drives the clock for now
   tick(state);
   broadcast();
   if (state.tick % 10 === 0) save();
 }, RULES.tickMs);
+
+// fast-forward: one week of village life in about a minute. The economy runs exactly as usual,
+// only faster; every transfer still goes to NEAR (batched by the bridge).
+let lastCast = 0;
+function startFastForward(byName, days = 7) {
+  if (state.ff && state.ff.running) return false;
+  const total = days * RULES.ticksPerDay, every = Math.max(20, Math.floor(60000 / total));
+  const before = weekSnapshot(state);
+  state.ff = { running: true, done: 0, total, startDay: state.day, by: byName };
+  state.ffResult = null;
+  broadcast();
+  const timer = setInterval(() => {
+    tick(state);
+    state.ff.done++;
+    if (Date.now() - lastCast > 300) { lastCast = Date.now(); broadcast(); }
+    if (state.ff.done >= total) {
+      clearInterval(timer);
+      state.ff.running = false;
+      state.ffResult = weekSummary(state, before);
+      save(); broadcast();
+    }
+  }, every);
+  return true;
+}
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
 
@@ -227,6 +253,13 @@ const server = http.createServer(async (req, res) => {
   // the change desk: live prices and cross-chain quotes from NEAR Intents (1Click API, dry run: nothing is swapped)
   if (url.pathname === '/api/exchange/prices') return sendJson(res, 200, await intentsPrices());
   if (url.pathname === '/api/exchange/quote') return sendJson(res, 200, await intentsQuote(url.searchParams.get('to'), Number(url.searchParams.get('amount')) || 1));
+  if (req.method === 'POST' && url.pathname === '/api/fastforward') {
+    const body = await readBody(req);
+    const p = state.players[body.player];
+    if (!p) return sendJson(res, 400, { ok: false, code: 'err.unknownPlayer' });
+    const ok = startFastForward(p.name, 7);
+    return sendJson(res, ok ? 200 : 409, ok ? { ok: true } : { ok: false, code: 'err.ffRunning' });
+  }
   if (req.method === 'POST' && url.pathname === '/api/near/link') {
     const body = await readBody(req);
     if (bridge && bridge.status === 'ready') {
