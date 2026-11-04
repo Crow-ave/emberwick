@@ -1607,8 +1607,12 @@ $('elder-ok').addEventListener('click', async () => {
 let ignoreClick = false;
 // the villager under the mouse (a generous area around the little figure)
 function walkerAt(p) {
+  // real players first: a player standing next to a bot (or the elder at the gate) should win the click
+  return nearestWalker(p, [...others.values()]) || nearestWalker(p, walkers);
+}
+function nearestWalker(p, list) {
   let best = null, bestD = 1e9;
-  for (const w of [...walkers, ...others.values()]) {
+  for (const w of list) {
     if (w.inside) continue;
     const [x, y] = walkerPos(w);
     const dx = Math.abs(p.x - x), dy = y - p.y;
