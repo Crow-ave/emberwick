@@ -1,5 +1,6 @@
 import { setupMap, renderMap, renderDistrict, buildGrid, entranceOf, findPath, cellCenter, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
 import { t, LANGS, getLang, setLang } from './i18n.js';
+import { play, playWork, unlockSound, setSfx, setMusic, setNight, sound } from './sound.js';
 import { sceneMarkup, hasScene, homeHasScene, bubble, KEEPER_HEAD, SW, SH } from './scenes.js';
 
 const $ = (id) => document.getElementById(id);
@@ -255,6 +256,7 @@ function goAndDo(placeId, verb, run) {
   walkYouTo(placeId, () => {
     if ((verb === 'gather' || verb === 'shift') && you && !still) {
       status[placeId] = { key: 'status.working' };
+      playWork(placeId);
       renderPanel();
       renderScene();
       const t0 = performance.now();
@@ -573,6 +575,7 @@ async function exAct(type, extra) {
     } catch (e) { return toast(t('ex.escrowFailed'), 'bad'); }
   }
   if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
+  play(r.ok ? 'coin' : 'bad');
   if (r.ok) toast(t('ex.done.' + type, { n: r.price || r.total || r.qty || '', good: r.good ? goodName(r.good) : '' }), 'win');
   else toast(errText(r), 'bad');
 }
@@ -703,6 +706,45 @@ function panelGuide() {
     `<ol class="guide">${steps.map((st) => `<li>${st.text}${st.go ? `<br><button class="primary" data-go="${st.go}">${esc(st.label)} →</button>` : ''}${st.eat ? `<br><button class="primary" data-eat="1">${t('guide.eat')}</button>` : ''}</li>`).join('')}</ol>`;
 }
 
+// one list of everything you can sell or buy, with the best price in the village (v43)
+function panelTrade() {
+  const me = view.player;
+  const open = (n) => !n.closed && !n.shut;
+  let h = `<h2>${t('trade.title')}</h2><p class="muted small">${t('trade.intro')}</p>`;
+  h += `<h4>${t('trade.sellTitle')}</h4>`;
+  const mine = me ? Object.entries(me.inv).filter(([g, q]) => q > 0 && !TOOL_GOODS.has(g)) : [];
+  if (!mine.length) h += `<p class="muted small">${t('trade.bagEmpty')}</p>`;
+  else {
+    h += `<table>`;
+    for (const [g, q] of mine) {
+      let best = null;
+      for (const [id, n] of Object.entries(view.npcs)) {
+        const p = n.buys && n.buys[g];
+        if (!p || (n.full || []).includes(g)) continue;
+        const score = (open(n) ? 1e6 : 0) + p;
+        if (!best || score > best.score) best = { id, n, p, score };
+      }
+      h += `<tr><td>${goodName(g)} ×${q}<div class="muted small">${best ? esc(placeName(best.id)) + (open(best.n) ? '' : ' · ' + t('trade.closed')) : t('trade.nobody')}</div></td>` +
+        `<td class="n">${best ? best.p + ' EMWK' : ''}</td><td class="n">${best ? `<button class="sellbtn" data-act="tradeGo" data-kind="sell" data-npc="${best.id}" data-good="${g}" ${open(best.n) ? '' : 'disabled'}>${t('panel.sell')}</button>` : ''}</td></tr>`;
+    }
+    h += `</table>`;
+  }
+  h += `<h4>${t('trade.buyTitle')}</h4><table>`;
+  const goods = {};
+  for (const [id, n] of Object.entries(view.npcs)) for (const [g, p] of Object.entries(n.sells || {})) {
+    if (g === 'meal') continue;
+    const stock = (n.stock || {})[g] || 0, cur = goods[g];
+    const score = (stock > 0 && open(n) ? 1e6 : stock > 0 ? 1e3 : 0) - p;
+    if (!cur || score > cur.score) goods[g] = { id, n, p, stock, score };
+  }
+  for (const [g, x] of Object.entries(goods).sort((a, b) => goodName(a[0]).localeCompare(goodName(b[0])))) {
+    const ok = me && x.stock > 0 && open(x.n) && me.coins >= x.p;
+    h += `<tr><td>${goodName(g)}<div class="muted small">${esc(placeName(x.id))} · ${t('panel.left', { n: x.stock })}${open(x.n) ? '' : ' · ' + t('trade.closed')}</div></td>` +
+      `<td class="n">${x.p} EMWK</td><td class="n"><button data-act="tradeGo" data-kind="buy" data-npc="${x.id}" data-good="${g}" ${ok ? '' : 'disabled'}>${t('panel.buy')}</button></td></tr>`;
+  }
+  return h + `</table>`;
+}
+
 const closeBtn = () => `<button class="close" data-act="close" aria-label="${t('ui.close')}">×</button>`;
 
 // big places (treasury, council) open as a card over the map, so nothing is lost below the side panel
@@ -724,6 +766,7 @@ function renderPanel() {
   if (!MAP_CARD.has(ui.selected) && $('map-card')) { $('map-card').hidden = true; $('view').classList.remove('card-on'); }
   if (ui.selected === 'near') { panel.innerHTML = closeBtn() + panelNear(); panel.hidden = false; return; }
   if (ui.selected === 'board') { panel.innerHTML = closeBtn() + boardSection(); panel.hidden = false; return; }
+  if (ui.selected === 'trade') { panel.innerHTML = closeBtn() + panelTrade(); panel.hidden = false; return; }
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
   if (ui.selected === 'week' && view.week && renderMapCard('week', '', panelWeek())) { panel.innerHTML = closeBtn() + `<h2>${t('ff.title')}</h2><p class="muted small">${t('card.onMap')}</p>`; panel.hidden = false; return; }
@@ -1234,7 +1277,7 @@ function renderHud() {
     `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
     `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
-    `<div class="shortcuts"><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button></div>` +
+    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button></div>` +
     (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
     (me.job ? `<div class="jobinfo">${t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage })}</div>` : '') +
     (me.home ? `<div class="jobinfo">${t('me.homeInfo', { r: me.home.rent, left: dayLeftText() })}</div>` : '');
@@ -1253,6 +1296,7 @@ function renderHud() {
 
 const TOOL_SHOP = { pickaxe: 'smithy', axe: 'woodcutter', plow: 'mill', shears: 'tailor', rod: 'carpenter' };
 const TOOL_OF = { ore: 'pickaxe', wood: 'axe', wheat: 'plow', wool: 'shears', fish: 'rod' };
+const TOOL_GOODS = new Set([...Object.values(TOOL_OF), 'coat', 'bed']);
 
 function goodValue(g) {
   const b = bestBuyer(g);
@@ -1369,6 +1413,10 @@ function render() {
     if (ui.lastApp !== undefined) toast(ar.hired ? t('apply.toastWon', { name: npcName(ar.npc), w: ar.wage }) : t('apply.toastLost', { name: npcName(ar.npc) }), ar.hired ? 'win' : 'bad');
     ui.lastApp = `${ar.npc}|${ar.day}|${ar.hired}`;
   } else if (view && view.player && !ar && ui.lastApp === undefined) ui.lastApp = '';
+  setNight(view && view.night);
+  const sb = $('sfx-btn'), mb = $('music-btn');
+  if (sb) { sb.textContent = sound.sfx ? '🔊' : '🔇'; sb.title = t('sound.sfx'); sb.classList.toggle('off', !sound.sfx); }
+  if (mb) { mb.textContent = '♪'; mb.title = t('sound.music'); mb.classList.toggle('off', !sound.music); }
   const ffb = $('ff-btn');
   if (ffb && view) {
     const run = view.ff && view.ff.running;
@@ -1412,6 +1460,8 @@ async function act(type, extra = {}) {
   const r = await post('/api/action', body);
   if (r.state && (r.state.rev || 0) >= (view.rev || 0)) { view = r.state; render(); }
   if (r.ok && type !== 'visit') { explain(type, extra, r); if (ui.scene) renderScene(); }
+  if (r.ok) play(type === 'buildHouse' || type === 'buyBed' ? 'build' : type === 'sleep' || type === 'rest' ? 'sleep' : /sell|buy|meal|rent|lease|Plot|shift/i.test(type) ? 'coin' : '');
+  else if (r.code !== 'err.turnedDown') play('bad');
   if (!r.ok && r.code === 'err.turnedDown') {
     const why = r.why === 'needSkill' ? t('apply.needSkill', { skill: t('skill.' + r.need.skill), n: r.need.level, have: r.need.have }) : t('apply.' + r.why);
     result[extra.npc] = { key: 'result.turnedDown', p: { name: { $npc: extra.npc }, why }, bad: true };
@@ -1424,6 +1474,7 @@ async function act(type, extra = {}) {
   }
   if (r.ok && r.levelUp) {
     const msg = t('toast.level', { skill: t('skill.' + r.levelUp.skill), n: r.levelUp.level });
+    setTimeout(() => play('level'), 500);
     popupYou(msg, '#7a3b8a');
     flash('skills');
     setTimeout(() => toast(msg, 'win'), r.quest ? 3200 : 0);
@@ -1590,12 +1641,15 @@ document.body.addEventListener('click', (e) => {
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
   const tabBtn = e.target.closest('[data-extab]');
   if (tabBtn) { ui.exTab = tabBtn.dataset.extab; if (ui.exTab === 'change' && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) loadExPrices(); renderPanel(); return; }
+  if (e.target.closest('#sfx-btn')) { setSfx(!sound.sfx); play('coin'); render(); return; }
+  if (e.target.closest('#music-btn')) { setMusic(!sound.music); render(); return; }
   if (e.target.closest('#ff-btn')) {
     if (!playerId) return toast(t('toast.join'), 'bad');
     ui.ffAsked = true;
     post('/api/fastforward', { player: playerId }).then((r) => { if (!r.ok) toast(errText(r), 'bad'); else toast(t('ff.started'), 'win'); });
     return;
   }
+  if (e.target.closest('[data-trade]')) { ui.selected = 'trade'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('[data-board]')) { ui.selected = 'board'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('#wallet-btn')) {
     ui.selected = 'near'; renderMapNow(); renderPanel();
@@ -1650,6 +1704,7 @@ document.body.addEventListener('click', (e) => {
     delete result[plot]; goAndDo(plot, a, () => act(a, extra));
   }
   else if (a === 'sleep') { const place = btn.dataset.place; delete result[place]; goAndDo(place, 'sleep', () => act('sleep', { place, house: place })); }
+  else if (a === 'tradeGo') { const npc = btn.dataset.npc, good = btn.dataset.good, kind = btn.dataset.kind; ui.selected = npc; delete result[npc]; renderMapNow(); goAndDo(npc, kind, () => act(kind, { npc, good, qty: 1 })); }
   else if (a === 'gather') { const spot = btn.dataset.spot || ui.selected; delete result[spot]; goAndDo(spot, 'gather', () => act('gather', { spot })); }
   else { const npc = btn.dataset.npc || ui.selected, good = btn.dataset.good; delete result[npc]; goAndDo(npc, a, () => act(a, { npc, good, qty: 1 })); }
 });
@@ -1720,3 +1775,7 @@ function connect() {
   connect();
   requestAnimationFrame(animate);
 })();
+
+// sound may only start after the first click or key press
+window.addEventListener('pointerdown', unlockSound, { once: true });
+window.addEventListener('keydown', unlockSound, { once: true });

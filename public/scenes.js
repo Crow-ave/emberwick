@@ -10,6 +10,8 @@ export function bigPerson(x, y, s, look, tool = null, cls = '') {
     pickaxe: `<rect x="5" y="-44" width="2.6" height="30" fill="#6b4a2e"/><path d="M-6 -42 Q6 -52 20 -42 L18 -39 Q6 -46 -4 -39 Z" fill="#9aa0a8"/>`,
     axe: `<rect x="5" y="-46" width="2.6" height="32" fill="#6b4a2e"/><path d="M7 -46 L17 -50 L17 -36 L7 -40 Z" fill="#a8adb4"/>`,
     scythe: `<rect x="5" y="-50" width="2.4" height="38" fill="#7a5236"/><path d="M6 -50 Q-14 -54 -22 -40 Q-10 -48 6 -46 Z" fill="#c9ced4"/>`,
+    shears: `<rect x="4" y="-30" width="3" height="10" fill="#6b4a2e"/><path d="M4 -30 L1 -44 L5 -31 Z M7 -30 L11 -44 L6 -31 Z" fill="#c9ced4"/>`,
+    rod: `<path d="M6 -20 L30 -64" stroke="#7a5236" stroke-width="2"/><path d="M30 -64 Q44 -40 40 -6" stroke="#e8e8e8" stroke-width=".7" fill="none"/>`,
     hammer: `<rect x="5" y="-38" width="2.4" height="24" fill="#6b4a2e"/><rect x="1" y="-42" width="11" height="6" rx="1" fill="#55606e"/>`,
   }[tool] || '';
   return `<g class="${cls}" transform="translate(${x} ${y}) scale(${s})">` +
@@ -62,6 +64,70 @@ const rect = (x, y, w, h, f, extra = '') => `<rect x="${x}" y="${y}" width="${w}
 
 // ---------- work places ----------
 
+// outdoor sky: the sun by day, the moon and stars at night (the same clock as the village map)
+function sky(view, dayColor, h = SH) {
+  if (view && view.night) {
+    let s = rect(0, 0, SW, h, '#1d2a4e') + `<circle cx="960" cy="100" r="34" fill="#f4efd0"/><circle cx="948" cy="92" r="30" fill="#1d2a4e" opacity=".0"/>`;
+    for (const [x, y] of [[90, 60], [220, 120], [380, 50], [520, 140], [660, 70], [800, 40], [1050, 170], [300, 200], [720, 190]]) s += `<circle cx="${x}" cy="${y}" r="2" fill="#fff" class="twinkle"/>`;
+    return s;
+  }
+  const dry = view && view.events.drought > 0, snow = view && view.events.winter;
+  return rect(0, 0, SW, h, snow ? '#dfe6ea' : dayColor) + `<circle cx="960" cy="110" r="46" fill="${dry ? '#f2a23a' : '#f6d25a'}" opacity="${snow ? 0.4 : 1}"/>`;
+}
+const nightShade = (view) => (view && view.night ? rect(0, 0, SW, SH, 'rgba(18,26,64,.38)') : '');
+
+function sheep(x, y, k = 1, flip = false, shorn = false) {
+  const wool = shorn ? '#f3ead8' : '#fbf8f0';
+  return `<g transform="translate(${x} ${y}) scale(${flip ? -k : k} ${k})">` +
+    `<rect x="-26" y="-10" width="7" height="22" fill="#3a3330"/><rect x="14" y="-10" width="7" height="22" fill="#3a3330"/>` +
+    (shorn ? `<ellipse cx="0" cy="-22" rx="34" ry="20" fill="${wool}" stroke="#e0d6c0" stroke-width="2"/>`
+      : [[-22, -22], [-8, -30], [8, -30], [22, -22], [-12, -14], [12, -14], [0, -20]].map(([a, b]) => `<circle cx="${a}" cy="${b}" r="16" fill="${wool}"/>`).join('')) +
+    `<ellipse cx="38" cy="-28" rx="11" ry="9" fill="#3a3330"/><ellipse cx="32" cy="-35" rx="6" ry="3" fill="#3a3330" transform="rotate(-30 32 -35)"/>` +
+    `<circle cx="41" cy="-30" r="1.8" fill="#fff"/></g>`;
+}
+
+function pastureScene(look, view) {
+  const snow = view.events.winter;
+  let s = sky(view, '#cfe7f2');
+  s += `<path d="M0 250 Q280 200 560 240 Q840 270 ${SW} 220 V${SH} H0 Z" fill="${snow ? '#e8ece6' : '#8cc15a'}"/>`;
+  s += rect(0, 300, SW, SH - 300, snow ? '#eef0ea' : '#9ccc6a');
+  // fence along the back
+  for (let x = 30; x < SW; x += 90) s += rect(x, 262, 10, 58, '#8a6040');
+  s += rect(20, 274, SW - 40, 8, '#a8743e') + rect(20, 298, SW - 40, 8, '#a8743e');
+  if (!snow) for (const [x, y] of [[120, 520], [260, 560], [880, 540], [1010, 500], [700, 590]]) s += `<circle cx="${x}" cy="${y}" r="5" fill="#f2e38a"/><circle cx="${x + 9}" cy="${y + 3}" r="4" fill="#fff"/>`;
+  s += sheep(160, 380, 1.1) + sheep(330, 340, 0.8, true) + sheep(900, 350, 0.9) + sheep(1010, 430, 1.2, true) + sheep(250, 500, 1.3, true);
+  // the sheep being shorn, next to the player, and the wool pile
+  s += sheep(720, GROUND - 2, 1.5, true, true);
+  s += `<g>${[[820, GROUND - 16, 22], [846, GROUND - 22, 18], [868, GROUND - 14, 20], [842, GROUND - 38, 16]].map(([a, b, r]) => `<circle cx="${a}" cy="${b}" r="${r}" fill="#fbf8f0" stroke="#e6dcc6" stroke-width="2"/>`).join('')}</g>`;
+  s += `<g class="chips"><circle class="c1" cx="690" cy="${GROUND - 40}" r="7" fill="#fbf8f0"/><circle class="c2" cx="700" cy="${GROUND - 50}" r="6" fill="#fbf8f0"/><circle class="c3" cx="684" cy="${GROUND - 30}" r="5" fill="#fbf8f0"/></g>`;
+  s += nightShade(view);
+  s += `<g id="you-scene">${bigPerson(600, GROUND + 6, 3.2, { ...look, hat: '#b9864a' }, 'shears', 'worker')}</g>`;
+  return s;
+}
+
+function pondScene(look, view) {
+  const snow = view.events.winter;
+  let s = sky(view, '#cfe7f2');
+  s += `<path d="M0 240 Q300 200 600 236 Q860 260 ${SW} 230 V${SH} H0 Z" fill="${snow ? '#e8ece6' : '#7fb556'}"/>`;
+  s += `<ellipse cx="620" cy="440" rx="560" ry="150" fill="${snow ? '#b8cdd8' : '#4f8fb8'}"/><ellipse cx="620" cy="440" rx="500" ry="120" fill="${snow ? '#c9dbe4' : '#5fa0c8'}"/>`;
+  for (const [x, y, w] of [[380, 420, 70], [820, 470, 90], [560, 500, 60]]) s += `<path d="M${x - w / 2} ${y} Q${x} ${y - 6} ${x + w / 2} ${y}" stroke="#a9d2ea" stroke-width="3" fill="none" class="ripple"/>`;
+  if (!snow) {
+    for (const [x, y] of [[300, 480], [900, 410], [760, 520]]) s += `<ellipse cx="${x}" cy="${y}" rx="24" ry="9" fill="#4f9a48"/><circle cx="${x + 6}" cy="${y - 3}" r="4" fill="#f4a6c0"/>`;
+    for (let x = 60; x < 220; x += 18) s += `<rect x="${x}" y="${330 + (x % 3) * 8}" width="4" height="${70 - (x % 4) * 6}" fill="#5f8a3a"/><ellipse cx="${x + 2}" cy="${326 + (x % 3) * 8}" rx="4" ry="10" fill="#7a5236"/>`;
+  }
+  // wooden jetty the player stands on
+  s += `<polygon points="900,${GROUND + 8} ${SW},${GROUND - 10} ${SW},${GROUND + 30} 900,${GROUND + 40}" fill="#8a6040"/>`;
+  for (let x = 910; x < SW; x += 36) s += `<line x1="${x}" y1="${GROUND + 6}" x2="${x}" y2="${GROUND + 38}" stroke="#6b4528" stroke-width="3"/>`;
+  s += rect(930, GROUND + 30, 10, 60, '#6b4528') + rect(1060, GROUND + 22, 10, 60, '#6b4528');
+  // the float on the water and a jumping fish while working
+  s += `<circle cx="1026" cy="${GROUND + 0}" r="0" fill="none"/>`;
+  s += `<g class="chips"><path class="c1" d="M820 430 q14 -12 28 0 q-14 8 -28 0 Z" fill="#e0a050"/><circle class="c2" cx="840" cy="440" r="5" fill="#a9d2ea"/><circle class="c3" cx="826" cy="444" r="4" fill="#a9d2ea"/></g>`;
+  s += `<g class="bob"><circle cx="846" cy="452" r="7" fill="#e5503a"/><rect x="839" y="452" width="14" height="5" fill="#fff"/></g>`;
+  s += nightShade(view);
+  s += `<g id="you-scene">${bigPerson(980, GROUND + 2, 3.2, { ...look, hat: '#4a7a9a' }, 'rod', 'worker')}</g>`;
+  return s;
+}
+
 function mineScene(look) {
   let s = rect(0, 0, SW, SH, '#2e2620');
   s += `<path d="M0 0 H${SW} V90 Q900 130 760 100 Q560 60 400 110 Q200 140 0 100 Z" fill="#3e342c"/>`;
@@ -84,8 +150,8 @@ function mineScene(look) {
   return s;
 }
 
-function forestScene(look) {
-  let s = rect(0, 0, SW, SH, '#cfe7f2') + rect(0, 300, SW, SH - 300, '#9ccc6a');
+function forestScene(look, view) {
+  let s = (view && view.night ? sky(view, '#cfe7f2') : rect(0, 0, SW, SH, '#cfe7f2')) + rect(0, 300, SW, SH - 300, '#9ccc6a');
   s += `<path d="M0 320 Q200 270 420 300 Q700 340 ${SW} 290 V${SH} H0 Z" fill="#8cc15a"/>`;
   const tree = (x, y, k, dark) => `<rect x="${x - 7 * k}" y="${y - 70 * k}" width="${14 * k}" height="${72 * k}" fill="#7a5236"/>` +
     `<circle cx="${x}" cy="${y - 100 * k}" r="${44 * k}" fill="${dark ? '#2f6a2c' : '#3f7f36'}"/><circle cx="${x - 24 * k}" cy="${y - 76 * k}" r="${32 * k}" fill="${dark ? '#2f6a2c' : '#4b8f3e'}"/><circle cx="${x + 26 * k}" cy="${y - 80 * k}" r="${30 * k}" fill="#57a04a"/>`;
@@ -99,14 +165,14 @@ function forestScene(look) {
   // log pile
   s += `<g fill="#b07a4a" stroke="#7a5236" stroke-width="2">` + [[330, 452], [372, 452], [414, 452], [351, 418], [393, 418], [372, 384]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="20"/>`).join('') + `</g>`;
   s += `<g fill="#e8d2a6">` + [[330, 452], [372, 452], [414, 452], [351, 418], [393, 418], [372, 384]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="7"/>`).join('') + `</g>`;
+  s += nightShade(view);
   s += `<g id="you-scene">${bigPerson(600, GROUND + 6, 3.2, look, 'axe', 'worker')}</g>`;
   return s;
 }
 
 function fieldsScene(look, view) {
   const dry = view.events.drought > 0, snow = view.events.winter;
-  let s = rect(0, 0, SW, SH, snow ? '#dfe6ea' : '#cfe7f2');
-  s += `<circle cx="960" cy="110" r="46" fill="${dry ? '#f2a23a' : '#f6d25a'}" opacity="${snow ? 0.4 : 1}"/>`;
+  let s = sky(view, '#cfe7f2');
   s += `<path d="M0 260 Q300 220 600 250 Q860 270 ${SW} 240 V${SH} H0 Z" fill="${snow ? '#e8ece6' : '#9ccc6a'}"/>`;
   s += rect(0, 300, SW, SH - 300, snow ? '#e6e2d6' : dry ? '#c9a46a' : '#b98f4e');
   const stalk = dry ? '#a88a46' : '#e8c83c';
@@ -124,6 +190,7 @@ function fieldsScene(look, view) {
     `<ellipse cx="346" cy="${GROUND - 44}" rx="44" ry="12" fill="${stalk}"/></g>`;
   s += `<g class="chips"><ellipse class="c1" cx="520" cy="${GROUND - 50}" rx="5" ry="9" fill="${stalk}"/><ellipse class="c2" cx="530" cy="${GROUND - 60}" rx="4" ry="8" fill="${stalk}"/><ellipse class="c3" cx="512" cy="${GROUND - 44}" rx="4" ry="8" fill="${stalk}"/></g>`;
   s += rect(840, 300, 6, 80, '#7a5236') + rect(818, 316, 50, 5, '#7a5236') + `<circle cx="843" cy="296" r="12" fill="#e8d2a6"/>`;
+  s += nightShade(view);
   s += `<g id="you-scene">${bigPerson(560, GROUND + 10, 3.2, { ...look, hat: '#d9b35e' }, 'scythe', 'worker')}</g>`;
   return s;
 }
@@ -255,10 +322,12 @@ export const homeHasScene = (id, view) => {
 export function sceneMarkup(id, view, look) {
   if (homeHasScene(id, view)) return homeScene(id, look, view);
   if (id === 'mine') return mineScene(look);
-  if (id === 'forest') return forestScene(look);
+  if (id === 'forest') return forestScene(look, view);
+  if (id === 'pasture') return pastureScene(look, view);
+  if (id === 'pond') return pondScene(look, view);
   if (id === 'fields') return fieldsScene(look, view);
   if (view.npcs[id]) return shopScene(id, look, view);
   return '';
 }
 
-export const hasScene = (id, view) => id === 'mine' || id === 'forest' || id === 'fields' || !!(view && view.npcs[id]) || !!(view && homeHasScene(id, view));
+export const hasScene = (id, view) => id === 'mine' || id === 'forest' || id === 'fields' || id === 'pasture' || id === 'pond' || !!(view && view.npcs[id]) || !!(view && homeHasScene(id, view));

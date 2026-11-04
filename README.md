@@ -22,6 +22,9 @@ Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what
 - The tailor (an eighth AI craftsman) sews winter coats from wool. Wool comes from the sheep pasture (you need shears from the tailor). Coats last 6 winter days; bot villagers buy them too
 - Dragon peak slowly turns red as an attack comes closer
 - Twelve villager bots that keep the economy moving
+- One "Buy & sell" list (button under your name): every good in the village with the best price and the shop that has it. Press Buy or Sell and your villager walks there and trades
+- Close-up scenes for every work place, now also the sheep pasture (shearing among the sheep) and the fishing pond (on the jetty with a rod). Outdoor scenes follow the clock: moon and stars at night
+- Small work sounds made live in the browser (no sound files): rustling wheat at the fields, pickaxe clinks in the mine, the anvil at the smithy, the axe, the saw, a sheep's baa and shears at the pasture, a splash at the pond, coins when you trade. A quiet music loop plays a slower, lower tune at night. Two buttons in the top bar turn sounds and music on or off
 - Six languages: English, Türkçe, Français, Deutsch, Русский, 中文 (menu in the top bar; add more in `public/i18n.js`)
 - Fishing at the pond (a rod from the carpenter); the innkeeper cooks meals from fish
 - A fixed supply of 25,000 EMWK. Money only moves between accounts and never appears from nowhere (checked by `npm test`)
