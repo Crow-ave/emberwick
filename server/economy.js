@@ -3,6 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
+import { levelPrice, stepTowards, priceReasons, WANT_FACTOR } from './pricing.js';
 import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND, DISTRICTS, CENTRE_FACTOR, MARKET } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -322,12 +323,12 @@ export function sellQuote(state, npcId, good, qty, bonus = 0) {
   const npc = state.npcs[npcId];
   if (!npc || npc.buys[good] === undefined) return { qty: 0, total: 0, want: 0 };
   const t = Math.max(1, targetFor(state, npcId, good)), s0 = npc.stock[good] || 0;
-  const want = Math.max(0, Math.ceil(t * 2 - s0));
+  const want = Math.max(0, Math.ceil(t * WANT_FACTOR - s0));
   const cash = balance(state, npcAcct(npcId)) - 60;
   let n = 0, total = 0;
   const units = [];
   while (n < Math.min(qty, want)) {
-    const level = npc.base[good] * clamp(Math.pow(t / Math.max(s0 + n + 0.5, 0.5), 0.8), 0.4, 4);
+    const level = levelPrice(npc.base[good], s0 + n + 0.5, t, 'buy'); // each extra unit counts as more stock
     const unit = Math.max(RULES.minPrice, Math.round(Math.min(npc.buys[good], level) * (1 + bonus) * 100) / 100);
     if (total + unit > cash) break;
     total += unit; units.push(unit); n++;
@@ -560,6 +561,7 @@ export function tick(state) {
   else for (const b of Object.values(state.bots)) b.energy = Math.min(RULES.energyMax, r2(b.energy + RULES.energyPerTick));
   runCouncil(state, newDay);
   if (!night) runCraftsmen(state); // workshops are shut for the night
+  if (!night && state.tick % INTERVIEW_EVERY === 0) runInterviews(state);
   if (!night && state.tick % 3 === 0) runMarket(state);
   runInn(state);
   adjustPrices(state);
@@ -700,17 +702,9 @@ function adjustPrices(state) {
   const k = RULES.priceStep;
   for (const def of CRAFTSMEN) {
     const npc = state.npcs[def.id];
-    for (const good of Object.keys(npc.buys)) {
-      const s = npc.stock[good] || 0, t = Math.max(1, targetFor(state, def.id, good));
-      const level = npc.base[good] * clamp(Math.pow(t / Math.max(s, 0.5), 0.8), 0.4, 4);
-      npc.buys[good] += (level - npc.buys[good]) * k;
-    }
-    for (const good of Object.keys(npc.sells)) {
-      const s = npc.stock[good] || 0, t = Math.max(1, targetFor(state, def.id, good));
-      const floor = GOODS[good] && GOODS[good].kind === 'tool' ? 0.8 : 0.5;
-      const level = npc.base[good] * clamp(Math.pow(t / Math.max(s, 0.5), 0.6), floor, 4);
-      npc.sells[good] += (level - npc.sells[good]) * k;
-    }
+    // the rules are in pricing.js
+    for (const good of Object.keys(npc.buys)) npc.buys[good] = stepTowards(npc.buys[good], levelPrice(npc.base[good], npc.stock[good] || 0, targetFor(state, def.id, good), 'buy'), k);
+    for (const good of Object.keys(npc.sells)) npc.sells[good] = stepTowards(npc.sells[good], levelPrice(npc.base[good], npc.stock[good] || 0, targetFor(state, def.id, good), 'sell', GOODS[good] && GOODS[good].kind === 'tool'), k);
   }
 }
 
@@ -1210,6 +1204,55 @@ function settleContracts(state) {
 }
 
 // an AI craftsman decides on a job application, with a reason the player can read
+// interview rounds: every 12 steps while shops are open (nights wait for the morning)
+const INTERVIEW_EVERY = 12;
+function nextInterview(state) {
+  const per = RULES.ticksPerDay, inDay = state.tick % per;
+  if (isNight(state)) return { tick: (Math.floor(state.tick / per) + 1) * per, morning: true };
+  return { tick: state.tick + (INTERVIEW_EVERY - (state.tick % INTERVIEW_EVERY)), morning: false, inDay };
+}
+// how much a craftsman values an applicant (the AI's own judgement), and the wage it offers them
+function applicantScore(state, p, npc) {
+  const req = JOBS.require[npc];
+  const skill = req ? skillLevel(p, req.skill) : Math.max(...['farming', 'woodcutting', 'mining'].map((k) => skillLevel(p, k)));
+  return { skill, score: skill * 2 + (p.jobsDone || 0) + skillLevel(p, 'trading') * 0.5 + rng(state) * 0.5 };
+}
+function runInterviews(state) {
+  const apps = state.applications || {};
+  for (const [npc, list] of Object.entries(apps)) {
+    if (!list.length) continue;
+    const o = state.jobOffers[npc];
+    const people = list.map((x) => state.players[x.pid]).filter((p) => p && !p.job);
+    apps[npc] = [];
+    if (!o) { for (const p of people) p.appResult = { npc, day: state.day, hired: false, why: 'filled', count: people.length }; continue; }
+    const judged = people.map((p) => ({ p, v: judgeApplicant(state, p, npc), ...applicantScore(state, p, npc) }));
+    const fit = judged.filter((x) => x.v.ok).sort((a, b) => b.score - a.score);
+    const best = fit[0];
+    for (const x of judged) {
+      if (x === best) continue;
+      x.p.appResult = { npc, day: state.day, hired: false, why: x.v.ok ? 'otherBetter' : x.v.why, need: x.v.need, count: people.length };
+      addLog(state, `${x.p.name} applied for a job and was turned down.`, 'warn', 'log.turnedDown', { name: x.p.name, place: { $place: npc } });
+    }
+    if (!best) continue;
+    // a better-skilled apprentice is offered more per shift (up to +60%)
+    const wage = Math.round(o.wage * Math.min(1.6, 1 + 0.15 * (best.skill - 1)));
+    hire(state, best.p, o, wage);
+    best.p.appResult = { npc, day: state.day, hired: true, why: best.v.why, wage, base: o.wage, count: people.length };
+  }
+}
+function hire(state, p, o, wage) {
+  const acct = 'player:' + p.id;
+  const contractId = (state.contractSeq = (state.contractSeq || 0) + 1);
+  p.job = { npc: o.npc, wage, daysLeft: o.days, startDay: state.day, shiftDay: null, shiftsToday: 0, shifts: 0, contractId };
+  delete state.jobOffers[o.npc];
+  // signing: a small bonus from the employer carries the contract terms onto NEAR
+  const terms = `Emberwick contract #${contractId}: ${o.npc} hires ${p.name}. ${wage} EMWK/shift, max ${JOBS.shiftsPerDay}/day, ${o.days} days, severance ${wage * JOBS.severanceDays}, notice fee ${wage * JOBS.noticeShifts}.`;
+  p.job.terms = terms;
+  transfer(state, npcAcct(o.npc), acct, JOBS.signingBonus, { memo: terms, contract: contractId });
+  p.stats.earned = r2(p.stats.earned + JOBS.signingBonus);
+  addLog(state, `${p.name} became an apprentice.`, 'join', 'log.hired', { name: p.name, place: { $place: o.npc }, n: wage });
+}
+
 function judgeApplicant(state, p, npc) {
   const req = JOBS.require[npc];
   if (p.quitUntil && p.quitUntil > state.day) return { ok: false, why: 'quitRecently' };
@@ -1291,25 +1334,24 @@ function contractAction(state, p, action) {
   if (action.type === 'propose') return propose(state, acct, action.kind, action);
   if (action.type === 'vote') return vote(state, acct, action.id, action.yes);
   if (action.type === 'takeJob' || action.type === 'apply') {
+    // applications are collected; the craftsman interviews everyone at the next interview round
+    // (several times a day while the shop is open, first thing in the morning after a night)
     const o = state.jobOffers[action.npc];
     if (!o) return { ok: false, error: 'That job is no longer offered.', code: 'err.noJob' };
     if (p.job) return { ok: false, error: 'You already have a job.', code: 'err.haveJob' };
-    // the craftsman looks at your application and says why
+    const apps = (state.applications = state.applications || {});
+    for (const list of Object.values(apps)) if (list.some((x) => x.pid === p.id)) return { ok: false, error: 'You are already waiting for an interview.', code: 'err.applied' };
+    // the written requirements on the notice board are checked at once; the choice between applicants waits for the interview
     const verdict = judgeApplicant(state, p, o.npc);
-    if (!verdict.ok) {
-      addLog(state, `${p.name} applied for a job and was turned down.`, 'warn', 'log.turnedDown', { name: p.name, place: { $place: o.npc } });
-      return { ok: false, error: 'The craftsman turned you down.', code: 'err.turnedDown', why: verdict.why, need: verdict.need };
-    }
-    const contractId = (state.contractSeq = (state.contractSeq || 0) + 1);
-    p.job = { npc: o.npc, wage: o.wage, daysLeft: o.days, startDay: state.day, shiftDay: null, shiftsToday: 0, shifts: 0, contractId };
-    delete state.jobOffers[o.npc];
-    // signing: a small bonus from the employer carries the contract terms onto NEAR
-    const terms = `Emberwick contract #${contractId}: ${o.npc} hires ${p.name}. ${o.wage} EMWK/shift, max ${JOBS.shiftsPerDay}/day, ${o.days} days, severance ${o.wage * JOBS.severanceDays}, notice fee ${o.wage * JOBS.noticeShifts}.`;
-    p.job.terms = terms;
-    transfer(state, npcAcct(o.npc), acct, JOBS.signingBonus, { memo: terms, contract: contractId });
-    p.stats.earned = r2(p.stats.earned + JOBS.signingBonus);
-    addLog(state, `${p.name} became an apprentice.`, 'join', 'log.hired', { name: p.name, place: { $place: o.npc }, n: o.wage });
-    return { ok: true, job: p.job, why: verdict.why };
+    if (!verdict.ok) return { ok: false, error: 'The craftsman turned you down.', code: 'err.turnedDown', why: verdict.why, need: verdict.need };
+    (apps[o.npc] = apps[o.npc] || []).push({ pid: p.id, day: state.day, tick: state.tick });
+    p.appResult = null;
+    return { ok: true, applied: o.npc, waiting: apps[o.npc].length, next: nextInterview(state) };
+  }
+  if (action.type === 'withdrawApplication') {
+    const apps = state.applications || {};
+    for (const k of Object.keys(apps)) apps[k] = apps[k].filter((x) => x.pid !== p.id);
+    return { ok: true };
   }
   if (action.type === 'shift') {
     if (isNight(state)) return NIGHT_ERR;
@@ -1591,6 +1633,8 @@ function playerView(state, p) {
     asleep: !!(p.sleep && p.sleep.day === state.day && isNight(state)), sleepPlace: p.sleep && p.sleep.day === state.day ? p.sleep.place : null,
     cold: !!p.cold, freezing: freezing(state, p), coatLeft: hasCoat(p) ? RULES.coatWinterDays - ((p.wear && p.wear.coat) || 0) : 0,
     innBed: RULES.innBed, level: playerLevel(p),
+    application: (() => { for (const [npc, list] of Object.entries(state.applications || {})) { const i = list.findIndex((x) => x.pid === p.id); if (i >= 0) return { npc, others: list.length - 1, next: nextInterview(state) }; } return null; })(),
+    appResult: p.appResult || null,
     skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,
   };
 }
@@ -1610,6 +1654,10 @@ export function publicView(state, playerId) {
       closed: n.damagedUntil > state.day,
       shut: isNight(state) && def.id !== 'inn', // closed for the night
       level: n.level || 1, learn: n.learn || {},
+      why: Object.fromEntries([...new Set([...Object.keys(n.buys), ...Object.keys(n.sells)])].map((g) => {
+        const target = targetFor(state, def.id, g), stock = n.stock[g] || 0;
+        return [g, { stock: Math.round(stock * 10) / 10, target: Math.round(target * 10) / 10, reasons: priceReasons({ stock, target, learned: n.learn && n.learn[g], level: n.level || 1, winter: state.events.winter, dragon: state.events.dragon > 0, drought: state.events.drought > 0, good: g, npc: def.id }) }];
+      })),
       offers: playerId && state.players[playerId] ? Object.fromEntries(Object.keys(n.buys).filter((g) => inv(state.players[playerId], g) > 0).map((g) => {
         const q = sellQuote(state, def.id, g, inv(state.players[playerId], g), (skillLevel(state.players[playerId], 'trading') - 1) * RULES.tradeBonus);
         return [g, { qty: q.qty, total: q.total, want: q.want, first: q.first, last: q.last }];

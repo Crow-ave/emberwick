@@ -373,6 +373,13 @@ function bestBuyer(good) {
 }
 
 // buying and selling at a shop: used in the side panel and on the counter inside the scene
+// the craftsman's reasoning behind a price, shown in a tooltip
+function whyTip(n, g) {
+  const w = n.why && n.why[g];
+  if (!w) return '';
+  const text = [t('why.stockLine', { s: w.stock, t: w.target }), ...w.reasons.map((r) => t('price.' + r))].join(' · ');
+  return ` <span class="tip" tabindex="0" data-tip="${esc(text)}" aria-label="${esc(text)}">ⓘ</span>`;
+}
 function tradeBlock(id) {
   const n = view.npcs[id], me = view.player;
   let h = '';
@@ -387,7 +394,7 @@ function tradeBlock(id) {
     h += `<h4>${t('panel.buysFromYou')}</h4><table>`;
     for (const [g, p] of buys) {
       const have = me ? me.inv[g] || 0 : 0;
-      h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.youHave', { n: have })})</span></td><td class="n">${p} EMWK</td>` +
+      h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.youHave', { n: have })})</span></td><td class="n">${p} EMWK${whyTip(n, g)}</td>` +
         ((n.full || []).includes(g) ? `<td class="n"><span class="muted small">${t('panel.full')}</span></td></tr>`
           : (() => {
             const o = (n.offers || {})[g];
@@ -403,7 +410,7 @@ function tradeBlock(id) {
     h += `<h4>${t('panel.sells')}</h4><table>`;
     for (const [g, p] of sells) {
       const stock = n.stock[g] || 0;
-      h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.left', { n: stock })})</span></td><td class="n">${p} EMWK</td>` +
+      h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.left', { n: stock })})</span></td><td class="n">${p} EMWK${whyTip(n, g)}</td>` +
         `<td class="n"><button data-act="buy" data-good="${g}" ${!me || !stock || n.closed ? 'disabled' : ''}>${t('panel.buy')}</button></td></tr>`;
     }
     h += `</table>`;
@@ -758,17 +765,30 @@ function contractLine(j) {
   return `<p class="small">${t('job.contract', { n: j.contractId })} ${link || (chainOk() ? `<span class="muted">${t('job.contractWait')}</span>` : '')}</p>`;
 }
 
+// real seconds until a given game step
+function secsTo(tick) {
+  const r = world.rules, now = Math.round(view.dayProgress * r.ticksPerDay) + (view.day - 1) * r.ticksPerDay;
+  const sec = Math.max(0, Math.round(((tick - now) * r.tickMs) / 1000));
+  return sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : `${sec} s`;
+}
 function jobSection(npc) {
   const me = view.player;
   const j = me && me.job;
   if (j && j.npc === npc) {
-    return `<div class="contract"><b>${t('job.mine')}</b><div class="muted small">${t('job.status', { n: j.wage, days: j.daysLeft })} · ${t('job.today', { a: j.shiftsToday, b: j.maxShifts })}</div>` +
+    const ar = me.appResult;
+    const won = ar && ar.hired && ar.npc === npc && ar.day >= view.day - 1 ? `<p class="small ok">"${esc(t('apply.won', { n: ar.count - 1, w: ar.wage, b: ar.base }))}"</p>` : '';
+    return `<div class="contract"><b>${t('job.mine')}</b>${won}<div class="muted small">${t('job.status', { n: j.wage, days: j.daysLeft })} · ${t('job.today', { a: j.shiftsToday, b: j.maxShifts })}</div>` +
       (j.shiftToday ? `<p class="small">${t('job.shiftDone')}</p>`
         : `<button class="primary big" data-act="shift" ${me.energy < j.energy ? 'disabled' : ''}>${t('job.shift', { e: j.energy, n: j.wage })}</button>` + (me.energy < j.energy ? tiredHelp(me) : '')) +
       `<p class="muted small">${t('job.severance', { n: j.wage })} ${t('job.quitNote', { n: j.wage })}</p>` + contractLine(j) + `<button class="linkbtn" data-act="quitJob">${t('job.quit')}</button></div>`;
   }
+  const ap = me && me.application, ar = me && me.appResult;
+  let note = '';
+  if (ap && ap.npc === npc) note = `<div class="contract"><b>${t('apply.waiting')}</b><p class="small">${t(ap.next.morning ? 'apply.waitMorning' : 'apply.waitSoon', { n: ap.others, s: secsTo(ap.next.tick) })}</p><button class="linkbtn" data-act="withdrawApplication">${t('apply.withdraw')}</button></div>`;
+  else if (ar && ar.npc === npc && !ar.hired && ar.day >= view.day - 1) note = `<div class="contract"><b class="bad">${t('apply.lost')}</b><p class="small">"${esc(ar.why === 'needSkill' && ar.need ? t('apply.needSkill', { skill: t('skill.' + ar.need.skill), n: ar.need.level, have: ar.need.have }) : t('apply.' + ar.why, { n: ar.count - 1 }))}"</p></div>`;
   const o = view.jobOffers.find((x) => x.npc === npc);
-  if (!o) return '';
+  if (!o) return note;
+  if (ap && ap.npc === npc) return note;
   let req = `<p class="small">${t('job.noReq')}</p>`;
   if (o.require) {
     const have = me ? me.skills[o.require.skill].level : 1, ok = have >= o.require.level;
@@ -1344,6 +1364,11 @@ function render() {
     if (!ui.selected || ui.selected === 'guide') ui.selected = 'guide';
   }
   if (view) ui.wasNight = !!view.night;
+  const ar = view && view.player && view.player.appResult;
+  if (ar && ui.lastApp !== `${ar.npc}|${ar.day}|${ar.hired}`) {
+    if (ui.lastApp !== undefined) toast(ar.hired ? t('apply.toastWon', { name: npcName(ar.npc), w: ar.wage }) : t('apply.toastLost', { name: npcName(ar.npc) }), ar.hired ? 'win' : 'bad');
+    ui.lastApp = `${ar.npc}|${ar.day}|${ar.hired}`;
+  } else if (view && view.player && !ar && ui.lastApp === undefined) ui.lastApp = '';
   const ffb = $('ff-btn');
   if (ffb && view) {
     const run = view.ff && view.ff.running;
@@ -1453,7 +1478,7 @@ function explain(type, extra, r) {
     flash('coins');
     result[place] = r.made ? { key: 'result.shiftMade', p: { n: r.wage, good: { $good: r.made } } } : { key: 'result.shift', p: { n: r.wage } };
   } else if (type === 'takeJob') {
-    result[place] = { key: 'result.hiredWhy', p: { name: { $npc: place }, why: t('apply.' + (r.why || 'beginner')) } };
+    result[place] = { key: r.next && r.next.morning ? 'result.appliedNight' : 'result.applied', p: { name: { $npc: place }, n: r.waiting - 1 } };
   } else if (type === 'buyPlot') {
     result[extra.plot] = { key: 'result.boughtPlot', p: { n: r.price } };
     flash('coins');
@@ -1615,6 +1640,7 @@ document.body.addEventListener('click', (e) => {
   if (a === 'close') { ui.selected = null; renderMapNow(); renderPanel(); renderDock(); }
   else if (a === 'elder') openElder();
   else if (a === 'meal') { delete result.inn; goAndDo('inn', 'meal', () => act('meal')); }
+  else if (a === 'withdrawApplication') { act('withdrawApplication'); }
   else if (a === 'takeJob' || a === 'shift' || a === 'quitJob') { const npc = btn.dataset.npc || ui.selected; delete result[npc]; goAndDo(npc, a, () => act(a, { npc })); }
   else if (a === 'buyPlot' || a === 'buildHouse') { const plot = ui.selected; delete result[plot]; goAndDo(plot, a, () => act(a, { plot })); }
   else if (a === 'rentHouse' || a === 'leaveHouse' || a === 'rest') { const house = ui.selected; delete result[house]; goAndDo(house, a, () => act(a, { house })); }

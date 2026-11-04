@@ -28,6 +28,10 @@ Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what
 
 ## AI craftsmen that haggle, learn and grow
 
+All pricing rules are in one readable file, **`server/pricing.js`**. Every price in a shop has an ⓘ tooltip with the craftsman's reasoning (stock vs. target, winter, dragon, drought, what they learned, workshop size).
+
+- **Hiring:** applying for a job hands in an application. The craftsman interviews every applicant at the next interview round (every ~1.5 game hours while the shop is open; applications made at night wait for the morning). The best fit for the work gets the job, and a more skilled apprentice is offered a higher wage (up to +60%). The others hear why they were not chosen.
+
 - **Haggling:** a craftsman buys only what they need, and each extra unit is worth a little less to them (the same supply-and-demand rule that moves prices). The sell button shows the offer ("Sell 12 for 29"); the rest you sell later, elsewhere or on the exchange.
 - **Learning:** every morning each craftsman looks at what sold in the last days and keeps more of what sells well, less of what does not. The shop panel shows what they learned.
 - **Growing:** a craftsman who earns well expands the workshop (up to level 3): faster production and bigger stock. The expansion is paid to the carpenter, who builds it, so the money stays in the village.

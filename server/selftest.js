@@ -130,6 +130,22 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   if (!list.ok || !buy.ok || state.plots[plotId].owner !== b2 || owner.plot) fail('the deed market did not work');
   if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed on the exchange');
 }
+// job interviews: two applicants at night, nobody is hired before morning, the more skilled one wins with a higher wage
+{
+  const per = RULES.ticksPerDay;
+  const x = joinPlayer(state, 'Novice', 'farmer').id, y = joinPlayer(state, 'Expert', 'farmer').id;
+  state.players[y].xp.farming = 70; // level 5
+  while ((state.tick % per) / per < 0.85) tick(state);
+  state.jobOffers.bakery = { npc: 'bakery', wage: 8, days: 3, day: state.day, require: null };
+  const a1 = playerAction(state, x, { type: 'apply', npc: 'bakery' }), a2 = playerAction(state, y, { type: 'apply', npc: 'bakery' });
+  for (let i = 0; i < 3; i++) tick(state);
+  const hiredAtNight = !!(state.players[x].job || state.players[y].job);
+  while ((state.tick % per) !== 1) tick(state);
+  for (let i = 0; i < 14; i++) tick(state);
+  const X = state.players[x], Y = state.players[y];
+  console.log('Interviews: applied', a1.ok, a2.ok, '| hired at night', hiredAtNight, '| expert hired', !!Y.job, 'wage', Y.job && Y.job.wage, '| novice', X.appResult && X.appResult.why);
+  if (!a1.ok || !a2.ok || hiredAtNight || !Y.job || X.job || Y.job.wage <= 8 || X.appResult.why !== 'otherBetter') fail('job interviews did not work');
+}
 function playerView0() { return publicView(state, me).player; }
 
 // a watchtower: the council orders one, the carpenter is paid, readiness goes up
