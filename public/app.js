@@ -138,9 +138,10 @@ function syncOthers() {
 }
 
 function stepWalker(w, dt) {
+  if (w.hold) { w.look.moving = false; return; } // the mouse is on them: they stop so you can click
   if (w.path.length > 1) {
     w.look.moving = true;
-    w.prog += dt * (w === you ? 2.6 : 1.4);
+    w.prog += dt * (w === you ? 2.6 : 0.75);
     while (w.prog >= 1 && w.path.length > 1) { w.prog -= 1; w.path.shift(); w.cell = w.path[0]; }
     if (w.path.length <= 1) {
       w.prog = 0; w.path = []; w.look.moving = false; w.wait = 1.5 + Math.random() * 2;
@@ -1592,18 +1593,31 @@ $('elder-ok').addEventListener('click', async () => {
 });
 
 let ignoreClick = false;
-$('map').addEventListener('pointerdown', (e) => {
-  const svg = $('map');
-  const pt = svg.createSVGPoint();
-  pt.x = e.clientX; pt.y = e.clientY;
-  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+// the villager under the mouse (a generous area around the little figure)
+function walkerAt(p) {
   let best = null, bestD = 1e9;
   for (const w of walkers) {
     if (w.inside) continue;
     const [x, y] = walkerPos(w);
     const dx = Math.abs(p.x - x), dy = y - p.y;
-    if (dx < 13 && dy > -6 && dy < 52 && dx + Math.abs(dy - 24) < bestD) { best = w; bestD = dx + Math.abs(dy - 24); }
+    if (dx < 22 && dy > -14 && dy < 60 && dx + Math.abs(dy - 24) < bestD) { best = w; bestD = dx + Math.abs(dy - 24); }
   }
+  return best;
+}
+$('map').addEventListener('mousemove', (e) => {
+  const svg = $('map'), pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const w = walkerAt(pt.matrixTransform(svg.getScreenCTM().inverse()));
+  for (const x of walkers) x.hold = x === w;
+  svg.style.cursor = w ? 'pointer' : '';
+});
+$('map').addEventListener('mouseleave', () => { for (const x of walkers) x.hold = false; });
+$('map').addEventListener('pointerdown', (e) => {
+  const svg = $('map');
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const best = walkerAt(p);
   if (best) { ignoreClick = true; talk(best); }
 });
 $('map').addEventListener('click', (e) => {

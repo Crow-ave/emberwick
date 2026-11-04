@@ -10,12 +10,16 @@
 //    Short of something → they pay more for it and charge more for it. Full stores → the opposite.
 // 2. Prices do not jump: every step they move 6% of the way towards that level (12% in demo mode).
 // 3. Selling many units at once: each extra unit is priced as if the stock were already one higher,
-//    so the 10th wool is worth less to the tailor than the 1st, and they stop at twice the target.
+//    so the 10th wool is worth less to the tailor than the 1st. Past the target the price falls to the floor
+//    (0.4× the base), and they stop buying at five times the target.
+// 3b. Materials do not pile up for ever: every morning a craftsman uses up a quarter of any material
+//    stock above twice the target, so the store room has room again the next day.
 // 4. Players with trading skill get +3% per level on what craftsmen pay them.
 
 export const CURVE = { buy: 0.8, sell: 0.6 };
 export const RANGE = { buy: [0.4, 4], sell: [0.5, 4], toolFloor: 0.8 };
-export const WANT_FACTOR = 2; // a craftsman buys until the stock is twice the target
+export const WANT_FACTOR = 5; // a craftsman keeps buying until the store room holds five times the target
+export const USE_UP = 0.25;    // each morning a quarter of a material stock above twice the target is used up (spun, eaten, burnt)
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 

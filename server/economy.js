@@ -3,7 +3,7 @@
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
 // EMWK token will behave on NEAR.
 
-import { levelPrice, stepTowards, priceReasons, WANT_FACTOR } from './pricing.js';
+import { levelPrice, stepTowards, priceReasons, WANT_FACTOR, USE_UP } from './pricing.js';
 import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND, DISTRICTS, CENTRE_FACTOR, MARKET } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -758,6 +758,12 @@ function startNewDay(state) {
   for (const def of CRAFTSMEN) {
     const npc = state.npcs[def.id];
     if (!npc) continue;
+    // materials piled far above the target get used up, so the store room frees up again
+    for (const g of Object.keys(npc.buys)) {
+      if (npc.sells[g] !== undefined) continue;
+      const cap = 2 * targetFor(state, def.id, g), s0 = npc.stock[g] || 0;
+      if (s0 > cap) npc.stock[g] = s0 - Math.ceil((s0 - cap) * USE_UP);
+    }
     npc.level = npc.level || 1;
     npc.learn = npc.learn || {};
     npc.history = npc.history || {};
@@ -1662,7 +1668,7 @@ export function publicView(state, playerId) {
         const q = sellQuote(state, def.id, g, inv(state.players[playerId], g), (skillLevel(state.players[playerId], 'trading') - 1) * RULES.tradeBonus);
         return [g, { qty: q.qty, total: q.total, want: q.want, first: q.first, last: q.last }];
       })) : {},
-      full: Object.keys(n.buys).filter((g) => (n.stock[g] || 0) >= targetFor(state, def.id, g) * 3),
+      full: Object.keys(n.buys).filter((g) => (n.stock[g] || 0) >= targetFor(state, def.id, g) * WANT_FACTOR - 0.5),
       line: def.lines[(state.day + def.id.length) % def.lines.length],
       lineKey: `${def.id}.${(state.day + def.id.length) % def.lines.length}`,
     };
