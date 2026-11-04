@@ -494,14 +494,14 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   #quest.hud .qrow { margin: 0; }
   /* the village fills the space between the two bars */
   .view:not(.card-on) #map { transform: none; }
-  .view:not(.scene-on) #map { top: 96px; bottom: 50px; height: auto; }
+  .view:not(.scene-on) #map { top: 96px; bottom: auto; height: calc(100% - 146px); }
   .view.card-on #map { transform: none; opacity: .35; }
   .hint, .view .hint { display: none; }
   .view .banner { left: 8px; right: 8px; top: auto; bottom: 56px; font-size: 12px; }
   /* inside a place */
   .mini { width: 84px; height: 54px; top: 6px; left: 6px; } .mini span { font-size: 10px; padding: 2px 6px; margin-bottom: 3px; }
   .view.scene-on .hud-right { left: 96px; }
-  .view.scene-on #scene { top: 66px; bottom: 96px; height: auto; }
+  .view.scene-on #scene { top: 66px; bottom: auto; height: calc(100% - 162px); }
   .scene-bar { position: absolute; left: 6px; right: 6px; bottom: 6px; margin: 0; padding: 8px 10px; gap: 8px; flex-wrap: wrap; }
   .scene-bar .info { font-size: 12px; } .scene-bar .quote { display: none; }
   .hud-right .scene-menu { width: 100%; max-height: 40%; font-size: 12px; }
@@ -520,3 +520,32 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 #chat-form { display: flex; gap: 6px; }
 #chat-form input { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid #e0d2bb; border-radius: 8px; font: inherit; font-size: 13px; }
 #chat-form button { padding: 6px 12px; font-size: 13px; }
+
+/* touch screens: zoom buttons, the map takes drags (v51) */
+.zoom { position: absolute; right: 8px; bottom: 58px; z-index: 4; display: flex; flex-direction: column; gap: 6px; }
+.zoom[hidden], .view.scene-on .zoom, .view.card-on .zoom { display: none; }
+.zoom button { width: 38px; height: 38px; border-radius: 50%; border: none; background: rgba(255,250,242,.95); box-shadow: 0 2px 8px rgba(47,36,24,.25); font-size: 22px; font-weight: 700; color: var(--ember-dark); padding: 0; line-height: 1; }
+@media (pointer: coarse) { #map { touch-action: none; } }
+/* short landscape screens (phone on its side) */
+@media (max-height: 520px) and (orientation: landscape) {
+  body { overflow: auto; height: auto; display: block; }
+  .stage { display: flex; flex-direction: column; margin: 6px; gap: 6px; }
+  .view { height: calc(100vh - 58px); min-height: 300px; }
+  .side { order: 2; margin: 0; overflow: visible; } .bottom { order: 3; display: block; }
+  .hud-right { top: 6px; right: 6px; bottom: 6px; width: 300px; }
+  #me.hud { padding: 6px 10px; } #me.hud .avatar { width: 26px; height: 26px; } #me.hud .sub { display: none; }
+  #me.hud .coins { font-size: 16px; } #me.hud .energy { margin-top: 2px; font-size: 11px; }
+  #me.hud .shortcuts { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 4px; } #me.hud .chip { flex: none; }
+  #quest.hud { left: 6px; bottom: 6px; width: 240px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; }
+  #quest.hud .step, #quest.hud .prog, #quest.hud .prog + .reward, #quest.hud .qrow .linkbtn { display: none; }
+  #quest.hud h4 { flex: 1; min-width: 0; margin: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .view .banner { left: 8px; right: 320px; top: 6px; font-size: 12px; padding: 6px 10px; }
+  .view:not(.card-on) #map { transform: none; }
+  .hint, .view .hint { display: none; }
+  .zoom { bottom: 8px; right: 316px; flex-direction: row; }
+  .scene-bar { position: absolute; left: 6px; right: 6px; bottom: 6px; margin: 0; padding: 6px 10px; }
+}
+/* dialogs taller than a small screen scroll instead of hiding their buttons */
+.overlay { overflow-y: auto; align-items: flex-start; }
+.overlay .dialog { margin: auto 0; }
+@media (max-width: 700px) { .hud-right .scene-menu { display: none !important; } }

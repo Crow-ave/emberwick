@@ -318,7 +318,7 @@ function renderScene() {
     bar.innerHTML = `<div class="info"><b>${esc(placeName(id))}</b>${frozen ? esc(t('err.winterFields')) : working ? esc(t('scene.working', { name: me ? me.name : '' })) : t('scene.ready')}<div class="prog"><div id="scene-prog"></div></div></div>` +
       `<button class="primary" data-act="gather" data-spot="${id}" ${!me || frozen || me.energy < cost || working || me.job || !(me.inv[TOOL_OF[SPOT_GOOD[id]]] > 0) ? 'disabled' : ''}>${t('scene.again', { n: cost })}</button>`;
   } else if (n) {
-    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))} · ${esc(npcName(id))}</b><span class="quote">"${esc(t('line.' + n.lineKey))}"</span><div class="muted" style="font-size:12px;margin-top:4px">${t('scene.tradeHint')}</div></div>` +
+    bar.innerHTML = `<div class="info"><b>${esc(placeName(id))} · ${esc(npcName(id))}</b><span class="quote">"${esc(t('line.' + n.lineKey))}"</span><div class="muted" style="font-size:12px;margin-top:4px">${t(phoneLayout() ? 'scene.tradeHintBelow' : 'scene.tradeHint')}</div></div>` +
       (id === 'inn' ? sleepButton('inn') : '');
   } else if (homeHasScene(id, view)) {
     bar.innerHTML = `<div class="info"><b>${esc(placeName(id))}</b><span class="quote">${esc(t('scene.home'))}</span></div>` + sleepButton(id);
@@ -435,7 +435,7 @@ function panelCraftsman(b) {
   if (b.id === 'inn') h += sleepBox('inn');
   if (b.id === 'tailor' && view.events.winter && me && !me.inv.coat) h += `<p class="closed small">${t('coat.need')}</p>`;
   // inside the shop the counter on the game screen has the buy/sell lists, so the side panel stays short
-  h += (ui.scene === b.id && me ? `<p class="small muted">${t('scene.tradeHint')}</p>` : tradeBlock(b.id)) + jobSection(b.id);
+  h += (ui.scene === b.id && me && !phoneLayout() ? `<p class="small muted">${t('scene.tradeHint')}</p>` : tradeBlock(b.id)) + jobSection(b.id);
   if (chainOk()) h += `<p class="small">${exLink('address/' + view.chain.accounts.npcs[b.id], t('near.view') + ' · ' + esc(view.chain.accounts.npcs[b.id]))}</p>`;
   return h + `<p class="muted" style="font-size:12px">${t('panel.pricesNote')}</p>`;
 }
@@ -756,6 +756,8 @@ function panelTrade() {
   return h + `</table>`;
 }
 
+// on a phone the shop counter would cover the shopkeeper, so buying and selling stays in the panel under the picture
+const phoneLayout = () => matchMedia('(max-width: 700px)').matches;
 const closeBtn = () => `<button class="close" data-act="close" aria-label="${t('ui.close')}">×</button>`;
 
 // big places (treasury, council) open as a card over the map, so nothing is lost below the side panel
@@ -1684,6 +1686,8 @@ document.body.addEventListener('click', (e) => {
   if (lt) { showLogTab(lt.dataset.logtab); return; }
   const cto = e.target.closest('[data-chatto]');
   if (cto) { showLogTab('chat'); const inp = $('chat-input'); inp.value = '@' + cto.dataset.chatto + ' '; inp.focus(); inp.scrollIntoView({ block: 'nearest' }); return; }
+  const zb = e.target.closest('[data-zoom]');
+  if (zb) { mz.z = Math.max(1, Math.min(3, mz.z * (zb.dataset.zoom === 'in' ? 1.35 : 1 / 1.35))); applyZoom(); return; }
   if (e.target.closest('[data-trade]')) { ui.selected = 'trade'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('[data-board]')) { ui.selected = 'board'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('#wallet-btn')) {
@@ -1780,6 +1784,54 @@ function makeYou() {
 }
 
 
+// ---------- touch screens: pinch or press +/- to zoom the village, drag to look around ----------
+const touchMap = matchMedia('(pointer: coarse)').matches;
+const mz = { base: null, z: 1, cx: 0, cy: 0 };
+function applyZoom() {
+  const svg = $('map');
+  if (!mz.base) return;
+  const [bx, by, bw, bh] = mz.base, w = bw / mz.z;
+  // follow the shape of the screen, so a tall phone screen is filled instead of showing empty bands
+  const r = svg.getBoundingClientRect(), ratio = r.width ? r.height / r.width : bh / bw;
+  const h = Math.min(bh, w * ratio);
+  mz.cx = Math.max(bx + w / 2, Math.min(bx + bw - w / 2, mz.cx));
+  mz.cy = Math.max(by + h / 2, Math.min(by + bh - h / 2, mz.cy));
+  svg.setAttribute('viewBox', `${mz.cx - w / 2} ${mz.cy - h / 2} ${w} ${h}`);
+  const zb = $('zoom'); if (zb) zb.hidden = !touchMap;
+}
+function setupTouchMap() {
+  const svg = $('map');
+  mz.base = svg.getAttribute('viewBox').split(' ').map(Number);
+  mz.cx = mz.base[0] + mz.base[2] / 2; mz.cy = mz.base[1] + mz.base[3] * 0.52;
+  if (!touchMap) return;
+  mz.z = matchMedia('(max-width: 700px)').matches ? 1.6 : 1.25;
+  applyZoom();
+  setTimeout(applyZoom, 300); // once the page has its final size
+  addEventListener('resize', applyZoom);
+  let start = null;
+  const unitsPerPx = () => { const vb = svg.viewBox.baseVal; return Math.max(vb.width / svg.clientWidth, vb.height / svg.clientHeight); };
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  svg.addEventListener('touchstart', (e) => {
+    const t = e.touches;
+    start = t.length >= 2 ? { pinch: dist(t), z: mz.z } : { x: t[0].clientX, y: t[0].clientY, cx: mz.cx, cy: mz.cy, moved: false };
+  }, { passive: true });
+  svg.addEventListener('touchmove', (e) => {
+    if (!start) return;
+    const t = e.touches;
+    if (t.length >= 2 && start.pinch) { e.preventDefault(); mz.z = Math.max(1, Math.min(3, start.z * dist(t) / start.pinch)); applyZoom(); return; }
+    if (t.length !== 1 || start.pinch) return;
+    const dx = t[0].clientX - start.x, dy = t[0].clientY - start.y;
+    if (!start.moved && Math.hypot(dx, dy) < 8) return; // still a tap
+    start.moved = true; e.preventDefault();
+    const u = unitsPerPx();
+    mz.cx = start.cx - dx * u; mz.cy = start.cy - dy * u; applyZoom();
+  }, { passive: false });
+  svg.addEventListener('touchend', (e) => {
+    if (start && start.moved) { ignoreClick = true; setTimeout(() => { ignoreClick = false; }, 400); }
+    if (!e.touches.length) start = null;
+  }, { passive: true });
+}
+
 // ---------- village chat ----------
 let chatSeen = null; // the newest message id already shown as a bubble
 function renderChat() {
@@ -1853,6 +1905,7 @@ function connect() {
   world = await (await fetch('/api/world')).json();
   buildGrid(world.buildings);
   setupMap($('map'));
+  setupTouchMap();
   playerId = store.get();
   view = await (await fetch('/api/state' + (playerId ? `?player=${playerId}` : ''))).json();
   if (!view.player) { playerId = null; showJoin(); } else makeYou();
