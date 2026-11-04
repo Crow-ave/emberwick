@@ -541,7 +541,7 @@ function panelExchange() {
     const q = ui.exQuote;
     if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
     else if (q && q.ok) h += `<div class="contract"><b>${t('ex.quoteOut', { a: q.amountIn, b: q.amountOut, sym: q.to, chain: q.chain })}</b>${q.usdOut ? `<div class="small">≈ $${q.usdOut}</div>` : ''}<p class="muted small">${t('ex.quoteNote')}</p></div>`;
-    else if (q) h += `<p class="muted small">${t('ex.offline')} (${esc(q.error || '')})</p>`;
+    else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
     h += `<p class="muted small">${t('ex.changeNote')}</p>`;
   }
   return h;

@@ -120,7 +120,7 @@ async function intentsTokens() {
   if (tokenCache.list && Date.now() - tokenCache.at < 60000) return tokenCache.list;
   const all = await getJson(`${ONECLICK}/tokens`);
   const pick = (sym, chain) => all.find((t) => t.symbol === sym && t.blockchain === chain) || (sym === 'NEAR' ? all.find((t) => t.assetId === 'nep141:wrap.near') : null);
-  tokenCache = { at: Date.now(), list: SHOW.map(([sym, chain]) => pick(sym, chain)).filter(Boolean).map((t) => ({ symbol: t.symbol, chain: t.blockchain, assetId: t.assetId, decimals: t.decimals, price: t.price, updated: t.priceUpdatedAt })) };
+  tokenCache = { at: Date.now(), list: SHOW.map(([sym, chain]) => [sym, pick(sym, chain)]).filter(([, t]) => t).map(([key, t]) => ({ key, symbol: t.symbol, chain: t.blockchain, assetId: t.assetId, decimals: t.decimals, price: t.price, updated: t.priceUpdatedAt })) };
   return tokenCache.list;
 }
 async function intentsPrices() {
@@ -132,7 +132,7 @@ async function intentsQuote(toSym, amount) {
     const key = `${toSym}|${amount}`, hit = quoteCache.get(key);
     if (hit && Date.now() - hit.at < 30000) return hit.res;
     const list = await intentsTokens();
-    const from = list.find((t) => t.symbol === 'NEAR'), to = list.find((t) => t.symbol === toSym);
+    const from = list.find((t) => t.key === 'NEAR'), to = list.find((t) => t.key === toSym); // NEAR is listed as wNEAR (wrap.near)
     if (!from || !to || to === from) return { ok: false, error: 'unknown asset' };
     const units = (BigInt(Math.round(amount * 1000)) * 10n ** BigInt(from.decimals)) / 1000n;
     const q = await getJson(`${ONECLICK}/quote`, { method: 'POST', body: JSON.stringify({

@@ -2,6 +2,7 @@
 // {name} style placeholders are filled in by t(key, params).
 
 const en = {
+  "ex.quoteFailed": "No quote this time: {why}",
   "panel.noNeed": "has enough right now",
   "panel.sellQuote": "Sell {n} for {p}",
   "panel.onlyNeeds": "needs only {n} right now",
@@ -666,6 +667,7 @@ const en = {
 };
 
 const tr = {
+  "ex.quoteFailed": "Bu sefer teklif gelmedi: {why}",
   "panel.noNeed": "şu an yeterince var",
   "panel.sellQuote": "{n} tane sat: {p}",
   "panel.onlyNeeds": "şu an sadece {n} tane istiyor",
@@ -1330,6 +1332,7 @@ const tr = {
 };
 
 const fr = {
+  "ex.quoteFailed": "Pas de devis cette fois : {why}",
   "panel.noNeed": "en a assez pour l'instant",
   "panel.sellQuote": "Vendre {n} pour {p}",
   "panel.onlyNeeds": "n'en veut que {n} pour l'instant",
@@ -1994,6 +1997,7 @@ const fr = {
 };
 
 const de = {
+  "ex.quoteFailed": "Diesmal kein Angebot: {why}",
   "panel.noNeed": "hat gerade genug",
   "panel.sellQuote": "{n} verkaufen für {p}",
   "panel.onlyNeeds": "braucht gerade nur {n}",
@@ -2658,6 +2662,7 @@ const de = {
 };
 
 const ru = {
+  "ex.quoteFailed": "На этот раз котировки нет: {why}",
   "panel.noNeed": "сейчас хватает",
   "panel.sellQuote": "Продать {n} за {p}",
   "panel.onlyNeeds": "сейчас нужно только {n}",
@@ -3457,6 +3462,7 @@ const ru = {
 };
 
 const zh = {
+  "ex.quoteFailed": "这次没有拿到报价：{why}",
   "panel.noNeed": "目前够用了",
   "panel.sellQuote": "卖出 {n} 个，得 {p}",
   "panel.onlyNeeds": "目前只需要 {n} 个",
