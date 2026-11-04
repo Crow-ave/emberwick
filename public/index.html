@@ -28,8 +28,12 @@
       <svg id="scene" role="img" hidden preserveAspectRatio="xMidYMid meet"></svg>
       <button id="mini" class="mini" hidden></button>
       <div id="scene-bar" class="scene-bar" hidden></div>
-      <div id="scene-menu" class="scene-menu" hidden></div>
-      <div id="map-card" class="map-card" hidden></div>
+      <div class="hud-right">
+        <div class="card me hud" id="me"></div>
+        <div id="scene-menu" class="scene-menu" hidden></div>
+        <div id="map-card" class="map-card" hidden></div>
+      </div>
+      <div class="card quest hud" id="quest" hidden></div>
       <div class="banner" id="banner" hidden></div>
       <div class="hint" id="hint" data-i18n="ui.hint"></div>
     </div>
@@ -39,8 +43,6 @@
     </div>
 
     <aside class="side">
-      <div class="card me" id="me"></div>
-      <div class="card quest" id="quest"></div>
       <div class="card panel" id="panel" hidden></div>
       <section class="card log"><h3 data-i18n="ui.news">Village news</h3><ul id="log"></ul></section>
     </aside>

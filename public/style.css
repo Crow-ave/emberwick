@@ -433,3 +433,38 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   #scene.is-working .bob { animation: bounce .4s ease-in-out infinite; }
   #scene .ripple { animation: pulse 3s ease-in-out infinite; }
 }
+
+/* v44: player card and goal float on the game screen; the right side keeps only the place panel and the news */
+.hud-right { position: absolute; top: 10px; right: 10px; bottom: 10px; width: min(460px, 46%); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; z-index: 5; pointer-events: none; }
+.hud-right > * { pointer-events: auto; }
+.hud-right > [hidden] { display: none !important; }
+.card.hud { background: rgba(255,250,242,.94); backdrop-filter: blur(4px); box-shadow: 0 4px 16px rgba(47,36,24,.18); border-radius: 14px; }
+#me.hud { width: 300px; max-width: 100%; padding: 10px 12px; flex: none; }
+#me.hud .me-row { gap: 8px; }
+#me.hud .avatar { width: 36px; height: 36px; }
+#me.hud .who { flex: 1; min-width: 0; }
+#me.hud h3 { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#me.hud .sub { font-size: 11px; }
+#me.hud .coins { margin: 0; font-size: 20px; white-space: nowrap; } #me.hud .coins small { font-size: 11px; font-weight: 600; }
+#me.hud .energy { margin-top: 6px; }
+#me.hud .shortcuts { margin-top: 7px; gap: 4px; } #me.hud .shortcuts .chip { font-size: 11px; padding: 2px 8px; }
+#me.hud .contracts { margin-top: 5px; gap: 4px; } #me.hud .contracts .chip { font-size: 11px; }
+.hud-right .scene-menu { position: static; width: min(330px, 100%); max-height: none; min-height: 0; flex: 0 1 auto; overflow: auto; }
+.hud-right .map-card { position: static; width: 100%; flex: 1 1 auto; min-height: 0; overflow: auto; }
+#quest.hud { position: absolute; left: 10px; bottom: 10px; width: 290px; padding: 9px 12px; z-index: 4; border: 2px solid var(--ember); }
+#quest.hud h4 { font-size: 14px; margin: 2px 0; }
+#quest.hud p { font-size: 12px; margin: 0 0 6px; line-height: 1.35; }
+#quest.hud .prog { margin-bottom: 4px; }
+#quest.hud .qrow { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+#quest.hud .qrow .primary { padding: 5px 12px; font-size: 13px; }
+#quest.hud .qrow .linkbtn { font-size: 12px; }
+.view.scene-on #quest.hud, .view.card-on #quest.hud { display: none; }
+.view .hint { left: auto; right: 12px; transform: none; bottom: 12px; }
+.view .banner { left: 170px; right: 320px; transform: none; max-width: none; width: fit-content; margin: 0 auto; }
+/* keep the island clear of the floating cards: shrink it a little toward the free middle */
+.view:not(.card-on) #map { transform: scale(.86); transform-origin: 55% 42%; transition: transform .35s ease; }
+#quest.hud p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#quest.hud { width: 260px; }
+.view.scene-on #me.hud .shortcuts, .view.scene-on #me.hud .contracts { display: none; }
+.view.scene-on #me.hud { width: 250px; }
+#quest.hud p { display: none; }

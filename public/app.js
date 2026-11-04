@@ -309,7 +309,7 @@ function renderScene() {
   const said = sceneTalk(id);
   const talkKey = said ? said.text : '';
   const talkG = sc.querySelector('#scene-talk');
-  if (talkG && talkG.dataset.k !== talkKey) { talkG.dataset.k = talkKey; talkG.innerHTML = said ? bubble(said.x, said.y, said.text) : ''; }
+  if (talkG && talkG.dataset.k !== talkKey) { talkG.dataset.k = talkKey; talkG.innerHTML = said ? bubble(said.x, said.y, said.text, 34, said.x > 400 ? 0.78 : 0.5) : ''; }
   if (SPOT_GOOD[id]) {
     const cost = me ? me.costs[id] : SPOT_COST[id];
     const working = status[id] && status[id].key === 'status.working';
@@ -433,7 +433,8 @@ function panelCraftsman(b) {
   h += `<div class="quote">"${esc(t('line.' + n.lineKey))}"</div>`;
   if (b.id === 'inn') h += sleepBox('inn');
   if (b.id === 'tailor' && view.events.winter && me && !me.inv.coat) h += `<p class="closed small">${t('coat.need')}</p>`;
-  h += tradeBlock(b.id) + jobSection(b.id);
+  // inside the shop the counter on the game screen has the buy/sell lists, so the side panel stays short
+  h += (ui.scene === b.id && me ? `<p class="small muted">${t('scene.tradeHint')}</p>` : tradeBlock(b.id)) + jobSection(b.id);
   if (chainOk()) h += `<p class="small">${exLink('address/' + view.chain.accounts.npcs[b.id], t('near.view') + ' · ' + esc(view.chain.accounts.npcs[b.id]))}</p>`;
   return h + `<p class="muted" style="font-size:12px">${t('panel.pricesNote')}</p>`;
 }
@@ -1273,22 +1274,18 @@ function avatarSvg(path) {
 function renderHud() {
   const me = view.player;
   if (!me) { $('me').innerHTML = `<p class="muted" style="margin:0">${t('me.join')}</p>`; $('quest').hidden = true; return; }
-  $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('rank.' + String(me.rank).toLowerCase())} · ${t('me.level', { n: me.level })}</div></div></div>` +
-    `<div class="coins">${me.coins.toFixed(0)} EMWK</div>` +
-    `<div class="energy" id="energy-row">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
+  $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
+    `<div class="energy" id="energy-row" title="${esc(t('rank.' + String(me.rank).toLowerCase()))}">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
     `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button></div>` +
-    (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
-    (me.job ? `<div class="jobinfo">${t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage })}</div>` : '') +
-    (me.home ? `<div class="jobinfo">${t('me.homeInfo', { r: me.home.rent, left: dayLeftText() })}</div>` : '');
+    (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}" title="${esc(t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage }))}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}" title="${esc(t('me.homeInfo', { r: me.home.rent, left: dayLeftText() }))}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
+  '';
   const q = me.questInfo;
   ui.target = q.target;
   const qt = questTexts(q);
   const prog = q.progress ? `<div class="prog"><div style="width:${Math.min(100, (q.progress[0] / q.progress[1]) * 100)}%"></div></div><div class="reward" style="margin:-4px 0 8px">${Math.min(q.progress[0], q.progress[1])} / ${q.progress[1]}</div>` : '';
-  $('quest').innerHTML = `<div class="step">${q.id === 'done' ? t('quest.allDone') : t('quest.step', { n: q.index + 1, total: q.total })}</div><h4>${esc(qt.title)}</h4><p>${esc(qt.text)}</p>${prog}` +
-    (q.target ? `<button class="primary" data-go="${q.target}">${t('quest.showMe')}</button>` : '') +
-    (q.reward ? ` <span class="reward">${t('quest.reward', { n: q.reward })}</span>` : '') +
-    `<button class="helpbtn" data-guide="1">${t('quest.help')}</button>`;
+  $('quest').innerHTML = `<div class="step">${q.id === 'done' ? t('quest.allDone') : t('quest.step', { n: q.index + 1, total: q.total })}${q.reward ? ` · <span class="reward">${t('quest.reward', { n: q.reward })}</span>` : ''}</div><h4 title="${esc(qt.text)}">${esc(qt.title)}</h4><p>${esc(qt.text)}</p>${prog}` +
+    `<div class="qrow">${q.target ? `<button class="primary" data-go="${q.target}">${t('quest.showMe')}</button>` : ''}<button class="linkbtn" data-guide="1">${t('quest.help')}</button></div>`;
   $('quest').hidden = false;
 }
 

@@ -42,7 +42,7 @@ function bedSvg(x, y, w = 260, color = '#3a6ea8') {
 }
 
 // a speech bubble with wrapped text, pointing down at (x, y)
-export function bubble(x, y, text, maxChars = 34) {
+export function bubble(x, y, text, maxChars = 34, anchor = 0.5) {
   // Chinese and Japanese have no spaces: wrap by character, and count each as about two letters wide
   const cjk = /[\u2e80-\u9fff\uff00-\uffef]/.test(text);
   const len = (t) => [...t].reduce((a, c) => a + (/[\u2e80-\u9fff\uff00-\uffef]/.test(c) ? 1.9 : 1), 0);
@@ -52,7 +52,7 @@ export function bubble(x, y, text, maxChars = 34) {
   for (const w of words) { if (len(join(line, w)) > maxChars && line) { lines.push(line); line = w.trim(); } else line = join(line, w); }
   if (line) lines.push(line);
   const shown = lines.slice(0, 5), lh = 26, w = Math.max(...shown.map((l) => len(l))) * 11.4 + 40, h = shown.length * lh + 26;
-  const bx = Math.max(10, Math.min(SW - w - 10, x - w / 2)), by = y - h - 18;
+  const bx = Math.max(10, Math.min(SW - w - 10, x - w * anchor)), by = y - h - 18;
   const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   return `<g class="bubble"><rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="16" fill="#fffaf2" stroke="#7a5236" stroke-width="2.5"/>` +
     `<path d="M${x - 12} ${by + h - 1} L${x} ${y - 4} L${x + 12} ${by + h - 1} Z" fill="#fffaf2" stroke="#7a5236" stroke-width="2.5"/><rect x="${x - 11}" y="${by + h - 4}" width="22" height="6" fill="#fffaf2"/>` +

@@ -51,20 +51,42 @@ const SOUNDS = {
   anvil(t) { for (let i = 0; i < 3; i++) metal(t + i * 0.45, 820 + i * 15, 0.3, 0.7); },
   chop(t) { for (let i = 0; i < 3; i++) { tone(t + i * 0.45, 180, 0.12, 'triangle', 0.5, sfxBus, 0.003, 70); noise(t + i * 0.45, 0.09, 'bandpass', 1100, 2, 0.45); } },
   saw(t) { for (let i = 0; i < 4; i++) noise(t + i * 0.32, 0.26, 'bandpass', i % 2 ? 2200 : 3000, 6, 0.75, sfxBus, i % 2 ? 3000 : 2200); },
+  // a sheep: a nasal "m", then a quavering "eh-eh-eh" voice shaped by three vowel formants
   baa(t) {
-    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(420, t); o.frequency.linearRampToValueAtTime(380, t + 0.6);
-    const vib = ctx.createOscillator(); vib.frequency.value = 26; const vg = ctx.createGain(); vg.gain.value = 18; vib.connect(vg).connect(o.frequency);
-    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 3;
-    const g = ctx.createGain(); env(g, t, 0.06, 0.25, 0.6);
-    o.connect(f).connect(g).connect(sfxBus); o.start(t); vib.start(t); o.stop(t + 0.8); vib.stop(t + 0.8);
-    SOUNDS.snip(t + 0.8);
+    const dur = 0.95;
+    const src = ctx.createOscillator(); src.type = 'sawtooth';
+    src.frequency.setValueAtTime(250, t); src.frequency.linearRampToValueAtTime(320, t + 0.16); src.frequency.linearRampToValueAtTime(285, t + dur);
+    const wob = ctx.createOscillator(); wob.frequency.value = 5; const wg = ctx.createGain(); wg.gain.value = 6; wob.connect(wg).connect(src.frequency);
+    // the bleat's quaver is a fast wobble in loudness
+    const trem = ctx.createGain(); trem.gain.value = 0.55;
+    const lfo = ctx.createOscillator(); lfo.frequency.setValueAtTime(11, t); lfo.frequency.linearRampToValueAtTime(14, t + dur);
+    const lg = ctx.createGain(); lg.gain.value = 0.45; lfo.connect(lg).connect(trem.gain);
+    // "m" at the start: a closed, dark sound that opens up
+    const mouth = ctx.createBiquadFilter(); mouth.type = 'lowpass'; mouth.frequency.setValueAtTime(380, t); mouth.frequency.exponentialRampToValueAtTime(5000, t + 0.14);
+    const out = ctx.createGain(); env(out, t, 0.05, 0.22, dur);
+    src.connect(trem).connect(mouth);
+    for (const [f, q, g] of [[620, 7, 1], [1750, 9, 0.55], [2650, 11, 0.3]]) {
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+      const gg = ctx.createGain(); gg.gain.value = g; mouth.connect(bp).connect(gg).connect(out);
+    }
+    out.connect(sfxBus);
+    noise(t + 0.1, dur - 0.2, 'bandpass', 2200, 1.5, 0.04);
+    for (const o of [src, wob, lfo]) { o.start(t); o.stop(t + dur + 0.2); }
+    SOUNDS.snip(t + 1.05);
   },
   snip(t) { for (let i = 0; i < 2; i++) { noise(t + i * 0.22, 0.05, 'highpass', 4500, 1, 0.35); tone(t + i * 0.22, 2400, 0.04, 'square', 0.05); } },
-  splash(t) { noise(t, 0.5, 'bandpass', 1800, 0.7, 0.4, sfxBus, 400); tone(t + 0.05, 600, 0.25, 'sine', 0.12, sfxBus, 0.005, 1200); },
+  // fishing: the line whips out, the float plops into the water, a few bubbles come up
+  splash(t) {
+    noise(t, 0.28, 'bandpass', 3200, 2, 0.12, sfxBus, 900);
+    const drop = (at, from, to, peak) => tone(at, from, 0.12, 'sine', peak, sfxBus, 0.003, to);
+    drop(t + 0.42, 260, 820, 0.5);
+    noise(t + 0.42, 0.18, 'lowpass', 900, 0.7, 0.12);
+    drop(t + 0.75, 500, 1300, 0.12); drop(t + 0.9, 650, 1600, 0.09); drop(t + 1.1, 420, 1100, 0.1);
+  },
   knead(t) { for (let i = 0; i < 3; i++) noise(t + i * 0.42, 0.16, 'lowpass', 380, 1, 1.0); },
   mill(t) { noise(t, 1.3, 'lowpass', 300, 2, 0.25); for (let i = 0; i < 3; i++) tone(t + i * 0.43, 95, 0.3, 'triangle', 0.18); },
   clink(t) { metal(t, 2100, 0.12, 0.4); metal(t + 0.18, 2350, 0.1, 0.4); },
-  coin(t) { tone(t, 1568, 0.09, 'square', 0.13); tone(t + 0.08, 2093, 0.25, 'square', 0.13); },
+  coin(t) { for (const [at, f] of [[0, 1976], [0.07, 2637]]) { tone(t + at, f, 0.35, 'sine', 0.22); tone(t + at, f * 2.4, 0.15, 'sine', 0.06); } },
   bad(t) { tone(t, 220, 0.18, 'triangle', 0.18); tone(t + 0.16, 165, 0.25, 'triangle', 0.18); },
   build(t) { for (let i = 0; i < 4; i++) { tone(t + i * 0.3, 240, 0.08, 'triangle', 0.4, sfxBus, 0.002, 90); noise(t + i * 0.3, 0.06, 'bandpass', 1500, 2, 0.35); } },
   sleep(t) { [523, 440, 392, 330].forEach((f, i) => tone(t + i * 0.35, f, 0.5, 'sine', 0.12, sfxBus, 0.05)); },
@@ -105,3 +127,5 @@ function startMusic() {
   };
   tick();
 }
+// for previews and tests: play a named sound at a given time on the audio clock
+export function playAt(name, at) { if (init() && SOUNDS[name]) SOUNDS[name](at); }
