@@ -549,3 +549,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .overlay { overflow-y: auto; align-items: flex-start; }
 .overlay .dialog { margin: auto 0; }
 @media (max-width: 700px) { .hud-right .scene-menu { display: none !important; } }
+
+/* the price tooltip floats above everything and stays on screen (v52) */
+.tip:hover::after, .tip:focus::after { content: none !important; display: none !important; }
+#tipbox { position: fixed; z-index: 50; max-width: 260px; background: #2a2f45; color: #f2f4fb; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
+#tipbox[hidden] { display: none; }

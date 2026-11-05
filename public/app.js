@@ -1832,6 +1832,44 @@ function setupTouchMap() {
   }, { passive: true });
 }
 
+
+// ---------- price tooltips: one floating box, placed so it never runs off the screen ----------
+const tipbox = document.createElement('div');
+tipbox.id = 'tipbox'; tipbox.hidden = true; tipbox.setAttribute('role', 'tooltip');
+document.body.appendChild(tipbox);
+let tipFor = null;
+function showTip(el) {
+  tipFor = el;
+  tipbox.textContent = el.dataset.tip;
+  tipbox.hidden = false;
+  const r = el.getBoundingClientRect(), b = tipbox.getBoundingClientRect(), pad = 8;
+  let x = r.left + r.width / 2 - b.width / 2, y = r.bottom + 6;
+  x = Math.max(pad, Math.min(innerWidth - b.width - pad, x));
+  if (y + b.height > innerHeight - pad) y = r.top - b.height - 6; // no room below: show it above
+  tipbox.style.left = x + 'px'; tipbox.style.top = Math.max(pad, y) + 'px';
+}
+function hideTip() { tipFor = null; tipbox.hidden = true; }
+document.addEventListener('pointerover', (e) => { const el = e.target.closest && e.target.closest('.tip'); if (el && e.pointerType === 'mouse') showTip(el); });
+document.addEventListener('pointerout', (e) => { const el = e.target.closest && e.target.closest('.tip'); if (el && e.pointerType === 'mouse' && !el.contains(e.relatedTarget)) hideTip(); });
+document.addEventListener('focusin', (e) => { if (e.target.classList && e.target.classList.contains('tip')) showTip(e.target); });
+document.addEventListener('focusout', (e) => { if (e.target.classList && e.target.classList.contains('tip')) hideTip(); });
+// touch: tap the ⓘ to open, tap anywhere else to close
+document.addEventListener('click', (e) => {
+  const el = e.target.closest && e.target.closest('.tip');
+  if (el) { if (tipFor === el) hideTip(); else showTip(el); return; }
+  if (tipFor) hideTip();
+}, true);
+addEventListener('scroll', hideTip, true);
+// panels redraw every few seconds; keep the box on the new copy of the same ⓘ under the mouse
+let lastPt = null;
+addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') lastPt = [e.clientX, e.clientY]; }, { passive: true });
+setInterval(() => {
+  if (!tipFor || tipFor.isConnected) return;
+  const el = lastPt && document.elementFromPoint(lastPt[0], lastPt[1]);
+  const tip = el && el.closest && el.closest('.tip');
+  if (tip) showTip(tip); else hideTip();
+}, 250);
+
 // ---------- village chat ----------
 let chatSeen = null; // the newest message id already shown as a bubble
 function renderChat() {
