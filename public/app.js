@@ -651,7 +651,7 @@ function panelExchange() {
       const x = view.plots[me.plot];
       h += `<p class="sub2">${t('ex.myDeed', { place: placeName(me.plot) })}</p>`;
       if (x.sale) h += `<p class="small">${t('ex.listedAt', { n: x.sale.price })}</p><button data-act="unlistDeed" data-plot="${me.plot}">${t('ex.unlist')}</button>`;
-      else h += `<p class="muted small">${t('ex.sellDeedHelp')}</p><div class="row exform"><input id="ex-deed-price" type="number" min="1" max="5000" value="${Math.round((x.price || 120) * (x.built ? 1.6 : 1.1))}"> EMWK <button class="primary" data-act="listDeed" data-plot="${me.plot}">${t('ex.listDeed')}</button></div>`;
+      else h += `<p class="muted small">${t('ex.sellDeedHelp')}</p><p class="small">${t('ex.fair', { n: x.fair, max: Math.floor(x.fair * 1.1) })}</p><div class="row exform"><input id="ex-deed-price" type="number" min="1" max="5000" value="${x.fair || Math.round((x.price || 120) * (x.built ? 1.6 : 1.1))}"> EMWK <button class="primary" data-act="listDeed" data-plot="${me.plot}">${t('ex.listDeed')}</button></div>`;
     }
     const dt = mk.trades.filter((x) => x.deed);
     if (dt.length) h += `<p class="sub2">${t('ex.trades')}</p><ul class="decided">${dt.slice(0, 5).map((x) => `<li>${esc(placeName(x.deed))} · ${x.price} EMWK · ${esc(x.seller)} → ${esc(x.buyer)}</li>`).join('')}</ul>`;
@@ -1058,11 +1058,11 @@ function panelHouse(b) {
 function panelLands() {
   const me = view.player, plots = Object.entries(view.plots);
   const deedLink = (x) => { const d = (view.chain || {}).deeds || {}; return x.deed && x.deed.minted && d.contract ? ` · ${exLink('nft-token/' + d.contract + '/' + encodeURIComponent(x.deed.tokenId), t('lands.nft', { id: esc(x.deed.tokenId) }))}` : x.deed ? ` · ${t('lands.nft', { id: esc(x.deed.tokenId || '') })}` : ''; };
-  let h = `<h2>${t('lands.title')}</h2><p class="muted small">${t('lands.intro')}</p>`;
+  let h = `<h2>${t('lands.title')}</h2><p class="muted small">${t('lands.intro')}</p><p class="small">${t('lands.buyback')}</p>`;
   if (me && me.plot) h += `<p class="small closed">${t('plot.haveOne', { place: placeName(me.plot) })}</p>`;
   const sale = plots.filter(([, x]) => x.sale).sort((a, b) => a[1].sale.price - b[1].sale.price);
   h += `<h4>${t('lands.deeds', { n: sale.length })}</h4>`;
-  h += sale.length ? `<table>${sale.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${x.mine ? `<b>${t('lands.yours')}</b>` : esc(x.owner)} · ${x.built ? t(x.bed ? 'ex.withHouseBed' : 'ex.withHouse') : t('ex.bareLand')}${x.lease && x.lease.tenant ? ' · ' + t('ex.rented', { n: x.lease.rent }) : ''}${deedLink(x)}</div></td><td class="n">${x.sale.price} EMWK</td><td class="n">` +
+  h += sale.length ? `<table>${sale.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${x.mine ? `<b>${t('lands.yours')}</b>` : esc(x.owner)} · ${x.built ? t(x.bed ? 'ex.withHouseBed' : 'ex.withHouse') : t('ex.bareLand')}${x.lease && x.lease.tenant ? ' · ' + t('ex.rented', { n: x.lease.rent }) : ''}${deedLink(x)}</div></td><td class="n">${x.sale.price} EMWK<div class="muted small">${t('lands.fairShort', { n: x.fair })}</div></td><td class="n">` +
     (x.mine ? `<button data-act="unlistDeed" data-plot="${id}">${t('ex.unlist')}</button>` : `<button class="primary" data-act="buyDeed" data-plot="${id}" ${!me || me.plot || me.coins < x.sale.price || (x.minLevel && me.level < x.minLevel) ? 'disabled' : ''}>${t('ex.buy1')}</button>`) +
     ` <button class="linkbtn" data-go="${id}">${t('lands.see')}</button></td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noDeeds')}</p>`;
   const free = plots.filter(([, x]) => !x.owner && x.open).sort((a, b) => a[1].price - b[1].price);
@@ -1070,7 +1070,7 @@ function panelLands() {
   h += free.length ? `<table>${free.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${x.district ? t('district.' + x.district) : t('lands.district.village')}${x.minLevel ? ' · ' + t('lands.minLevel', { n: x.minLevel }) : ''}</div></td><td class="n">${x.price} EMWK</td><td class="n"><button class="primary" data-go="${id}">${t('lands.see')}</button></td></tr>`).join('')}</table>` : `<p class="muted small">${t('lands.noFree')}</p>`;
   if (me && me.plot && !view.plots[me.plot].sale) h += `<p class="small">${t('lands.sellYours')}</p><button data-go="exchange">${esc(t('go.to', { place: placeName('exchange') }))}</button>`;
   const dt = (view.market.trades || []).filter((x) => x.deed);
-  if (dt.length) h += `<h4>${t('ex.trades')}</h4><ul class="decided">${dt.slice(0, 6).map((x) => `<li>${esc(placeName(x.deed))} · ${x.price} EMWK · ${esc(x.seller)} → ${esc(x.buyer)}</li>`).join('')}</ul>`;
+  if (dt.length) h += `<h4>${t('ex.trades')}</h4><ul class="decided">${dt.slice(0, 6).map((x) => `<li>${esc(placeName(x.deed))} · ${x.price} EMWK · ${esc(x.seller)} → ${esc(x.buyer === 'village' ? t('lands.village') : x.buyer)}</li>`).join('')}</ul>`;
   return h + `<p class="muted small">${t('ex.deedNote')}</p>`;
 }
 

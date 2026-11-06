@@ -279,6 +279,38 @@ export function plotPrice(id) {
   return Math.round(LAND.price * f);
 }
 const plotBuild = (id) => { const d = plotDef(id); return d && d.district ? { ...LAND.build, ...DISTRICTS[d.district].build } : LAND.build; };
+// what a plot is worth: the land, plus the house (lumber + builder's fee) and the bed if there are any
+export function fairValue(state, id) {
+  const plot = state.plots[id], b = plotBuild(id);
+  let v = plotPrice(id);
+  if (plot && plot.built) v += b.fee + b.lumber * price((state.npcs.carpenter && state.npcs.carpenter.sells.lumber) || state.npcs.woodcutter.sells.lumber || 4);
+  if (plot && plot.bed) v += price((state.npcs.carpenter && state.npcs.carpenter.sells.bed) || 30);
+  return Math.round(v);
+}
+// newcomer families: each morning the village treasury buys one fairly priced deed (at most 10% over its
+// value) that has waited a day, for families moving in; the plot is then sold again by the village at that value
+const BUYBACK_OVER = 1.1;
+function villageBuysDeeds(state) {
+  const spare = balance(state, 'treasury') - lockedFunds(state);
+  const offers = Object.entries(state.plots).filter(([, x]) => x.sale && x.owner && state.day - x.sale.since >= 1)
+    .map(([id, x]) => ({ id, x, fair: fairValue(state, id) })).filter((o) => o.x.sale.price <= o.fair * BUYBACK_OVER && o.x.sale.price <= spare - 200)
+    .sort((a, b) => a.x.sale.price / a.fair - b.x.sale.price / b.fair);
+  const o = offers[0];
+  if (!o) return;
+  const { id, x } = o, seller = state.players[x.owner], price = x.sale.price, fee = r2(price * MARKET.fee);
+  if (!transfer(state, 'treasury', 'player:' + x.owner, price, { memo: `Emberwick: the village buys deed ${id} from ${seller ? seller.name : '?'} for a newcomer family` })) return;
+  transfer(state, 'player:' + x.owner, 'treasury', fee);
+  if (seller) {
+    seller.plot = null;
+    if (seller.sleep && seller.sleep.place === id) seller.sleep = null;
+    seller.stats.earned = r2(seller.stats.earned + price - fee);
+    if (seller.nearVerified && seller.near && x.deed) emit('deedMove', { plot: id, tokenId: x.deed.tokenId, toBank: true });
+  }
+  if (x.lease && x.lease.tenant && state.players[x.lease.tenant]) state.players[x.lease.tenant].lease = null;
+  x.owner = null; x.sale = null; x.lease = null; x.since = state.day; x.resale = o.fair; // the deed stays with the village bank
+  recordTrade(state, { deed: id, qty: 1, price, seller: seller ? seller.name : '?', buyer: 'village' });
+  addLog(state, `A newcomer family bought ${seller ? seller.name : '?'}'s land through the village (${price} EMWK).`, 'good', 'log.buyback', { name: seller ? seller.name : '?', place: { $place: id }, n: price });
+}
 const districtOpen = (state, n) => !n || !!(DISTRICTS[n] && DISTRICTS[n].alwaysOpen) || (state.districts || []).includes(n);
 const plotOpen = (state, id) => { const d = plotDef(id); return !!d && districtOpen(state, d.district); };
 const nextDistrict = (state) => Object.keys(DISTRICTS).map(Number).find((n) => !districtOpen(state, n) && districtOpen(state, DISTRICTS[n].needs)) || null;
@@ -1031,6 +1063,7 @@ function startNewDay(state) {
   ensureContracts(state);
   settleContracts(state);
   collectDebts(state);
+  villageBuysDeeds(state);
   const ev = state.events;
   if (ev.drought > 0 && --ev.drought === 0) addLog(state, 'Rain returns to the fields. The drought is over.', 'good', 'log.rain');
 
@@ -1614,13 +1647,16 @@ function contractAction(state, p, action) {
     if (!plotOpen(state, action.plot)) return { ok: false, error: 'This neighbourhood is not open yet. The council decides when it opens.', code: 'err.districtClosed' };
     const def = plotDef(action.plot), need = def.district ? DISTRICTS[def.district].minLevel : 0;
     if (playerLevel(p) < need) return { ok: false, error: `You need level ${need} to buy here.`, code: 'err.needLevel', need, have: playerLevel(p) };
-    const cost = plotPrice(action.plot);
+    const cost = plot.resale || plotPrice(action.plot); // a plot the village bought back comes with its house
     if (!transfer(state, acct, 'treasury', cost)) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
     p.stats.spent = r2(p.stats.spent + cost);
-    plot.owner = p.id; plot.since = state.day; plot.deed = { tokenId: `${action.plot}-${state.day}-${p.id}`, minted: false };
+    const old = plot.deed && plot.deed.minted ? plot.deed : null;
+    plot.owner = p.id; plot.since = state.day; plot.resale = null;
+    if (old) { emit('deedMove', { plot: action.plot, tokenId: old.tokenId, wallet: (p.nearVerified && p.near) || null }); }
+    else plot.deed = { tokenId: `${action.plot}-${state.day}-${p.id}`, minted: false };
     p.plot = action.plot;
     addLog(state, `${p.name} bought land.`, 'good', 'log.boughtPlot', { name: p.name, place: { $place: action.plot } });
-    emit('deed', { plot: action.plot, tokenId: plot.deed.tokenId, player: p.id, name: p.name, wallet: (p.nearVerified && p.near) || null, day: state.day });
+    if (!old) emit('deed', { plot: action.plot, tokenId: plot.deed.tokenId, player: p.id, name: p.name, wallet: (p.nearVerified && p.near) || null, day: state.day });
     return { ok: true, plot: action.plot, price: cost };
   }
   if (action.type === 'buildHouse') {
@@ -2052,7 +2088,7 @@ export function publicView(state, playerId) {
       return [id, {
         owner: x.owner ? (state.players[x.owner] || {}).name || '?' : null, mine: !!(x.owner && x.owner === playerId),
         built: x.built, since: x.since || null, deed: x.deed, bed: !!x.bed,
-        price: plotPrice(id), build: plotBuild(id), district: d.district || 0, villa: !!d.villa, open: plotOpen(state, id), minLevel: d.district ? DISTRICTS[d.district].minLevel : 0,
+        price: x.resale || plotPrice(id), fair: fairValue(state, id), build: plotBuild(id), district: d.district || 0, villa: !!d.villa, open: plotOpen(state, id), minLevel: d.district ? DISTRICTS[d.district].minLevel : 0,
         sale: x.sale ? { price: x.sale.price, since: x.sale.since } : null,
         lease: x.lease ? { rent: x.lease.rent, tenant: x.lease.tenant ? (state.players[x.lease.tenant] || {}).name || '?' : null, mine: x.lease.tenant === playerId } : null,
       }];

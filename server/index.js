@@ -61,7 +61,7 @@ async function startNear() {
   // a land deed goes to the buyer's wallet, or is held by the village bank until they link one
   onGameEvent((type, d) => {
     if (type === 'deedMove') { // a deed sold on the exchange: from the bank's escrow to the buyer's wallet
-      if (bridge.root && d.wallet) bridge.moveDeed({ plot: d.plot, tokenId: d.tokenId, owner: d.wallet });
+      if (bridge.root && (d.wallet || d.toBank)) bridge.moveDeed({ plot: d.plot, tokenId: d.tokenId, owner: d.toBank ? bridge.root : d.wallet });
       return;
     }
     if (type !== 'deed' || !bridge.root) return;

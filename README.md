@@ -96,6 +96,8 @@ All pricing rules are in one readable file, **`server/pricing.js`**. Every price
 - **Renting out a home:** an owner sets a daily rent and another player moves in. Every morning the rent goes from the tenant straight to the owner, player to player, on NEAR.
 - **Neighbourhoods:** when land runs out, the council votes to open Ember Lane (12 plots, 78–108 EMWK); the treasury pays the carpenter and the woodcutter for roads and clearing. After that, Villa hill (6 big plots, 312–360 EMWK, level 5 needed, a villa takes 14 lumber). The AI villagers propose a new neighbourhood themselves when free plots run low.
 
+**Newcomer families:** if no player buys, each morning the village treasury buys one deed priced at most 10% over its fair value (land + house + bed) for a family moving in, and sells the plot again at that value. Land always has a buyer at a fair price.
+
 **Land market:** one list with every deed (NFT) players sell, including your own listing, every free village plot, and recent deed sales, with links to each NFT on NEAR.
 
 ## Watchtowers
