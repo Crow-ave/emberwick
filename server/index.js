@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, orderFromChat, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -314,8 +314,10 @@ const server = http.createServer(async (req, res) => {
     const n = state.npcs[card.id];
     if (n.ai) card.todaysPlan = n.ai.why;
     const credit = creditPolicy(state, body.player, card.id);
-    const r = await askCraftsman(card, body.q, String(body.lang || 'en').slice(0, 5), body.player, credit);
+    const order = commissionPolicy(state, body.player, card.id);
+    const r = await askCraftsman(card, body.q, String(body.lang || 'en').slice(0, 5), body.player, credit, order);
     if (r.ok && r.lend > 0) { r.credit = giveCredit(state, body.player, card.id, r.lend); if (r.credit) { save(); broadcast(); } }
+    if (r.ok && r.make > 0) { const o = orderFromChat(state, body.player, card.id, r.make); if (o && o.ok) { r.order = o; save(); broadcast(); } }
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 

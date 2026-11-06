@@ -408,6 +408,42 @@ function buyFromNpc(state, actor, npcId, good, qty) {
   return { ok: true, unit, total, tax };
 }
 
+// ---------- orders: bring your own materials, pay for the work ----------
+// a craftsman makes their product from the customer's own materials (e.g. 3 wool -> 1 coat at the tailor).
+// The fee is part of what the work adds (product price minus the materials' price), at least 2 EMWK
+export function commissionPolicy(state, pid, npcId, n = 1) {
+  const p = state.players[pid], def = CRAFTSMEN.find((c) => c.id === npcId), npc = state.npcs[npcId];
+  if (!p || !def || !npc || !def.recipe || npcId === 'inn' || npcId === 'tower') return null;
+  const r = def.recipe, out = Object.keys(r.out)[0];
+  if (npc.sells[out] === undefined) return null;
+  const inVal = Object.entries(r.in).reduce((a, [g, q]) => a + q * price(npc.buys[g] ?? (GOODS[g] && GOODS[g].base) ?? 3), 0);
+  const fee = Math.max(2, Math.round((price(npc.sells[out]) * r.out[out] - inVal) * 0.6));
+  const base = { inputs: r.in, output: out, outQty: r.out[out], fee, max: 3 };
+  if (npc.damagedUntil > state.day || isNight(state)) return { ...base, ok: false, key: 'closed', reason: 'the workshop is closed now' };
+  const done = (p.orders && p.orders.day === state.day && p.orders[npcId]) || 0;
+  if (done + n > 3) return { ...base, ok: false, key: 'max', reason: 'you make at most 3 orders a day for one customer' };
+  const lack = Object.entries(r.in).filter(([g, q]) => inv(p, g) < q * n).map(([g]) => g);
+  if (lack.length) return { ...base, ok: false, key: 'need', lack, reason: `the customer does not have enough ${lack.join(' and ')}` };
+  if (balance(state, 'player:' + pid) < fee * n) return { ...base, ok: false, key: 'fee', reason: 'the customer cannot pay the fee' };
+  return { ...base, ok: true };
+}
+function commission(state, p, actor, npcId, n) {
+  n = clamp(Math.round(n) || 1, 1, 3);
+  const pol = commissionPolicy(state, p.id, npcId, n);
+  if (!pol) return { ok: false, error: 'This workshop does not take orders.', code: 'order.none' };
+  if (!pol.ok) return { ok: false, error: pol.reason, code: /closed/.test(pol.reason) ? 'err.closedNight' : /fee/.test(pol.reason) ? 'err.noMoney' : /3 orders/.test(pol.reason) ? 'order.max' : 'order.need' };
+  const total = pol.fee * n;
+  if (!transfer(state, actor.acct, npcAcct(npcId), total, { memo: `Emberwick: ${p.name} orders ${n * pol.outQty} ${pol.output} (own materials)` })) return { ok: false, error: 'You cannot pay the fee.', code: 'err.noMoney' };
+  transfer(state, npcAcct(npcId), 'treasury', r2(total * taxRate(state)));
+  for (const [g, q] of Object.entries(pol.inputs)) addInv(p, g, -q * n);
+  addInv(p, pol.output, pol.outQty * n);
+  p.orders = p.orders && p.orders.day === state.day ? p.orders : { day: state.day };
+  p.orders[npcId] = (p.orders[npcId] || 0) + n;
+  p.stats.spent = r2(p.stats.spent + total);
+  addLog(state, `${p.name} had ${pol.outQty * n} ${pol.output} made from their own materials.`, 'info', 'log.order', { name: p.name, npc: { $npc: npcId }, n: pol.outQty * n, good: { $good: pol.output } });
+  return { ok: true, order: true, npc: npcId, n, output: pol.output, qty: pol.outQty * n, fee: total };
+}
+
 // ---------- food on credit ----------
 // a hungry player with no money can ask the baker or the innkeeper for food on credit. The rules
 // decide what is possible (needy, no open debt, paid back last time); NEAR AI decides whether to say yes.
@@ -423,6 +459,7 @@ export function creditPolicy(state, pid, npcId) {
   if (stock < 1) return { ok: false, good, reason: 'you have nothing left to give' };
   return { ok: true, good, max: Math.min(good === 'meal' ? 1 : 2, stock), unitPrice: unit, payBackWithinDays: 3 };
 }
+export function orderFromChat(state, pid, npcId, n) { const p = state.players[pid]; return p ? commission(state, p, { acct: 'player:' + pid }, npcId, n) : null; }
 export function giveCredit(state, pid, npcId, qty) {
   const pol = creditPolicy(state, pid, npcId);
   if (!pol || !pol.ok) return null;
@@ -701,6 +738,7 @@ function doAction(state, p, actor, action, qty) {
     return haggle(state, p, action.npc, action.good, action.side === 'sell' ? 'sell' : 'buy', qty, Number(action.offer));
   }
   if (action.type === 'repay') return repayDebt(state, p, String(action.npc || ''));
+  if (action.type === 'commission') return commission(state, p, actor, String(action.npc || ''), Number(action.n) || 1);
   if (action.type === 'deal') {
     const d = p.deal;
     if (!d || d.day !== state.day || state.tick - d.tick > 24) { p.deal = null; return { ok: false, error: 'That offer is gone. Ask again.', code: 'haggle.gone' }; }
@@ -2037,6 +2075,7 @@ export function publicView(state, playerId) {
       shut: isNight(state) && def.id !== 'inn', // closed for the night
       level: n.level || 1, learn: n.learn || {},
       ai: n.ai && n.ai.day >= state.day - 1 ? n.ai : null,
+      order: playerId ? commissionPolicy(state, playerId, def.id) : null,
       why: Object.fromEntries([...new Set([...Object.keys(n.buys), ...Object.keys(n.sells)])].map((g) => {
         const target = targetFor(state, def.id, g), stock = n.stock[g] || 0;
         return [g, { stock: Math.round(stock * 10) / 10, target: Math.round(target * 10) / 10, reasons: priceReasons({ stock, target, learned: n.learn && n.learn[g], level: n.level || 1, winter: state.events.winter, dragon: state.events.dragon > 0, drought: state.events.drought > 0, good: g, npc: def.id }) }];

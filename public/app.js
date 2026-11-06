@@ -1,5 +1,5 @@
 import { setupMap, renderMap, renderDistrict, buildGrid, entranceOf, findPath, cellCenter, cellAt, isWalkable, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
-import { t, LANGS, getLang, setLang } from './i18n.js';
+import { t, LANGS, getLang, setLang, has as hasKey } from './i18n.js';
 import { play, playWork, unlockSound, setSfx, setMusic, setNight, sound } from './sound.js';
 import { sceneMarkup, hasScene, homeHasScene, bubble, KEEPER_HEAD, SW, SH } from './scenes.js';
 
@@ -401,8 +401,8 @@ function sceneBubbles(id) {
   }
   if (qa && Date.now() - (qa.at || 0) < 60000) return []; // just talked: no greeting popping up again
   if (me && n && hg && (hg.wait || (hg.reply && Date.now() - hg.reply.at < 25000))) {
-    out.push({ x: youHead[0], y: youHead[1], text: t('haggle.myOffer', { p: hg.offer, n: hg.qty, good: goodWord(hg.good) }), anchor: 0.35, max: 26 });
-    if (hg.reply) out.push({ x: KEEPER_HEAD[0], y: KEEPER_HEAD[1], text: hg.reply.line || t(hg.reply.fair ? 'haggle.say.fair' : 'haggle.say.' + hg.reply.outcome, { p: hg.reply.unit, ask: hg.reply.ask, good: goodWord(hg.reply.good) }) , anchor: 0.85, max: 34 });
+    out.push({ x: youHead[0], y: youHead[1], text: t(hasKey('haggle.myOffer.' + hg.side) ? 'haggle.myOffer.' + hg.side : 'haggle.myOffer', { p: hg.offer, n: hg.qty, good: goodWord(hg.good) }), anchor: 0.35, max: 26 });
+    if (hg.reply) out.push({ x: KEEPER_HEAD[0], y: KEEPER_HEAD[1], text: hg.reply.line || hagSay(hg.reply) , anchor: 0.85, max: 34 });
     return out;
   }
   const said = sceneTalk(id, true);
@@ -426,6 +426,8 @@ function whyTip(n, g) {
 // haggling: name your price per unit; the craftsman answers (the rules decide, NEAR AI speaks)
 // the price the shop would pay or ask per unit right now (a big sale gets a lower average price per unit)
 const hagList = (n, g, side) => { const o = (n.offers || {})[g]; return side === 'buy' ? n.sells[g] : o && o.qty ? Math.round((o.total / o.qty) * 10) / 10 : n.buys[g]; };
+// the built-in line, from the craftsman's side: buying from them or selling to them reads differently
+const hagSay = (r) => { const k = r.fair ? (r.side === 'buy' ? 'haggle.say.fair.buy' : 'haggle.say.fair') : 'haggle.say.' + r.outcome + (r.side === 'sell' ? '.sell' : ''); return t(hasKey(k) ? k : 'haggle.say.' + r.outcome, { p: r.unit, ask: r.ask, good: goodWord(r.good) }); };
 const hagBtn = (id, g, side) => `<button class="hagbtn" data-haggle="${side}" data-npc="${id}" data-good="${g}" title="${esc(t('haggle.btn'))}">🤝 ${t('haggle.short')}</button>`;
 function haggleBox(id) {
   const hg = ui.haggle, me = view.player, n = view.npcs[id];
@@ -439,13 +441,23 @@ function haggleBox(id) {
     `<button class="primary" data-hagsend="1" ${hg.wait ? 'disabled' : ''}>${t(hg.wait ? 'ai.thinking' : 'haggle.offer')}</button></div>`;
   if (hg.reply) {
     const r = hg.reply;
-    const line = r.line || t(r.fair ? 'haggle.say.fair' : 'haggle.say.' + r.outcome, { p: r.unit, ask: r.ask, good: goodWord(r.good) });
+    const line = r.line || hagSay(r);
     h += `<div class="hag-reply ${r.outcome}"><span class="quote">"${esc(line)}"</span></div>`;
     if (r.side === 'sell' && r.unit !== null && r.unit !== undefined && r.plainTotal) h += `<p class="muted small">${t('haggle.vsPlain', { n: r.qty, plain: r.plainTotal, deal: Math.round(r.unit * r.qty * 100) / 100 })}</p>`;
     const d = me.deal;
     if (d && d.npc === id && d.good === hg.good && d.side === hg.side) h += `<p class="small">${t(d.side === 'sell' ? 'haggle.confirmSell' : 'haggle.confirmBuy')}</p><button class="primary" data-hagdeal="1">${t('haggle.take', { n: d.qty, p: d.unit, total: Math.round(d.qty * d.unit * 100) / 100 })}</button> <button data-hagclose="1">${t('haggle.no2')}</button>`;
   }
   return h + `</div>`;
+}
+
+// an order: bring your own materials, pay for the work, get the product
+function orderRow(id) {
+  const n = view.npcs[id], o = n && n.order, me = view.player;
+  if (!o || !me) return '';
+  const ins = Object.entries(o.inputs).map(([g, q]) => `${q} ${goodWord(g)}`).join(' + ');
+  return `<div class="orderrow"><b>🧵 ${t('order.title')}</b><p class="small">${t('order.line', { ins, fee: o.fee, n: o.outQty, good: goodWord(o.output) })}</p>` +
+    (o.ok ? '' : `<p class="muted small">${t('order.r.' + o.key, { goods: (o.lack || []).map(goodWord).join(', ') })}</p>`) +
+    `<button class="primary" data-order="${id}" ${o.ok ? '' : 'disabled'}>${t('order.btn', { n: o.outQty, good: goodWord(o.output) })}</button></div>`;
 }
 
 function tradeBlock(id) {
@@ -487,6 +499,7 @@ function tradeBlock(id) {
     }
     h += `</table>`;
   }
+  h += orderRow(id);
   return h;
 }
 
@@ -2001,6 +2014,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-hagclose]')) { ui.haggle = null; renderNow(); return; }
   if (e.target.closest('[data-hagsend]')) { sendHaggle(e.target.closest('.haggle')); return; }
   if (e.target.closest('[data-hagdeal]')) { takeDeal(); return; }
+  const od = e.target.closest('[data-order]');
+  if (od) { post('/api/action', { player: playerId, type: 'commission', npc: od.dataset.order, n: 1 }).then((r) => { if (r.state && newer(r.state)) view = r.state; if (r.ok) { play('coin'); toast(t('order.done', { n: r.qty, good: goodWord(r.output), fee: r.fee }), 'win'); } else toast(errText(r), 'bad'); render(); }); return; }
   const rp = e.target.closest('[data-repay]');
   if (rp) { post('/api/action', { player: playerId, type: 'repay', npc: rp.dataset.repay }).then((r) => { if (r.state && newer(r.state)) view = r.state; if (r.ok) { play('coin'); toast(t('credit.paid', { n: r.amount }), 'win'); } else toast(errText(r), 'bad'); render(); }); return; }
   if (e.target.closest('[data-lands]')) { ui.selected = 'lands'; renderMapNow(); renderPanel(); return; }
@@ -2319,6 +2334,7 @@ document.addEventListener('submit', async (e) => {
     if (r.state && newer(r.state)) view = r.state;
     ui.aiAnswers[npc] = { q, a: r.ok ? r.answer : '', at: Date.now() };
     if (!r.ok) { delete ui.aiAnswers[npc]; toast(t(r.code || 'ai.busy'), 'bad'); }
+    if (r.ok && r.order) { play('coin'); toast(t('order.done', { n: r.order.qty, good: goodWord(r.order.output), fee: r.order.fee }), 'win'); }
     if (r.ok && r.credit) { play('coin'); toast(t('credit.got', { n: r.credit.qty, good: goodWord(r.credit.good), p: r.credit.amount, d: r.credit.due }), 'win'); }
     render(); setTimeout(render, 21000); return;
   }

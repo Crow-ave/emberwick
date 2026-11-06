@@ -232,7 +232,7 @@ const LANGS = { en: 'English', tr: 'Turkish', fr: 'French', de: 'German', ru: 'R
 // inside what the rules allow) a little food on credit. The last few lines are remembered, so a
 // conversation can go on
 const convs = new Map(); // `${player}:${npc}` -> recent messages
-export async function askCraftsman(card, question, lang, playerId, credit = null) {
+export async function askCraftsman(card, question, lang, playerId, credit = null, order = null) {
   const q = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!q) return { ok: false, error: 'empty' };
   const d = new Date().toISOString().slice(0, 10);
@@ -244,27 +244,32 @@ export async function askCraftsman(card, question, lang, playerId, credit = null
   if (MODE === 'fake') {
     ai.asked[playerId] = n + 1;
     const lend = credit && credit.ok && /hungry|aç|credit|borç/i.test(q) ? 1 : 0;
+    const make = order && order.ok && /\b(yes|ok|make|evet|dik|yap|al)\b/i.test(q) ? 1 : 0;
     const answer = `(${card.name}) I heard: "${q}". Today I keep ${Object.keys(card.goods).join(', ')}.` + (lend ? ' Here, take it on credit.' : '');
     remember(answer);
-    return { ok: true, answer, lend, model: ai.model };
+    return { ok: true, answer, lend, make, model: ai.model };
   }
   if (ai.status !== 'ready') return { ok: false, error: 'off', code: 'ai.off' };
   const creditRule = !credit ? 'You never give goods on credit.' : credit.ok
     ? `If the customer is hungry and asks for food on credit, you may give up to ${credit.max} ${credit.good} on credit (${credit.unitPrice} EMWK each, paid back within ${credit.payBackWithinDays} days). Decide like a kind but careful shopkeeper. If you give it, end your reply with the tag [LEND n] where n is how many. Never lend unless they ask.`
     : `If they ask for food on credit, refuse kindly: ${credit.reason}.`;
+  const orderRule = !order ? 'You take no orders.' : order.ok
+    ? `You can make ${order.outQty} ${order.output} from the customer's own ${Object.entries(order.inputs).map(([g, q]) => q + ' ' + g).join(' + ')} for a work fee of ${order.fee} EMWK (at most ${order.max} a day). If the customer clearly agrees to such an order, do it now and end your reply with the tag [MAKE n] (n = how many). Never take an order they did not agree to.`
+    : `Orders: you make ${order.output} from the customer's ${Object.entries(order.inputs).map(([g, q]) => q + ' ' + g).join(' + ')} for ${order.fee} EMWK, but not right now: ${order.reason}.`;
+  const can = 'You can ONLY do these things: sell the goods you sell, buy the goods you buy (both at the counter), make your product from the customer\'s own materials (an order), and, if allowed, food on credit. Never promise anything else: no other products, no delivery, no later visits, no secrets.';
   try {
     ai.asked[playerId] = n + 1;
     const raw = await chat([
       { role: 'system', content: `You are ${card.name} in the village of Emberwick, a medieval economy game whose money is EMWK. Stay in character, be warm and practical, talk like a real villager. ` +
-        `Answer in ${LANGS[lang] || 'English'} in at most 2 short sentences. When you name a price, use exactly the price in priceList (sellsAt / buysAt); recipe numbers are amounts, never prices. You cannot give away money. ${creditRule} Facts: ${JSON.stringify(card)}` },
+        `Answer in ${LANGS[lang] || 'English'} in at most 2 short sentences. When you name a price, use exactly the price in priceList (sellsAt / buysAt); recipe numbers are amounts, never prices. You cannot give away money. ${can} ${orderRule} ${creditRule} Facts: ${JSON.stringify(card)}` },
       ...past,
       { role: 'user', content: q },
     ], 900);
     let answer = raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    const m = /\[\s*LEND\s*(\d+)\s*\]/i.exec(answer);
-    answer = answer.replace(/\[\s*LEND\s*\d*\s*\]/gi, '').trim().slice(0, 400);
+    const m = /\[\s*LEND\s*(\d+)\s*\]/i.exec(answer), mk = /\[\s*MAKE\s*(\d+)\s*\]/i.exec(answer);
+    answer = answer.replace(/\[\s*(LEND|MAKE)\s*\d*\s*\]/gi, '').trim().slice(0, 400);
     remember(answer);
-    return { ok: true, answer, lend: m && credit && credit.ok ? Number(m[1]) : 0, model: ai.model };
+    return { ok: true, answer, lend: m && credit && credit.ok ? Number(m[1]) : 0, make: mk && order && order.ok ? Number(mk[1]) : 0, model: ai.model };
   } catch (e) {
     ai.lastError = String(e.message || e).slice(0, 160);
     console.log('[AI] answer failed:', ai.lastError);
@@ -275,13 +280,27 @@ export async function askCraftsman(card, question, lang, playerId, credit = null
 // the craftsman's answer when a player haggles. The decision and the numbers are already fixed by the
 // village rules; the model only says it, in character and in the player's language
 const HAGGLE_PER_PLAYER = 40;
+// what the craftsman does, from their own side of the counter. When the customer BUYS, a higher price is
+// better for the craftsman; when the customer SELLS to them, a lower price is better for the craftsman.
 const SAY = {
-  accept: 'You agree to the deal at the final price per unit (the customer still has to say yes). Sound pleased, maybe a little grudging if it was a hard bargain. If the final price is better for the customer than what they offered, tell them honestly you keep to your own fair price.',
-  counter: 'You do not accept their price, but you propose the counter price per unit. Haggle like a real market seller.',
-  favor: 'Their price is too far from yours and you say so, but because they are a good customer you make them a special offer at the counter price per unit.',
-  angry: 'Their offer insults you. React offended (no insults, no swearing) and refuse; make no new offer.',
-  closed: 'You are done haggling with this customer for today. Refuse firmly but politely.',
-  final: 'This is your final word: the counter price per unit, take it or leave it.',
+  buy: {
+    accept: 'The customer wants to BUY from you. You agree to sell at finalPricePerUnit. Sound pleased.',
+    fair: 'The customer wants to BUY from you and offered MORE than your price. Honestly tell them your price is lower: finalPricePerUnit.',
+    counter: 'The customer wants to BUY from you, but their offer is too LOW for you. Propose finalPricePerUnit instead, like a market seller meeting halfway.',
+    favor: 'The customer wants to BUY from you, but their offer is far too LOW. Say you cannot sell that cheap, but as a favour you sell to them at finalPricePerUnit.',
+    angry: 'The customer wants to BUY from you and their offer is insultingly LOW. React offended (no insults, no swearing) and refuse; name no price.',
+    closed: 'You are done haggling with this customer for today. Refuse firmly but politely; name no price.',
+    final: 'The customer wants to BUY from you. Your final word: finalPricePerUnit, take it or leave it.',
+  },
+  sell: {
+    accept: 'The customer wants to SELL to you. You agree to buy at finalPricePerUnit. Sound pleased.',
+    fair: 'The customer wants to SELL to you and asked LESS than you would pay. Honestly tell them you pay your fair price: finalPricePerUnit.',
+    counter: 'The customer wants to SELL to you, but their price is too HIGH (too expensive) for you. Offer finalPricePerUnit instead, meeting halfway.',
+    favor: 'The customer wants to SELL to you, but their price is far too HIGH. Say you cannot pay that much, but as a favour you pay finalPricePerUnit.',
+    angry: 'The customer wants to SELL to you at an outrageously HIGH price. React offended (no insults, no swearing) and refuse; name no price.',
+    closed: 'You are done haggling with this customer for today. Refuse firmly but politely; name no price.',
+    final: 'The customer wants to SELL to you. Your final word: you pay finalPricePerUnit, take it or leave it.',
+  },
 };
 export async function haggleLine(card, deal, lang, playerName, playerId) {
   if (MODE === 'fake') return `(${deal.outcome}) ${deal.unit ?? ''}`;
@@ -294,13 +313,13 @@ export async function haggleLine(card, deal, lang, playerName, playerId) {
   // only the numbers the craftsman may say: their offer, the final price per unit, how many, and the total
   const hasPrice = deal.unit !== null && deal.unit !== undefined && deal.outcome !== 'angry' && deal.outcome !== 'closed';
   const total = hasPrice ? Math.round(deal.unit * deal.qty * 100) / 100 : null;
-  const facts = { customer: playerName, theyWant: deal.side === 'buy' ? 'to buy from you' : 'to sell to you', good: deal.good, quantity: deal.qty,
+  const facts = { customer: playerName, customerIs: deal.side === 'buy' ? 'BUYING from you' : 'SELLING to you', good: deal.good, quantity: deal.qty,
     theirOfferPerUnit: deal.offer, ...(hasPrice ? { finalPricePerUnit: deal.unit, totalForAll: total } : {}), currency: 'EMWK' };
   try {
     const text = await chat([
-      { role: 'system', content: `You are ${card.name}, a shopkeeper in the medieval village of Emberwick. ${SAY[deal.outcome] || ''} ` +
+      { role: 'system', content: `You are ${card.name}, a shopkeeper in the medieval village of Emberwick. ${(SAY[deal.side] || SAY.buy)[deal.fair ? 'fair' : deal.outcome] || ''} ` +
         `The only numbers you may say are the ones in the facts (${hasPrice ? 'finalPricePerUnit is the price you give' : 'make no price at all'}); never any other number. Answer in ${LANGS[lang] || 'English'} in 1 or 2 short, lively sentences. Facts: ${JSON.stringify(facts)}` },
-      { role: 'user', content: `${playerName} offers ${deal.offer} EMWK per ${deal.good}.` },
+      { role: 'user', content: deal.side === 'buy' ? `I want to buy ${deal.qty} ${deal.good}. I offer ${deal.offer} EMWK each.` : `I want to sell you ${deal.qty} ${deal.good}. I ask ${deal.offer} EMWK each.` },
     ], 800);
     const line = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<[^>]*>/g, '').trim().slice(0, 300);
     // a number that is not one of the real ones means the model made it up: use the built-in line instead
