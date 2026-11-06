@@ -256,7 +256,7 @@ export async function askCraftsman(card, question, lang, playerId, credit = null
     ai.asked[playerId] = n + 1;
     const raw = await chat([
       { role: 'system', content: `You are ${card.name} in the village of Emberwick, a medieval economy game whose money is EMWK. Stay in character, be warm and practical, talk like a real villager. ` +
-        `Answer in ${LANGS[lang] || 'English'} in at most 2 short sentences. Use only the shop facts given; never invent prices. You cannot give away money. ${creditRule} Facts: ${JSON.stringify(card)}` },
+        `Answer in ${LANGS[lang] || 'English'} in at most 2 short sentences. When you name a price, use exactly the price in priceList (sellsAt / buysAt); recipe numbers are amounts, never prices. You cannot give away money. ${creditRule} Facts: ${JSON.stringify(card)}` },
       ...past,
       { role: 'user', content: q },
     ], 900);
@@ -291,15 +291,23 @@ export async function haggleLine(card, deal, lang, playerName, playerId) {
   const k = 'h:' + playerId;
   if ((ai.asked[k] || 0) >= HAGGLE_PER_PLAYER) return null;
   ai.asked[k] = (ai.asked[k] || 0) + 1;
+  // only the numbers the craftsman may say: their offer, the final price per unit, how many, and the total
+  const hasPrice = deal.unit !== null && deal.unit !== undefined && deal.outcome !== 'angry' && deal.outcome !== 'closed';
+  const total = hasPrice ? Math.round(deal.unit * deal.qty * 100) / 100 : null;
   const facts = { customer: playerName, theyWant: deal.side === 'buy' ? 'to buy from you' : 'to sell to you', good: deal.good, quantity: deal.qty,
-    yourPricePerUnit: deal.ask, theirOfferPerUnit: deal.offer, ...(deal.unit !== null && deal.outcome !== 'angry' && deal.outcome !== 'closed' ? { finalPricePerUnit: deal.unit } : {}), currency: 'EMWK' };
+    theirOfferPerUnit: deal.offer, ...(hasPrice ? { finalPricePerUnit: deal.unit, totalForAll: total } : {}), currency: 'EMWK' };
   try {
     const text = await chat([
       { role: 'system', content: `You are ${card.name}, a shopkeeper in the medieval village of Emberwick. ${SAY[deal.outcome] || ''} ` +
-        `Say the exact numbers given, never other prices. Answer in ${LANGS[lang] || 'English'} in 1 or 2 short, lively sentences. Facts: ${JSON.stringify(facts)}` },
+        `The only numbers you may say are the ones in the facts (${hasPrice ? 'finalPricePerUnit is the price you give' : 'make no price at all'}); never any other number. Answer in ${LANGS[lang] || 'English'} in 1 or 2 short, lively sentences. Facts: ${JSON.stringify(facts)}` },
       { role: 'user', content: `${playerName} offers ${deal.offer} EMWK per ${deal.good}.` },
     ], 800);
-    return text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<[^>]*>/g, '').trim().slice(0, 300) || null;
+    const line = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<[^>]*>/g, '').trim().slice(0, 300);
+    // a number that is not one of the real ones means the model made it up: use the built-in line instead
+    const ok = [deal.offer, deal.unit, deal.qty, total].filter((x) => x !== null && x !== undefined).map(Number);
+    const said = (line.match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(',', '.')));
+    if (said.some((x) => !ok.some((y) => Math.abs(x - y) < 0.051))) { console.log('[AI] haggle line used a wrong number, using the built-in line.'); return null; }
+    return line || null;
   } catch (e) { ai.lastError = String(e.message || e).slice(0, 160); return null; }
 }
 

@@ -997,7 +997,10 @@ export function shopCard(state, id) {
     goods[g] = { stock: Math.round(n.stock[g] || 0), target: Math.round(targetFor(state, id, g) * 10) / 10,
       ...(n.buys[g] !== undefined ? { buysAt: price(n.buys[g]) } : {}), ...(n.sells[g] !== undefined ? { sellsAt: price(n.sells[g]), soldRecently: (n.history && n.history[g]) || [] } : {}) };
   }
-  return { id, name: def.name, wallet: Math.round(balance(state, npcAcct(id))), workshopLevel: n.level || 1, makes: def.recipe ? def.recipe : null, goods };
+  // the price list in plain words, so a model never mistakes a recipe amount for a price
+  const priceList = Object.entries(goods).map(([g, x]) => [x.sellsAt !== undefined ? `you sell ${g} at ${x.sellsAt} EMWK each` : null, x.buysAt !== undefined ? `you buy ${g} at ${x.buysAt} EMWK each` : null].filter(Boolean).join(', ')).join('; ');
+  const r = def.recipe, recipe = r ? `from ${Object.entries(r.in || {}).map(([g, q]) => q + ' ' + g).join(' + ')} you make ${Object.entries(r.out || {}).map(([g, q]) => q + ' ' + g).join(' + ')} (amounts, not prices)` : null;
+  return { id, name: def.name, priceList, wallet: Math.round(balance(state, npcAcct(id))), workshopLevel: n.level || 1, recipe, goods };
 }
 // the morning plan goes on NEAR: a 0.01 EMWK record from the treasury carries a SHA-256 of the exact plan
 // (served at /api/ai/plan?day=N so anyone can check it) and a short summary in the memo
