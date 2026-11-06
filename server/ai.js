@@ -123,15 +123,23 @@ export async function startAi() {
   return ai;
 }
 
+// thinking models spend part of max_tokens on reasoning before the answer, so the limits are generous
+// and the answer is taken from content (or, if that is empty, from the end of the reasoning)
 async function chat(messages, maxTokens) {
   if (!countCall()) throw new Error('daily limit reached');
   const r = await api('/chat/completions', { model: ai.model, messages, max_tokens: maxTokens, temperature: 0.7 });
-  const msg = r.choices && r.choices[0] && r.choices[0].message;
-  return String((msg && msg.content) || '').trim();
+  const c = r.choices && r.choices[0], msg = (c && c.message) || {};
+  let text = String(msg.content || '').trim();
+  if (!text) {
+    const why = String(msg.reasoning_content || msg.reasoning || '');
+    if (/\{[\s\S]*\}/.test(why)) text = why;
+    if (!text) throw new Error(`empty answer (finish: ${c && c.finish_reason}${why ? ', it only thought' : ''})`);
+  }
+  return text;
 }
 
 const jsonIn = (text) => {
-  const s = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+  const s = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/```(json)?/gi, '');
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
   return a >= 0 && b > a ? JSON.parse(s.slice(a, b + 1)) : null;
 };
@@ -149,9 +157,15 @@ export async function planDay(brief) {
     return { craftsmen: brief.craftsmen.map((c) => ({ id: c.id, want: Object.fromEntries(Object.keys(c.goods).map((g) => [g, 1.2])), price: {}, why: `Test plan for ${c.id}.`, say: `Fresh goods today at the ${c.id}!` })) };
   }
   if (ai.status !== 'ready') return null;
-  const text = await chat([{ role: 'system', content: SYSTEM_PLAN }, { role: 'user', content: JSON.stringify(brief) }], 900);
-  const plan = jsonIn(text);
-  if (!plan || !Array.isArray(plan.craftsmen)) throw new Error('the model did not return a plan');
+  const msgs = [{ role: 'system', content: SYSTEM_PLAN }, { role: 'user', content: JSON.stringify(brief) }];
+  let text = await chat(msgs, 4000), plan = null;
+  try { plan = jsonIn(text); } catch {}
+  if (!plan || !Array.isArray(plan.craftsmen)) {
+    console.log('[AI] the plan came back unreadable, asking once more. It began with:', text.replace(/\s+/g, ' ').slice(0, 160));
+    text = await chat([...msgs, { role: 'assistant', content: text.slice(0, 1500) }, { role: 'user', content: 'Reply again with only the JSON object, nothing before or after it.' }], 4000);
+    try { plan = jsonIn(text); } catch {}
+  }
+  if (!plan || !Array.isArray(plan.craftsmen)) throw new Error('the model did not return a plan: ' + text.replace(/\s+/g, ' ').slice(0, 100));
   ai.lastPlanAt = Date.now(); ai.lastError = null; ai.planFailed = false;
   return plan;
 }
@@ -189,7 +203,7 @@ export async function askCraftsman(card, question, lang, playerId, credit = null
         `Answer in ${LANGS[lang] || 'English'} in at most 2 short sentences. Use only the shop facts given; never invent prices. You cannot give away money. ${creditRule} Facts: ${JSON.stringify(card)}` },
       ...past,
       { role: 'user', content: q },
-    ], 180);
+    ], 900);
     let answer = raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
     const m = /\[\s*LEND\s*(\d+)\s*\]/i.exec(answer);
     answer = answer.replace(/\[\s*LEND\s*\d*\s*\]/gi, '').trim().slice(0, 400);
@@ -228,7 +242,7 @@ export async function haggleLine(card, deal, lang, playerName, playerId) {
       { role: 'system', content: `You are ${card.name}, a shopkeeper in the medieval village of Emberwick. ${SAY[deal.outcome] || ''} ` +
         `Say the exact numbers given, never other prices. Answer in ${LANGS[lang] || 'English'} in 1 or 2 short, lively sentences. Facts: ${JSON.stringify(facts)}` },
       { role: 'user', content: `${playerName} offers ${deal.offer} EMWK per ${deal.good}.` },
-    ], 120);
+    ], 800);
     return text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<[^>]*>/g, '').trim().slice(0, 300) || null;
   } catch (e) { ai.lastError = String(e.message || e).slice(0, 160); return null; }
 }
