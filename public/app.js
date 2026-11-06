@@ -650,7 +650,7 @@ function panelExchange() {
     if (me && me.plot) {
       const x = view.plots[me.plot];
       h += `<p class="sub2">${t('ex.myDeed', { place: placeName(me.plot) })}</p>`;
-      if (x.sale) h += `<p class="small">${t('ex.listedAt', { n: x.sale.price })}</p><button data-act="unlistDeed" data-plot="${me.plot}">${t('ex.unlist')}</button>`;
+      if (x.sale) h += `<p class="small">${t('ex.listedAt', { n: x.sale.price })}</p>${fairNote(x)}<button data-act="unlistDeed" data-plot="${me.plot}">${t('ex.unlist')}</button>`;
       else h += `<p class="muted small">${t('ex.sellDeedHelp')}</p><p class="small">${t('ex.fair', { n: x.fair, max: Math.floor(x.fair * 1.1) })}</p><div class="row exform"><input id="ex-deed-price" type="number" min="1" max="5000" value="${x.fair || Math.round((x.price || 120) * (x.built ? 1.6 : 1.1))}"> EMWK <button class="primary" data-act="listDeed" data-plot="${me.plot}">${t('ex.listDeed')}</button></div>`;
     }
     const dt = mk.trades.filter((x) => x.deed);
@@ -1080,7 +1080,7 @@ function panelPlot(b) {
   if (p.district) h += `<p class="muted small">${t('district.where.' + p.district)}</p>`;
   const deed = p.deed;
   if (p.mine) {
-    h += deedCard(b.id, p, true) + `<div class="contract"><b>${t('plot.yours')}</b>`;
+    h += deedCard(b.id, p, true) + `<p class="small fairline">${t('plot.fairNow', { n: p.fair })}</p>` + (p.sale ? fairNote(p) : '') + `<div class="contract"><b>${t('plot.yours')}</b>`;
     if (p.built) {
       const leased = p.lease && p.lease.tenant;
       h += `<p class="small">${t(p.bed ? 'bed.yes' : 'bed.none', { p: view.npcs.carpenter.sells.bed })}</p>`;
@@ -1135,6 +1135,13 @@ function panelRoadsign() {
 // where each plot lies, in words (shown on the deed)
 const PLOT_SIDE = { 'plot-1': 'west', 'plot-2': 'south', 'plot-3': 'east', 'plot-4': 'north' };
 // the deed: a paper certificate with the plot, its place, the day it was bought and its NFT on NEAR
+// will a newcomer family buy this listing? (at most 10% over the fair value)
+function fairNote(x) {
+  if (!x || !x.sale || !x.fair) return '';
+  const ok = x.sale.price <= x.fair * 1.1;
+  return `<p class="small ${ok ? 'fair-ok' : 'fair-no'}">${t(ok ? 'ex.fairOk' : 'ex.fairNo', { n: x.fair, max: Math.floor(x.fair * 1.1), p: x.sale.price })}</p>`;
+}
+
 function deedCard(id, p, mine) {
   const deed = p.deed;
   if (!deed) return '';

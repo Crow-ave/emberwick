@@ -655,3 +655,4 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .tour-head { display: flex; justify-content: space-between; align-items: center; color: #8a6a1e; font-size: 12px; }
 .tour-nav { display: flex; justify-content: space-between; margin-top: 8px; gap: 8px; }
 @media (max-width: 700px) { .tourcard { left: 8px; right: 8px; bottom: 8px; width: auto; font-size: 13px; } }
+.fair-ok { color: #2d6a2d; } .fair-no { color: #a33; } .fairline { margin: 4px 0; }
