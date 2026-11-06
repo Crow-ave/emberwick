@@ -593,7 +593,7 @@ function aiBox(id, n) {
   } else if (id !== 'tower') h += `<p class="small muted">${t(st.planFailed ? 'ai.unreachable' : 'ai.waiting')}</p>`;
   h += aiProof(true);
   const a = (ui.aiAnswers || {})[id];
-  if (a) h += `<div class="ai-qa"><div class="small muted">${t('ai.you')} ${esc(a.q)}</div><div class="quote">${a.a ? '"' + esc(a.a) + '"' : t('ai.thinking')}</div>${aiActions(a.actions || [])}</div>`;
+  if (a) h += `<div class="ai-qa"><div class="small muted">${t('ai.you')} ${esc(a.q)}</div><div class="quote">${a.a ? '"' + esc(a.a) + '"' : t('ai.thinkingS', { s: Math.round((Date.now() - (a.at || Date.now())) / 1000) })}</div>${aiActions(a.actions || [])}</div>`;
   if (view.player) h += `<form class="ai-ask row" data-npc="${id}"><input class="ai-q" maxlength="200" placeholder="${esc(t('ai.askPh', { name: npcName(id) }))}"><button type="submit">${t('ai.ask')}</button></form>`;
   return h + `</div>`;
 }
@@ -2364,9 +2364,11 @@ document.addEventListener('submit', async (e) => {
     ui.aiAnswers[npc] = { q, a: '' };
     inp.value = ''; inp.blur(); render();
     ui.aiAnswers[npc].at = Date.now();
+    const tick = setInterval(() => { if (ui.aiAnswers[npc] && !ui.aiAnswers[npc].a) renderPanel(); else clearInterval(tick); }, 1000);
     const r = await post('/api/ai/ask', { player: playerId, npc, q, lang: getLang() });
     if (r.state && newer(r.state)) view = r.state;
     ui.aiAnswers[npc] = { q, a: r.ok ? r.answer : '', at: Date.now(), actions: r.ok ? r.actions || [] : [] };
+    clearInterval(tick);
     if (!r.ok) { delete ui.aiAnswers[npc]; toast(t(r.code || 'ai.busy'), 'bad'); }
     render(); setTimeout(render, 21000); return;
   }

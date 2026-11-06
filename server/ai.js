@@ -68,10 +68,12 @@ async function viaFetch(p, body, ms) {
     throw e;
   } finally { clearTimeout(timer); }
 }
+// one connection kept open and reused: on a slow network setting up a new one can take 15-60 s
+const keepAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 4, family: 4 });
 function viaHttps(p, body, ms) {
   return new Promise((resolve, reject) => {
     const u = new URL(BASE + p), data = body ? JSON.stringify(body) : null;
-    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: data ? 'POST' : 'GET', family: 4, timeout: ms,
+    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: data ? 'POST' : 'GET', agent: keepAgent, timeout: ms,
       headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json', ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
       let text = '';
       res.on('data', (c) => (text += c));
@@ -111,7 +113,8 @@ export async function startAi() {
     const all = list.data || [];
     const ids = all.map((m) => m.id);
     const tee = new Set(all.filter((m) => m.verifiable || m.attestationSupported || m.attestation_supported || /tee|confidential/i.test(JSON.stringify(m.metadata || m.tags || ''))).map((m) => m.id));
-    const chatOk = (id) => !/embed|rerank|whisper|flux|image|tts|audio|vision-only/i.test(id);
+    // no embedding/audio/image models, and never models with their safety training removed
+    const chatOk = (id) => !/embed|rerank|whisper|flux|image|tts|audio|vision-only|abliterat|uncensor|jailbreak/i.test(id);
     // a verifiable model running in NEAR's TEE comes first, then the small fast ones in PREFER
     ai.model = PREFER.find((m) => ids.includes(m) && tee.has(m)) || ids.find((id) => tee.has(id) && chatOk(id) && /qwen|glm|gpt-oss|deepseek|llama/i.test(id)) ||
       PREFER.find((m) => ids.includes(m)) || ids.find((id) => chatOk(id) && /instruct|chat|gpt|qwen|llama|glm|deepseek/i.test(id)) || ids[0] || null;
@@ -122,7 +125,9 @@ export async function startAi() {
     // Then a tiny test: thinking models can spend the whole answer on reasoning and send nothing back,
     // so the first one that answers a short JSON question directly is used.
     if (!ai.tee && !process.env.NEARAI_MODEL) {
-      const rank = (id) => (/instruct/i.test(id) ? 0 : /gpt-oss/i.test(id) ? 1 : /thinking|reason|r1\b|flash/i.test(id) ? 3 : 2);
+      // strong multilingual chat models first (good Turkish matters), then instruct models; vision (VL) and
+      // thinking models last
+      const rank = (id) => (/thinking|reason|r1\b|flash/i.test(id) ? 6 : /-vl-|vision/i.test(id) ? 5 : /deepseek-v3/i.test(id) ? 0 : /kimi-k2/i.test(id) ? 1 : /qwen3\.[5-9]|glm-[45]/i.test(id) ? 2 : /instruct/i.test(id) ? 3 : 4);
       const open = [...PREFER.filter((m) => ids.includes(m) && !/^(openai\/gpt-5|anthropic|google)/.test(m)),
         ...ids.filter((id) => /qwen|glm|gpt-oss|deepseek|llama|kimi|mistral/i.test(id) && chatOk(id))].filter((v, k, a) => a.indexOf(v) === k)
         .sort((a, b) => rank(a) - rank(b)).slice(0, 8);
@@ -273,12 +278,16 @@ export async function askCraftsman(card, question, lang, playerId, ctx = {}) {
     `RULES: Only goods in the village directory exist. You can only: sell what your shop sells, buy what your shop buys, take an order (below), give credit (below), or send the customer to the right place. ` +
     `If they ask for something that does not exist (for example a sofa), say so kindly and suggest the closest real thing and who has it. If they need materials they do not have, tell them where to get them. Never promise anything else, never invent prices (use priceList), never pretend something happened: the customer confirms with a button.\n` +
     `${orderTxt}\n${creditTxt}\n` +
+    `Answer exactly what the customer just said, like a person would. Example (in English): customer "Hello baker, how are you?" -> {"say":"Hello, dear! Tired but happy, the oven has been busy since dawn. Fancy some warm bread?","actions":[{"type":"buy","good":"bread","qty":1}]}. ` +
+    `Customer "I need a sofa" at the woodcutter -> {"say":"A sofa? Nobody makes those here, friend. Wren the carpenter makes beds; I can sell you lumber.","actions":[{"type":"goto","place":"carpenter"},{"type":"buy","good":"lumber","qty":1}]}.\n` +
     `Reply with JSON only: {"say":"your words","actions":[...]} where actions (0 to 3) are buttons to offer, chosen from: ` +
     `{"type":"buy","good":"<good you sell>","qty":n}, {"type":"sell","good":"<good you buy>","qty":n}, {"type":"order"}, {"type":"credit","qty":n}, {"type":"goto","place":"<shop id or forest/fields/mine/pasture/pond>"}.\n` +
-    `Your shop: ${JSON.stringify(card)}\nThe customer: ${JSON.stringify(customer)}\nVillage directory: ${JSON.stringify(village)}`;
+    `Your shop: ${card.priceList}${card.recipe ? '; ' + card.recipe : ''}; in stock: ${Object.entries(card.goods).filter(([, x]) => x.sellsAt !== undefined).map(([g, x]) => g + ' ' + x.stock).join(', ')}.\n` +
+    `The customer: ${customer ? `${customer.name}, ${customer.coins} EMWK, energy ${customer.energy}, carries ${Object.entries(customer.bag).map(([g, v]) => v + ' ' + g).join(', ') || 'nothing'}` : '?'}.\n` +
+    `Village (shop id: sells / buys / makes): ${(village && village.shops || []).map((x) => `${x.id}: ${x.sells.join(',')} / ${x.buys.join(',')}${x.makesFromCustomerMaterials ? ' / ' + x.makesFromCustomerMaterials : ''}`).join('; ')}. Raw goods: ${(village && village.rawGoods || []).join('; ')}. Nothing else exists.`;
   try {
     ai.asked[playerId] = n + 1;
-    const raw = await chat([{ role: 'system', content: system }, ...past, { role: 'user', content: q }], 900);
+    const raw = await chat([{ role: 'system', content: system }, ...past.slice(-4), { role: 'user', content: q }], 400);
     let o = null;
     try { o = jsonIn(raw); } catch {}
     let answer = o && typeof o.say === 'string' ? o.say : raw.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/\{[\s\S]*\}/g, '');
