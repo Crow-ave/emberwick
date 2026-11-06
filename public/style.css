@@ -565,3 +565,10 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .howcard p { margin: 0; font-size: 13px; line-height: 1.4; }
 .howico { font-size: 22px; }
 @media (max-width: 700px) { .howgrid { grid-template-columns: 1fr; } .helptop { padding: 3px 9px; font-size: 12px; } }
+
+/* v57: on the village map the player card sits bottom-right, so Dragon peak (top-right) stays in view */
+@media (min-width: 701px) and (min-height: 521px) {
+  .view:not(.scene-on):not(.card-on) .hud-right { justify-content: flex-end; }
+  .view:not(.scene-on):not(.card-on) .hint { display: none; }
+  .view:not(.card-on) #map { transform: scale(.88); transform-origin: 38% 30%; }
+}
