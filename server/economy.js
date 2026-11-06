@@ -444,6 +444,16 @@ const CHAT = { maxLen: 140, gapMs: 2500, keep: 60 };
 function doAction(state, p, actor, action, qty) {
   const c = contractAction(state, p, action);
   if (c) return c;
+  // change your name: once a day, 2-20 letters, not the same as another villager's
+  if (action.type === 'rename') {
+    const nm = String(action.name || '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+    if (nm.length < 2) return { ok: false, error: 'Enter a name.', code: 'err.enterName' };
+    if (Object.values(state.players).some((o) => o.id !== p.id && o.name.toLowerCase() === nm.toLowerCase())) return { ok: false, error: 'Someone in the village already has that name.', code: 'err.nameTaken' };
+    if (p.renamedDay === state.day) return { ok: false, error: 'You can change your name once a day.', code: 'err.renameDaily' };
+    const old = p.name; p.name = nm; p.renamedDay = state.day;
+    addLog(state, `${old} is now called ${nm}.`, 'info', 'log.renamed', { old, name: nm });
+    return { ok: true, silent: true };
+  }
   // village chat: short public messages, a few seconds apart, the last 60 are kept
   if (action.type === 'chat') {
     const text = String(action.text || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT.maxLen);

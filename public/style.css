@@ -583,3 +583,25 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 /* plots for sale: a soft glowing outline (v62) */
 @media (prefers-reduced-motion: no-preference) { #map .saleplot { animation: saleglow 2.2s ease-in-out infinite; } }
 @keyframes saleglow { 0%, 100% { fill: rgba(255,255,255,.28); stroke: #7a6a58; } 50% { fill: rgba(255,214,150,.55); stroke: #d9622b; } }
+.small.rule { color: #b3261e; font-weight: 600; }
+.editname { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; vertical-align: 1px; }
+.editname:hover { color: var(--ember); }
+#rename-form input { flex: 1; padding: 7px 10px; border: 1px solid #e0d2bb; border-radius: 8px; font: inherit; }
+/* zoom buttons on every screen; with a mouse they sit on the right edge, clear of the player card (v62) */
+@media (pointer: fine) { .zoom { top: 42%; bottom: auto; right: 12px; } }
+/* the exchange card is wide, in two columns, so the bridge and the prices are visible without scrolling (v62) */
+@media (min-width: 901px) {
+  .view.card-wide .hud-right { width: min(900px, 76%); }
+  .view.card-wide .hud-right #me.hud { display: none; }
+  .view.card-wide .map-card { max-height: 100%; }
+  .view.card-wide:not(.scene-on) #map { transform: translateX(-34%) scale(.9) !important; }
+  .excols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start; }
+  .excol > .sub2:first-child { margin-top: 4px; }
+}
+/* live price panel in the exchange quarter (v62) */
+.ticker { position: absolute; left: 10px; top: 10px; width: 210px; padding: 10px 12px; z-index: 4; font-size: 13px; border: 2px solid #8fd0b8; }
+.ticker[hidden] { display: none; }
+.ticker .tk-title { font-weight: 800; color: #2f6656; margin-bottom: 4px; }
+.ticker table { width: 100%; } .ticker td { padding: 2px 0; } .ticker tr.emwk td { border-top: 1px dashed #d8cbb4; padding-top: 4px; }
+.view.card-on .ticker { display: none; }
+@media (max-width: 700px) { .ticker { top: 100px; width: 170px; font-size: 12px; } }

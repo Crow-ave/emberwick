@@ -30,8 +30,9 @@ const goodName = (g) => t('g.' + g);
 // goods inside a sentence: lower case, except German where nouns keep their capital
 const goodWord = (g) => (getLang() === 'de' ? goodName(g) : goodName(g).toLocaleLowerCase(getLang()));
 const placeName = (id) => {
-  const m = /^d(\d)-(\d+)$/.exec(id || ''); // neighbourhood plots: "Ember Lane 3"
-  return m ? t('district.' + m[1]) + ' ' + m[2] : t('b.' + id);
+  const m = /^d(\d)-(\d+)$/.exec(id || ''); // neighbourhood plots: "Ember Lane No. 3", villas get tree names
+  if (m && m[1] === '2') return t('villa.' + m[2]);
+  return m ? t('plot.street', { street: t('district.' + m[1]), n: m[2] }) : t('b.' + id);
 };
 const npcName = (id) => t('npc.' + id);
 const errText = (r) => (r.code ? t(r.code) : r.error);
@@ -505,6 +506,7 @@ function panelExchange() {
   const tab = ui.exTab || 'change';
   if (tab === 'change' && !ui.exPrices && !ui.exPricesLoading) { ui.exPricesLoading = true; loadExPrices(); }
   let h = `<h2>${t('b.exchange')}</h2><p class="muted small">${t('ex.intro', { fee: Math.round(mk.fee * 100) })}</p>`;
+  const COL = '<!--col-->';
   h += `<div class="tabs">${['change', 'goods', 'deeds'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
   if (tab === 'goods') {
     const mine = me ? mk.goods.filter((g) => (me.inv[g] || 0) > 0) : [];
@@ -522,7 +524,7 @@ function panelExchange() {
           `<p class="muted small">${t('ex.priceHint', { shop: shopPrice(g0) ?? '–', buy: buyPrice(g0) ?? '–' })}</p>`;
       }
     }
-    h += `<p class="sub2">${t('ex.book')}</p>`;
+    h += COL + `<p class="sub2">${t('ex.book')}</p>`;
     h += mk.orders.length ? `<table>${mk.orders.map((o) => `<tr><td><b>${goodName(o.good)}</b> × ${o.qty}<div class="muted small">${esc(o.sellerName)} · ${t('ex.left', { n: o.left })}</div></td><td class="n">${o.price} EMWK${shopPrice(o.good) ? `<div class="muted small">${t('ex.shop', { n: shopPrice(o.good) })}</div>` : ''}</td><td class="n">` +
       (o.mine ? `<button data-act="cancelOrder" data-id="${o.id}">${t('ex.cancel')}</button>` : `<button class="primary" data-act="fillOrder" data-id="${o.id}" ${!me || me.coins < o.price ? 'disabled' : ''}>${t('ex.buy1')}</button>`) + `</td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noOrders')}</p>`;
     const tr = mk.trades.filter((x) => x.good);
@@ -533,6 +535,7 @@ function panelExchange() {
     h += `<p class="sub2">${t('ex.deedsForSale')}</p>`;
     h += sale.length ? `<table>${sale.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${esc(x.owner)} · ${x.built ? t(x.bed ? 'ex.withHouseBed' : 'ex.withHouse') : t('ex.bareLand')}${x.lease && x.lease.tenant ? ' · ' + t('ex.rented', { n: x.lease.rent }) : ''}</div></td><td class="n">${x.sale.price} EMWK</td><td class="n">` +
       `<button class="primary" data-act="buyDeed" data-plot="${id}" ${!me || me.plot || me.coins < x.sale.price || (x.minLevel && me.level < x.minLevel) ? 'disabled' : ''}>${t('ex.buy1')}</button></td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noDeeds')}</p>`;
+    h += COL;
     if (me && me.plot) {
       const x = view.plots[me.plot];
       h += `<p class="sub2">${t('ex.myDeed', { place: placeName(me.plot) })}</p>`;
@@ -552,7 +555,7 @@ function panelExchange() {
     if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
     else if (q && q.ok) h += `<div class="contract"><b>${t('ex.quoteOut', { a: q.amountIn, b: q.amountOut, sym: q.to, chain: q.chain })}</b>${q.usdOut ? `<div class="small">≈ $${q.usdOut}</div>` : ''}<p class="muted small">${t('ex.quoteNote')}</p></div>`;
     else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
-    h += oracleBox() + reserveBox(true);
+    h += COL + oracleBox() + reserveBox(true);
     const pr = ui.exPrices;
     h += `<p class="sub2">${t('ex.pricesTitle')}</p>`;
     if (!pr) h += `<p class="muted small">${t('ex.loading')}</p>`;
@@ -561,6 +564,9 @@ function panelExchange() {
     h += `<p class="sub2">${t('ex.bridgeTitle')}</p><p class="small">${t('ex.bridgeHelp', { n: me ? Math.floor(me.coins) : 0 })}</p><button class="primary" data-act="open-near">${t('ex.openNear')}</button>`;
     h += `<p class="muted small">${t('ex.changeNote')}</p>`;
   }
+  // two columns side by side, so nothing needs scrolling on a normal screen
+  const at = h.indexOf('<div class="tabs">'), endTabs = h.indexOf('</div>', at) + 6, body = h.slice(endTabs);
+  if (body.includes(COL)) { const [l, r] = body.split(COL); h = h.slice(0, endTabs) + `<div class="excols"><div class="excol">${l}</div><div class="excol">${r}</div></div>`; }
   return h;
 }
 // the live NEAR price from NEAR Intents and what it does to the village economy
@@ -582,6 +588,7 @@ async function loadExPrices() {
   try { ui.exPrices = await (await fetch('/api/exchange/prices')).json(); } catch { ui.exPrices = { ok: false }; }
   ui.exPricesAt = Date.now();
   if (ui.selected === 'exchange') renderPanel();
+  if (ui.district === 3) renderMapNow(); // the price board and the price panel
 }
 // market actions answer back here; selling a deed that is in your own wallet first sends it to the bank
 async function exAct(type, extra) {
@@ -789,21 +796,23 @@ const onMapCard = (id) => MAP_CARD.has(id) || !!(id && view && view.plots && vie
 function renderMapCard(id, top, html) {
   const card = $('map-card');
   if (!card) return false;
-  if (!id || ui.scene) { card.hidden = true; $('view').classList.remove('card-on'); return false; }
+  if (!id || ui.scene) { card.hidden = true; $('view').classList.remove('card-on', 'card-wide'); return false; }
   const typing = card.contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
   if (!typing) card.innerHTML = closeBtn() + top + html;
   card.hidden = false;
   $('view').classList.add('card-on');
+  $('view').classList.toggle('card-wide', id === 'exchange');
   return true;
 }
 function renderPanel() {
   const panel = $('panel');
   const typing = document.activeElement && panel.contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
   if (typing) return; // keep what the player is typing
-  if (!onMapCard(ui.selected) && $('map-card')) { $('map-card').hidden = true; $('view').classList.remove('card-on'); }
+  if (!onMapCard(ui.selected) && $('map-card')) { $('map-card').hidden = true; $('view').classList.remove('card-on', 'card-wide'); }
   if (ui.selected === 'near') { panel.innerHTML = closeBtn() + panelNear(); panel.hidden = false; return; }
   if (ui.selected === 'board') { panel.innerHTML = closeBtn() + boardSection(); panel.hidden = false; return; }
   if (ui.selected === 'trade') { panel.innerHTML = closeBtn() + panelTrade(); panel.hidden = false; return; }
+  if (ui.selected === 'rename' && view.player) { panel.innerHTML = closeBtn() + `<h2>${t('rename.title')}</h2><p class="small">${t('rename.help')}</p><form id="rename-form" class="row"><input id="rename-input" maxlength="20" value="${esc(view.player.name)}"><button class="primary" type="submit">${t('rename.save')}</button></form>`; panel.hidden = false; return; }
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
   if (ui.selected === 'week' && view.week && renderMapCard('week', '', panelWeek())) { panel.innerHTML = closeBtn() + `<h2>${t('ff.title')}</h2><p class="muted small">${t('card.onMap')}</p>`; panel.hidden = false; return; }
@@ -967,9 +976,9 @@ function panelPlot(b) {
   } else if (!p.open) {
     h += `<p class="closed">${t('district.notOpen')}</p><button data-go="council">${esc(t('go.to', { place: placeName('council') }))}</button>`;
   } else {
-    h += `<p>${t('plot.forSale', { n: p.price })}</p><p class="muted small">${t(p.district ? 'plot.priceFar' : 'plot.priceCentre')}</p><p class="muted small">${t('plot.deedInfo')}</p>`;
+    h += `<p>${t('plot.forSale', { n: p.price })}</p><p class="muted small">${t(p.district ? 'plot.priceFar' : 'plot.priceCentre')}</p><p class="muted small">${t('plot.deedInfo')}</p><p class="small rule">${t('plot.oneRule')}</p>`;
     if (p.minLevel && me && me.level < p.minLevel) h += `<p class="closed small">${t('plot.needLevel', { n: p.minLevel, have: me.level })}</p>`;
-    else if (me && me.plot) h += `<p class="muted small">${t('plot.haveOne', { place: placeName(me.plot) })}</p>`;
+    else if (me && me.plot) h += `<p class="closed"><b>${t('plot.haveOne', { place: placeName(me.plot) })}</b><br>${t('plot.oneRule')}</p>`;
     else h += `<button class="primary big" data-act="buyPlot" ${!me || me.coins < p.price ? 'disabled' : ''}>${t('plot.buy', { n: p.price })}</button>` + (me && me.coins < p.price ? `<p class="closed small">${t('plot.needCoins', { n: p.price, have: Math.floor(me.coins) })}</p>` : '') + payBox('plot:' + b.id, p.price);
   }
   return h + `<p class="muted small">${t('plot.note', { n: B.lumber, fee: B.fee })}</p>`;
@@ -1364,7 +1373,7 @@ function avatarSvg(path) {
 function renderHud() {
   const me = view.player;
   if (!me) { $('me').innerHTML = `<p class="muted" style="margin:0">${t('me.join')}</p>`; $('quest').hidden = true; return; }
-  $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)}</h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
+  $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)} <button class="editname" data-rename="1" title="${esc(t('rename.title'))}" aria-label="${esc(t('rename.title'))}">✎</button></h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
     `<div class="energy" id="energy-row" title="${esc(t('rank.' + String(me.rank).toLowerCase()))}">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
     `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button></div>` +
@@ -1483,6 +1492,12 @@ function renderChrome() {
 function renderMapNow() {
   ui.closedTag = t('ui.closedTag'); ui.nightTag = t('closed.night'); ui.mineTag = t('plot.mineTag'); ui.nameOf = placeName;
   view.saleLabel = t('plot.saleTag');
+  // the exchange board and the price panel in the exchange quarter show live NEAR Intents prices
+  const pr = ui.exPrices && ui.exPrices.ok ? ui.exPrices.tokens : null, px = (k) => { const x = pr && pr.find((y) => y.key === k); return x ? Number(x.price) : null; };
+  const fmt = (n) => (n == null ? null : '$' + (n >= 1000 ? Math.round(n / 1000) + 'k' : n >= 10 ? Math.round(n) : n.toFixed(2)));
+  view.exBoard = pr ? { NEAR: fmt(px('NEAR')), BTC: fmt(px('BTC')), EMWK: px('NEAR') ? fmt(px('NEAR') / (world.rules.emwkPerNear || 100)) : null } : null;
+  if (ui.district === 3 && !ui.exPricesLoading && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) { ui.exPricesLoading = true; loadExPrices(); }
+  renderTicker(pr);
   ui.laneName = t('district.1'); ui.villaName = t('district.2'); ui.exName = t('district.3');
   if (ui.district && view.districts) {
     ui.backTag = '← ' + t('district.back'); ui.villaTag = t('district.2') + ' →'; ui.laneTag = t('district.1') + ' →';
@@ -1768,6 +1783,7 @@ document.body.addEventListener('click', (e) => {
     return;
   }
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
+  if (e.target.closest('[data-rename]')) { ui.selected = 'rename'; renderMapNow(); renderPanel(); setTimeout(() => { const i = $('rename-input'); if (i) { i.focus(); i.select(); } }, 50); return; }
   const lt = e.target.closest('[data-logtab]');
   if (lt) { showLogTab(lt.dataset.logtab); return; }
   const cto = e.target.closest('[data-chatto]');
@@ -1892,13 +1908,13 @@ function applyZoom() {
   mz.cx = Math.max(bx + w / 2, Math.min(bx + bw - w / 2, mz.cx));
   mz.cy = Math.max(by + h / 2, Math.min(by + bh - h / 2, mz.cy));
   svg.setAttribute('viewBox', `${mz.cx - w / 2} ${mz.cy - h / 2} ${w} ${h}`);
-  const zb = $('zoom'); if (zb) zb.hidden = !touchMap;
+  const zb = $('zoom'); if (zb) zb.hidden = false;
 }
 function setupTouchMap() {
   const svg = $('map');
   mz.base = svg.getAttribute('viewBox').split(' ').map(Number);
   mz.cx = mz.base[0] + mz.base[2] / 2; mz.cy = mz.base[1] + mz.base[3] * 0.52;
-  if (!touchMap) return;
+  if (!touchMap) { setupMouseMap(svg); applyZoom(); return; }
   mz.z = matchMedia('(max-width: 700px)').matches ? 1.6 : 1.25;
   applyZoom();
   setTimeout(applyZoom, 300); // once the page has its final size
@@ -1965,6 +1981,51 @@ setInterval(() => {
   if (tip) showTip(tip); else hideTip();
 }, 250);
 
+// with a mouse: the wheel zooms toward the pointer, dragging moves the view (a drag never counts as a click)
+function setupMouseMap(svg) {
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const vb = svg.viewBox.baseVal, r = svg.getBoundingClientRect();
+    const u = Math.max(vb.width / r.width, vb.height / r.height);
+    const px = vb.x + (e.clientX - r.left) * u, py = vb.y + (e.clientY - r.top) * u; // the point under the mouse
+    const z0 = mz.z;
+    mz.z = Math.max(1, Math.min(3, mz.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    const k = z0 / mz.z;
+    mz.cx = px + (mz.cx - px) * k; mz.cy = py + (mz.cy - py) * k; // keep that point where it is
+    applyZoom();
+  }, { passive: false });
+  let drag = null;
+  svg.addEventListener('mousedown', (e) => { if (e.button === 0 && mz.z > 1) drag = { x: e.clientX, y: e.clientY, cx: mz.cx, cy: mz.cy, moved: false }; });
+  addEventListener('mousemove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+    drag.moved = true; svg.style.cursor = 'grabbing';
+    const vb = svg.viewBox.baseVal, r = svg.getBoundingClientRect(), u = Math.max(vb.width / r.width, vb.height / r.height);
+    mz.cx = drag.cx - dx * u; mz.cy = drag.cy - dy * u; applyZoom();
+  });
+  addEventListener('mouseup', () => {
+    if (drag && drag.moved) { ignoreClick = true; setTimeout(() => { ignoreClick = false; }, 300); svg.style.cursor = ''; }
+    drag = null;
+  });
+}
+
+// a live price panel on the left of the exchange quarter
+function renderTicker(pr) {
+  let el = $('ticker');
+  if (!el) { el = document.createElement('div'); el.id = 'ticker'; el.className = 'card hud ticker'; $('view').appendChild(el); }
+  const show = ui.district === 3 && !ui.scene;
+  el.hidden = !show;
+  if (!show) return;
+  const o = view.oracle;
+  let h = `<div class="tk-title">${t('ticker.title')}</div>`;
+  if (!pr) h += `<p class="muted small">${ui.exPrices && !ui.exPrices.ok ? t('ex.offline') : t('ex.loading')}</p>`;
+  else h += `<table>${pr.map((x) => `<tr><td><b>${esc(x.key === 'NEAR' ? 'NEAR' : x.symbol)}</b> <span class="muted small">${esc(x.chain)}</span></td><td class="n">$${Number(x.price).toLocaleString(undefined, { maximumFractionDigits: x.price < 10 ? 3 : 0 })}</td></tr>`).join('')}` +
+    (pr.find((x) => x.key === 'NEAR') ? `<tr class="emwk"><td><b>EMWK</b> <span class="muted small">${t('ticker.village')}</span></td><td class="n">$${(Number(pr.find((x) => x.key === 'NEAR').price) / (world.rules.emwkPerNear || 100)).toFixed(4)}</td></tr>` : '') + `</table>`;
+  if (o && o.ref) { const pct = Math.round((o.usd / o.ref - 1) * 1000) / 10; h += `<p class="small ${pct > 0 ? 'ok' : pct < 0 ? 'bad' : ''}">${t('ticker.week', { pct: (pct > 0 ? '+' : '') + pct })}</p>`; }
+  el.innerHTML = h + `<p class="muted small">${t('ticker.src')}</p>`;
+}
+
 // ---------- village chat ----------
 let chatSeen = null; // the newest message id already shown as a bubble
 function renderChat() {
@@ -2000,6 +2061,14 @@ function showLogTab(tab) {
   if (tab === 'chat') { ui.chatUnread = 0; renderChat(); }
 }
 document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'rename-form') {
+    e.preventDefault();
+    const r = await post('/api/action', { player: playerId, type: 'rename', name: $('rename-input').value });
+    if (!r.ok) return toast(errText(r), 'bad');
+    toast(t('rename.done'), 'good');
+    if (r.state && newer(r.state)) { view = r.state; }
+    ui.selected = 'guide'; render(); return;
+  }
   if (e.target.id !== 'chat-form') return;
   e.preventDefault();
   const inp = $('chat-input'), text = inp.value.trim();

@@ -725,7 +725,13 @@ function exchangeArt(cx, cy, v) {
   // ticker board in front
   const bx = cx - 70, by = cy + 30, rows = ['NEAR', 'EMWK', 'BTC'];
   s += `<rect x="${bx - 2}" y="${by - 30}" width="4" height="32" fill="#4a3a2a"/><rect x="${bx + 52}" y="${by - 30}" width="4" height="32" fill="#4a3a2a"/><rect x="${bx - 6}" y="${by - 58}" width="66" height="32" rx="3" fill="#1f2a2a" stroke="#4a3a2a" stroke-width="2"/>`;
-  rows.forEach((r, k) => { s += `<text x="${bx}" y="${by - 48 + k * 9}" font-size="7" fill="#9fdcc6" font-family="monospace">${r}</text><text x="${bx + 54}" y="${by - 48 + k * 9}" font-size="7" text-anchor="end" fill="${k === 1 ? '#f2b04a' : '#6ee08a'}" font-family="monospace">${k === 1 ? '▲' : '▲'}</text>`; });
+  // live prices from NEAR Intents on the board (v.exBoard is filled by the page); arrows only until they arrive
+  const board = v.exBoard || {};
+  rows.forEach((r, k) => {
+    const val = board[r];
+    s += `<text x="${bx}" y="${by - 48 + k * 9}" font-size="7" fill="#9fdcc6" font-family="monospace">${r}</text>` +
+      `<text x="${bx + 54}" y="${by - 48 + k * 9}" font-size="${val ? 6.2 : 7}" text-anchor="end" fill="${k === 1 ? '#f2b04a' : '#6ee08a'}" font-family="monospace">${val || '▲'}</text>`;
+  });
   // banners
   for (const [x, c] of [[cx + 64, '#3f7a6a'], [cx + 82, '#e2b640']]) s += `<rect x="${x}" y="${cy - 30}" width="2" height="34" fill="#5a4a38"/><path d="M${x + 2} ${cy - 30} h12 v16 l-6 -4 l-6 4 z" fill="${c}"/>`;
   return s + sign(cx - 96, cy - 6, 'coin', '#eef8f4');

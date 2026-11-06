@@ -71,10 +71,10 @@ export const BUILDINGS = [
   { id: 'roadsign',   name: 'Road to the neighbourhoods', type: 'sign', i: 6, j: 13, w: 1 },
   { id: 'gate',       name: 'Village gate',type: 'landmark',  i: 5,  j: 13, w: 1 },
   // building land: four plots around the village players can buy and build a home on
-  { id: 'plot-1',     name: 'Plot 1',      type: 'plot',      i: 1,  j: 12, w: 1 },
-  { id: 'plot-2',     name: 'Plot 2',      type: 'plot',      i: 8,  j: 13, w: 1 },
-  { id: 'plot-3',     name: 'Plot 3',      type: 'plot',      i: 12, j: 6,  w: 1 },
-  { id: 'plot-4',     name: 'Plot 4',      type: 'plot',      i: 3,  j: 2,  w: 1 },
+  { id: 'plot-1',     name: 'Mill Lane',     type: 'plot',      i: 1,  j: 12, w: 1 },
+  { id: 'plot-2',     name: 'Well Corner',     type: 'plot',      i: 8,  j: 13, w: 1 },
+  { id: 'plot-3',     name: 'Apple Garden',     type: 'plot',      i: 12, j: 6,  w: 1 },
+  { id: 'plot-4',     name: 'Brookside',     type: 'plot',      i: 3,  j: 2,  w: 1 },
   // places where the council can order more watchtowers (empty until built)
   { id: 'watch-1',    name: 'Watchtower',  type: 'watch',     i: 13, j: 3,  w: 1 },
   { id: 'watch-2',    name: 'Watchtower',  type: 'watch',     i: 0,  j: 6,  w: 1 },
