@@ -410,6 +410,8 @@ export function playerAction(state, playerId, action) {
   const res = doAction(state, p, actor, action, qty);
   if (res.ok) {
     state.rev = (state.rev || 0) + 1;
+    if (action.type === 'sleep' || action.type === 'rest') p.stats.slept = (p.stats.slept || 0) + 1;
+    if (action.type === 'vote') p.stats.votes = (p.stats.votes || 0) + 1;
     const done = advanceQuest(state, p);
     if (done) res.quest = done;
   }
@@ -503,11 +505,24 @@ function doAction(state, p, actor, action, qty) {
   return { ok: false, error: 'Unknown action.', code: 'err.unknownAction' };
 }
 
-export function questFor(p) {
+// what a player owns: coins plus goods at the best price a craftsman would pay today
+export function playerWorth(state, p) {
+  let goods = 0;
+  for (const [g, q] of Object.entries(p.inv || {})) {
+    if (!(q > 0)) continue;
+    let best = 0;
+    for (const n of Object.values(state.npcs)) best = Math.max(best, (n.buys && n.buys[g]) || 0, ((n.sells && n.sells[g]) || 0) * 0.5);
+    goods += q * best;
+  }
+  return Math.round(balance(state, 'player:' + p.id) + goods);
+}
+
+export function questFor(p, state) {
   const q = QUESTS[Math.min(p.quest || 0, QUESTS.length - 1)];
   const route = PATH_ROUTE[p.path] || PATH_ROUTE.farmer;
   const name = (id) => (BUILDINGS.find((b) => b.id === id) || {}).name || id;
-  const fill = (t) => t && t.replace('{spot}', route.spot).replace('{shop}', route.shop);
+  const freePlot = state ? (PLOT_DEFS.find((d) => state.plots[d.id] && !state.plots[d.id].owner && plotOpen(state, d.id)) || {}).id || 'roadsign' : 'roadsign';
+  const fill = (t) => t && t.replace('{spot}', route.spot).replace('{shop}', route.shop).replace('{plot}', freePlot).replace('{myplot}', p.plot || freePlot);
   const fillText = (t) => t.replace('{spot}', name(route.spot).toLowerCase()).replace('{shop}', name(route.shop).toLowerCase());
   const st = p.stats || { gathers: 0, sells: 0, sold: 0, earned: 0, visited: {} };
   const sh = st.shifts || 0;
@@ -518,12 +533,12 @@ export function questFor(p) {
   const findJob = !job && workGoal && p.inv && !(p.inv[toolFor(GATHER_SPOTS[route.spot].good)] > 0);
   const progress = job
     ? { gather: [st.gathers + sh, 2], sell: [Math.max(st.sells ? 3 : 0, sh), 3], supply: [Math.max(Math.round(st.sold * 8 / 15), sh), 8] }[q.id]
-    : { gather: [st.gathers, 2], earn: [Math.floor(st.earned), 40], supply: [st.sold, 15] }[q.id] || null;
+    : { gather: [st.gathers, 2], earn: [Math.floor(st.earned), 40], supply: [st.sold, 15], worth: state ? [Math.min(1000, playerWorth(state, p)), 1000] : null }[q.id] || null;
   const target = job || (findJob ? 'market' : fill(q.target));
   return { index: p.quest || 0, total: QUESTS.length - 1, id: q.id, title: q.title, text: fillText(q.text), target, reward: q.reward, progress, spot: route.spot, shop: route.shop, job, findJob };
 }
 
-function questDone(p, q) {
+function questDone(state, p, q) {
   const st = p.stats, route = PATH_ROUTE[p.path] || PATH_ROUTE.farmer;
   switch (q.id) {
     case 'meet': return !!st.visited.gate;
@@ -532,13 +547,29 @@ function questDone(p, q) {
     case 'peak': return !!st.visited.dragonpeak;
     case 'earn': return st.earned >= 40;
     case 'supply': return st.sold >= 15 || (st.shifts || 0) >= 8;
+    case 'home': return (st.slept || 0) >= 1;
+    case 'job': return !!p.job || (st.shifts || 0) >= 1;
+    case 'land': return !!p.plot;
+    case 'house': { const pl = p.plot && state.plots[p.plot]; return !!(pl && pl.built && pl.bed); }
+    case 'vote': return (st.votes || 0) >= 1;
+    case 'worth': return playerWorth(state, p) >= 1000;
     default: return false;
   }
 }
 
 function advanceQuest(state, p) {
+  // goals already met (say, a home built before the goal existed) are passed straight through
+  let last = null, total = 0;
+  for (let i = 0; i < QUESTS.length; i++) {
+    const r = advanceOne(state, p);
+    if (!r) break;
+    last = r; total += r.reward;
+  }
+  return last ? { ...last, reward: total } : null;
+}
+function advanceOne(state, p) {
   const q = QUESTS[p.quest || 0];
-  if (!q || !questDone(p, q)) return null;
+  if (!q || !questDone(state, p, q)) return null;
   const reward = Math.min(q.reward, balance(state, 'newcomerFund'));
   transfer(state, 'newcomerFund', 'player:' + p.id, reward);
   p.quest = (p.quest || 0) + 1;
@@ -1661,7 +1692,7 @@ function playerView(state, p) {
   }
   const costs = Object.fromEntries(Object.keys(GATHER_SPOTS).map((k) => [k, energyCost(p, k, state)]));
   return {
-    ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p),
+    ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p, state),
     job: p.job ? (() => {
       const today = p.job.shiftDay === state.day ? p.job.shiftsToday : 0;
       return { ...p.job, shiftsToday: today, maxShifts: JOBS.shiftsPerDay, shiftToday: today >= JOBS.shiftsPerDay, energy: JOBS.shiftEnergy };

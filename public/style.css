@@ -554,3 +554,14 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .tip:hover::after, .tip:focus::after { content: none !important; display: none !important; }
 #tipbox { position: fixed; z-index: 50; max-width: 260px; background: #2a2f45; color: #f2f4fb; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
 #tipbox[hidden] { display: none; }
+
+/* how to play (v55) */
+.helptop { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.helptop:hover { background: rgba(255,255,255,.22); }
+.dialog.howto { max-width: 720px; }
+.howgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 14px 0 10px; }
+.howcard { background: #faf3e8; border-radius: 12px; padding: 12px 14px; }
+.howcard h4 { margin: 4px 0; color: var(--ember-dark); }
+.howcard p { margin: 0; font-size: 13px; line-height: 1.4; }
+.howico { font-size: 22px; }
+@media (max-width: 700px) { .howgrid { grid-template-columns: 1fr; } .helptop { padding: 3px 9px; font-size: 12px; } }

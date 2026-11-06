@@ -670,6 +670,7 @@ function questTexts(q) {
 function panelGuide() {
   const me = view.player;
   if (!me) return `<h2>${t('guide.title')}</h2><p>${t('guide.join')}</p>`;
+  const howLink = `<p><button class="linkbtn" data-howto="1">${t('how.btn')}</button></p>`;
   const route = world.routes[me.path];
   const steps = [];
   const evening = view.night || view.dayProgress >= 0.7;
@@ -713,7 +714,7 @@ function panelGuide() {
     steps.push({ text: t('guide.goal', { title: esc(qt.title), text: esc(qt.text) }), go: q.target, label: t('quest.showMe') });
   }
   if (view.events.attackDay) steps.push({ text: t('guide.dragon', { day: view.events.attackDay, today: view.day, ready: view.readiness }), go: 'dragonpeak', label: t('guide.seePeak') });
-  return `<h2>${t('guide.title')}</h2><p class="muted" style="font-size:13px;margin-top:2px">${t('guide.sentence')}</p>` +
+  return `<h2>${t('guide.title')}</h2><p class="muted" style="font-size:13px;margin-top:2px">${t('guide.sentence')}</p>` + howLink +
     `<ol class="guide">${steps.map((st) => `<li>${st.text}${st.go ? `<br><button class="primary" data-go="${st.go}">${esc(st.label)} →</button>` : ''}${st.eat ? `<br><button class="primary" data-eat="1">${t('guide.eat')}</button>` : ''}</li>`).join('')}</ol>`;
 }
 
@@ -1607,7 +1608,13 @@ $('elder-ok').addEventListener('click', async () => {
   ui.selected = 'guide';
   renderMapNow();
   renderPanel();
+  // the first time only: show the four-card "how to play" right after the elder's welcome
+  let seen = null; try { seen = localStorage.getItem('ew.howto'); } catch {}
+  if (!seen) openHowto();
 });
+function openHowto() { $('howto').hidden = false; try { localStorage.setItem('ew.howto', '1'); } catch {} }
+$('howto-ok').addEventListener('click', () => { $('howto').hidden = true; });
+$('howto').addEventListener('click', (e) => { if (e.target.id === 'howto') $('howto').hidden = true; });
 
 let ignoreClick = false;
 // the villager under the mouse (a generous area around the little figure)
@@ -1685,6 +1692,7 @@ document.body.addEventListener('click', (e) => {
     post('/api/fastforward', { player: playerId }).then((r) => { if (!r.ok) toast(errText(r), 'bad'); else toast(t('ff.started'), 'win'); });
     return;
   }
+  if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const lt = e.target.closest('[data-logtab]');
   if (lt) { showLogTab(lt.dataset.logtab); return; }
   const cto = e.target.closest('[data-chatto]');

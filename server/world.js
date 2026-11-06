@@ -293,7 +293,14 @@ export const QUESTS = [
   { id: 'peak',   title: 'Know the danger', text: 'Look at Dragon peak to see how ready the village is.', target: 'dragonpeak', reward: 5 },
   { id: 'earn',   title: 'Stand on your own feet', text: 'Earn 40 EMWK from trading.', target: '{shop}', reward: 10 },
   { id: 'supply', title: 'Feed the village', text: 'Sell 15 goods in total to the craftsmen.', target: 'market', reward: 15 },
-  { id: 'done',   title: 'A true villager', text: 'Jobs, homes and the village council open in the next update. Keep trading and watch the prices.', target: null, reward: 0 },
+  // chapter two: the long goals that walk a player through the rest of the game
+  { id: 'home',   title: 'A roof for the night', text: 'Sleep in a bed: rent a home, or pay for a room at the inn.', target: 'inn', reward: 10 },
+  { id: 'job',    title: 'Learn a trade', text: 'Become an apprentice: apply for a job on the notice board.', target: 'market', reward: 15 },
+  { id: 'land',   title: 'Own a piece of land', text: 'Buy a plot. Its deed becomes an NFT on NEAR.', target: '{plot}', reward: 25 },
+  { id: 'house',  title: 'Build your home', text: 'Build a house on your plot and put a bed in it.', target: '{myplot}', reward: 25 },
+  { id: 'vote',   title: 'Have your say', text: 'Vote on a proposal at the village council.', target: 'council', reward: 10 },
+  { id: 'worth',  title: 'A pillar of the village', text: 'Reach a total worth of 1,000 EMWK (coins plus goods).', target: '{shop}', reward: 30 },
+  { id: 'done',   title: 'A true villager', text: 'You have done it all. Keep trading, grow your house, and guard the village from the dragon.', target: null, reward: 0 },
 ];
 
 // Which skill each raw good trains.

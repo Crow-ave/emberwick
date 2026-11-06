@@ -13,6 +13,7 @@
     <div class="stat muted" id="day-left"></div>
     <button class="ffbtn" id="ff-btn" type="button"></button>
     <div class="stat muted" id="pop"></div>
+    <button class="helptop" id="howto-btn" type="button" data-howto="1" data-i18n="how.btn">How to play</button>
     <select id="lang" class="lang"></select>
     <button class="sndbtn" id="sfx-btn" type="button"></button><button class="sndbtn" id="music-btn" type="button"></button>
     <button id="near-pill" class="near-pill st-off" type="button"><span class="dot"></span><span id="near-text">NEAR</span></button>
@@ -69,6 +70,20 @@
     </form>
   </div>
 
+  <div class="overlay" id="howto" hidden>
+    <div class="dialog howto">
+      <h2 data-i18n="how.title">How to play Emberwick</h2>
+      <p class="muted" data-i18n="how.lead"></p>
+      <div class="howgrid">
+        <div class="howcard"><div class="howico">⛏</div><h4 data-i18n="how.c1.t"></h4><p data-i18n="how.c1.x"></p></div>
+        <div class="howcard"><div class="howico">⚖</div><h4 data-i18n="how.c2.t"></h4><p data-i18n="how.c2.x"></p></div>
+        <div class="howcard"><div class="howico">🏠</div><h4 data-i18n="how.c3.t"></h4><p data-i18n="how.c3.x"></p></div>
+        <div class="howcard"><div class="howico">🛡</div><h4 data-i18n="how.c4.t"></h4><p data-i18n="how.c4.x"></p></div>
+      </div>
+      <p class="small muted" data-i18n="how.foot"></p>
+      <button class="primary" type="button" id="howto-ok" data-i18n="how.ok">Got it</button>
+    </div>
+  </div>
   <div class="overlay" id="elder" hidden>
     <div class="dialog elder">
       <div class="elder-row">
