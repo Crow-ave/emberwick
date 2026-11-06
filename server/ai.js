@@ -166,11 +166,38 @@ async function chat(messages, maxTokens) {
   return text;
 }
 
-const jsonIn = (text) => {
-  const s = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/```(json)?/gi, '');
-  const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  return a >= 0 && b > a ? JSON.parse(s.slice(a, b + 1)) : null;
-};
+// read the first complete JSON object in a reply: walk the braces (minding strings) instead of taking
+// "first { to last }", so text or a second object after it does no harm; small slips are repaired
+function jsonIn(text) {
+  const s = String(text).replace(/<think>[\s\S]*?<\/think>/g, '').replace(/```(json)?/gi, '');
+  for (let a = s.indexOf('{'); a >= 0; a = s.indexOf('{', a + 1)) {
+    let depth = 0, inStr = false, esc = false, b = -1;
+    for (let k = a; k < s.length; k++) {
+      const ch = s[k];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}' && --depth === 0) { b = k; break; }
+    }
+    const chunk = b > a ? s.slice(a, b + 1) : s.slice(a); // an answer cut short: try to close it
+    for (const t of [chunk, chunk.replace(/,\s*([}\]])/g, '$1'), closeUp(chunk)]) {
+      try { const o = JSON.parse(t); if (o && typeof o === 'object') return o; } catch {}
+    }
+  }
+  return null;
+}
+// close an answer that stopped in the middle: drop the unfinished last entry and add the missing brackets
+function closeUp(t) {
+  let s = t.replace(/,\s*"[^"]*"?\s*:?\s*[^,{}\[\]]*$/, '');
+  const stack = [];
+  let inStr = false, esc = false;
+  for (const ch of s) {
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true; else if (ch === '{' || ch === '[') stack.push(ch); else if (ch === '}' || ch === ']') stack.pop();
+  }
+  if (inStr) s += '"';
+  return s.replace(/,\s*$/, '') + stack.reverse().map((c) => (c === '{' ? '}' : ']')).join('');
+}
 
 const SYSTEM_PLAN = 'You are the minds of the craftsmen of Emberwick, a small medieval village whose money is EMWK (a NEAR token with a fixed supply). ' +
   'Each craftsman runs a shop with its own wallet. Every morning you plan the day for each one, using the numbers you are given. ' +
@@ -189,7 +216,7 @@ export async function planDay(brief) {
   let text = await chat(msgs, 3000), plan = null;
   try { plan = jsonIn(text); } catch {}
   if (!plan || !Array.isArray(plan.craftsmen)) {
-    console.log('[AI] the plan came back unreadable, asking once more. It began with:', text.replace(/\s+/g, ' ').slice(0, 160));
+    console.log('[AI] the plan came back unreadable, asking once more. It ended with:', text.replace(/\s+/g, ' ').slice(-160));
     text = await chat([...msgs, { role: 'assistant', content: text.slice(0, 1500) }, { role: 'user', content: 'Reply again with only the JSON object, nothing before or after it.' }], 3000);
     try { plan = jsonIn(text); } catch {}
   }
