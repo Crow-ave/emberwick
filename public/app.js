@@ -1130,6 +1130,9 @@ function panelNear() {
       `<div class="row"><button data-act="near-copy" data-copy="${esc(c.detail.address)}">${t('near.copy')}</button>` +
       `<a class="btnlink" href="${c.wallet}" target="_blank" rel="noopener">${t('near.openWallet')}</a></div></div>`;
   } else if (st === 'ready') h += `<div class="status live">${t('near.st.ready', { n: c.txCount })}</div>`;
+  if (c.lowGas) h += `<div class="near-box warn"><p>${t('near.lowGas')}</p><code class="addr">${esc(c.lowGas.address)}</code>` +
+    `<div class="row"><button data-act="near-copy" data-copy="${esc(c.lowGas.address)}">${t('near.copy')}</button>` +
+    `<a class="btnlink" href="${c.wallet}" target="_blank" rel="noopener">${t('near.openWallet')}</a></div></div>`;
   else h += `<div class="status">${t('near.st.' + (st in { off: 1, starting: 1, error: 1 } ? st : 'starting'))}</div>`;
 
   if (c.accounts && st === 'ready') {

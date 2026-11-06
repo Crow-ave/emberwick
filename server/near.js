@@ -32,7 +32,8 @@ const ROOT_NAMES = ['emberwick-village', 'emberwick-village-2', 'emberwick-villa
 const SUB_NEAR = 0.2;      // NEAR given to each craftsman / treasury account for gas
 const TOKEN_NEAR = 2.5;    // NEAR for the token contract storage (~220 KB)
 const ROOT_MIN_SETUP = 4.5; // root needs at least this before it creates everything
-const LOW_GAS = 0.05;       // top an account up below this
+const LOW_GAS = 0.05;
+const ROOT_MIN = 0.5;        // below this the bank pauses sending and asks for testnet NEAR       // top an account up below this
 const MAX_ACTIONS = 15;     // ft_transfer actions per transaction
 const FT_GAS = 15n * 10n ** 12n;
 const FEED_MAX = 40;
@@ -187,6 +188,7 @@ export class Bridge {
       status: this.status, detail: this.detail, accounts,
       balances: this.chainBalances, feed: this.feed.slice(0, FEED_MAX), pending: this.queue.length, txCount: this.txCount,
       deeds: { ...this.deeds, contract: this.root ? this.deedsId : null, pending: this.deedQueue.length },
+      lowGas: this.lowGas ? { address: this.lowGas.address } : null,
     };
   }
 
@@ -390,6 +392,13 @@ export class Bridge {
         } catch (e) {
           entry.error = String(e.message || e).slice(0, 160);
           this.needReconcile = true;
+          // the village bank has no NEAR left for gas: stop and wait for a top-up instead of failing over and over
+          if (/not enough balance|doesn't have enough balance/i.test(entry.error) && String(e.message || e).includes(this.root)) {
+            if (!this.lowGas) this.say(`NEAR: ${this.root} is out of testnet NEAR for gas. Send it a few testnet NEAR; sending is paused until then.`);
+            this.lowGas = { address: this.root, at: Date.now() };
+            this.feed.unshift(entry);
+            return;
+          }
           this.say('NEAR transfer failed: ' + entry.error);
         }
         this.feed.unshift(entry);
@@ -406,6 +415,13 @@ export class Bridge {
       if (this.status !== 'ready') {
         await this.setup();
         if (this.status !== 'ready') return;
+      }
+      if (this.lowGas) { // paused: look again every two minutes whether someone sent NEAR
+        if (Date.now() - this.lowGas.at < 120000) return;
+        const bal = await this.adapter.nearBalance(this.root);
+        if (bal < ROOT_MIN) { this.lowGas = { address: this.root, at: Date.now(), balance: bal }; return; }
+        this.lowGas = null; this.needReconcile = true;
+        this.say('NEAR: gas money arrived, sending again.');
       }
       if (this.deeds.status !== 'ready') { try { await this.setupDeeds(); } catch (e) { this.deeds = { status: 'error', detail: { message: String(e.message || e).slice(0, 160) } }; } }
       if (this.deeds.status === 'ready' && this.deedQueue.length) await this.sendDeeds();
