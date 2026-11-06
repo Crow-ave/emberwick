@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, weekSnapshot, weekSummary, tick, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -149,6 +149,29 @@ async function intentsQuote(toSym, amount) {
     return res;
   } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160) }; }
 }
+
+// the live NEAR price from NEAR Intents feeds the village (travellers pay with NEAR), checked every 10 minutes
+async function pollOracle() {
+  try {
+    const list = await intentsTokens();
+    const n = list.find((t) => t.key === 'NEAR');
+    if (n && n.price) { setOracle(state, Number(n.price)); }
+  } catch { /* offline: the village keeps the last price */ }
+}
+// council proposals to set money aside in USDC or BTC carry a live NEAR Intents quote, refreshed every 10 minutes
+async function quoteReserves() {
+  for (const prop of (state.council && state.council.open) || []) {
+    if (prop.kind !== 'reserve' || (prop.quote && Date.now() - prop.quote.at < 10 * 60000)) continue;
+    const emwk = Math.max(0, Math.round((balance(state, 'treasury') - lockedFunds(state)) * prop.params.pct / 100));
+    const near = Math.round((emwk / RULES.emwkPerNear) * 100) / 100;
+    if (near < 0.1) continue;
+    const q = await intentsQuote(prop.params.asset, near);
+    prop.quote = { at: Date.now(), ok: !!q.ok, emwk, near, out: q.ok ? q.amountOut : null, usd: q.ok ? q.usdOut : null, error: q.ok ? null : q.error };
+    broadcast();
+  }
+}
+setTimeout(pollOracle, 3000); setInterval(pollOracle, 10 * 60000);
+setInterval(quoteReserves, 20000);
 
 function save() {
   fs.mkdirSync(path.dirname(SAVE), { recursive: true });

@@ -211,6 +211,8 @@ export const RULES = {
   priceStep: DEMO ? 0.12 : 0.06,  // how fast prices move toward their supply-and-demand level
   profitTaxAbove: 800,   // shops richer than this pay a profit tax
   profitTaxRate: 0.2,
+  emwkPerNear: 100,      // the village's own exchange rate, used to price EMWK in NEAR for live NEAR Intents quotes
+  oracle: { min: 0.85, max: 1.2 }, // travellers pay with NEAR: their prices follow the live NEAR price within these bounds
   villageTaxAbove: 300,  // villagers holding more than this pay a small morning tax on the extra
   villageTaxRate: 0.01,  // 1% of the extra, every morning (keeps the treasury from slowly running dry)
   minPrice: 1,
@@ -246,7 +248,7 @@ export const JOBS = {
 // wealth (square root, so the rich cannot simply buy every vote), how long you have
 // lived here and what you have given to the village.
 export const COUNCIL = {
-  kinds: ['grant', 'tax', 'welcome', 'festival', 'tower', 'district'],
+  kinds: ['grant', 'tax', 'welcome', 'festival', 'tower', 'district', 'reserve'],
   fee: 2,                  // proposing costs this much, paid to the treasury (stops spam)
   maxOpen: 3,              // open proposals at once
   quorum: 4,               // a decision needs at least this many voters
@@ -255,6 +257,9 @@ export const COUNCIL = {
   welcome: { min: 100, max: 800 },  // treasury -> newcomer fund
   festival: { min: 2, max: 10 },    // treasury -> every villager, per head
   tower: { cost: 250, readiness: 10, spots: ['watch-1', 'watch-2', 'watch-3'] }, // treasury pays the carpenter to build a watchtower
+  // set part of the spare treasury aside as a safe reserve in USDC or BTC, priced live by NEAR Intents.
+  // While set aside it cannot be spent; after `days` it is released again.
+  reserve: { min: 5, max: 25, assets: ['USDC', 'BTC'], days: 14 },
   weight: { wealth: 0.5, residencyCap: 10, contributionCap: 10 },
 };
 

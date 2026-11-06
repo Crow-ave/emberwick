@@ -572,3 +572,4 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   .view:not(.scene-on):not(.card-on) .hint { display: none; }
   .view:not(.card-on) #map { transform: scale(.88); transform-origin: 38% 30%; }
 }
+.view.card-on .hint, .view.scene-on .hint { display: none !important; }

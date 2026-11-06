@@ -86,6 +86,27 @@ function transfer(state, from, to, amount, note = null) {
 // ---------- the treasury's books: what came in, what went out, and to whom ----------
 const flowKind = (who) => who.startsWith('player:') || who.startsWith('bot:') ? 'villagers' : who === 'npc:tower' ? 'guards' : who.startsWith('npc:') ? 'craftsmen'
   : who === 'newcomerFund' ? 'newcomers' : who === 'adventurerFund' ? 'travellers' : who === 'deposits' ? 'deposits' : 'other';
+// money in the treasury that may not be spent: the fixed reserve plus what the council set aside
+export function heldReserve(state) { return r2((state.reserveHolds || []).reduce((a, h) => a + h.amount, 0)); }
+export function lockedFunds(state) { return RULES.treasuryReserve + heldReserve(state); }
+
+// ---------- the live NEAR price (from NEAR Intents) and what it does to the village ----------
+export function setOracle(state, usd) {
+  if (!(usd > 0)) return;
+  const o = (state.oracle = state.oracle || { days: {} });
+  o.usd = usd; o.at = Date.now();
+  o.days[state.day] = usd;
+  for (const d of Object.keys(o.days)) if (Number(d) < state.day - 7) delete o.days[d];
+  const past = Object.entries(o.days).filter(([d]) => Number(d) < state.day).map(([, v]) => v);
+  o.ref = past.length ? past.reduce((a, v) => a + v, 0) / past.length : (o.ref || usd);
+}
+// travellers pay with NEAR: when NEAR is up against its 7-day average, they pay more for the village's goods
+export function oracleFactor(state) {
+  const o = state.oracle;
+  if (!o || !o.usd || !o.ref) return 1;
+  return Math.round(Math.min(RULES.oracle.max, Math.max(RULES.oracle.min, o.usd / o.ref)) * 1000) / 1000;
+}
+
 function noteTreasury(state, dir, who, amount, note) {
   const day = state.day;
   const b = (state.tBooks = state.tBooks || { days: {}, recent: [] });
@@ -108,7 +129,7 @@ function treasuryView(state) {
     return { day, in: sum(d.in), out: sum(d.out) };
   });
   return {
-    balance: r2(balance(state, 'treasury')), reserve: RULES.treasuryReserve, spare: r2(Math.max(0, balance(state, 'treasury') - RULES.treasuryReserve)),
+    balance: r2(balance(state, 'treasury')), reserve: RULES.treasuryReserve, held: heldReserve(state), holds: (state.reserveHolds || []).map((h) => ({ ...h })), spare: r2(Math.max(0, balance(state, 'treasury') - lockedFunds(state))),
     tax: taxRate(state), week, days, recent: b.recent.map((x) => ({ ...x, name: name(x.who) })),
   };
 }
@@ -723,7 +744,7 @@ function runMerchants(state) {
     if (extra < 1 || rng(state) > 0.6) continue;
     const qty = Math.min(extra, 4);
     // made goods sell at 80% of the shop price; raw goods at the price the shop paid
-    const unit = price((npc.sells[good] ?? npc.buys[good]) * (npc.sells[good] !== undefined ? 0.8 : 1));
+    const unit = price((npc.sells[good] ?? npc.buys[good]) * (npc.sells[good] !== undefined ? 0.8 : 1) * oracleFactor(state));
     if (!transfer(state, 'adventurerFund', npcAcct(npcId), unit * qty)) return;
     npc.stock[good] -= qty;
   }
@@ -735,7 +756,7 @@ function runInn(state) {
   const visitors = rng(state) < 0.5 ? 1 : 0;
   for (let v = 0; v < visitors; v++) {
     if ((inn.stock.meal || 0) < 1) break;
-    const unit = price(inn.sells.meal);
+    const unit = price(inn.sells.meal * oracleFactor(state));
     if (!transfer(state, 'adventurerFund', npcAcct('inn'), unit)) break;
     inn.stock.meal -= 1;
   }
@@ -844,7 +865,7 @@ function startNewDay(state) {
   if (ev.winter) for (const b of Object.values(state.bots)) if (inv(b, 'coat') > 0 && (b.coatDays = (b.coatDays || 0) + 1) >= RULES.coatWinterDays) { addInv(b, 'coat', -1); b.coatDays = 0; }
 
   // treasury pays the guard captain when his purse runs low
-  const spare = balance(state, 'treasury') - RULES.treasuryReserve;
+  const spare = balance(state, 'treasury') - lockedFunds(state);
   if (spare >= RULES.guardSalaryPerDay && balance(state, npcAcct('tower')) < 400) {
     transfer(state, 'treasury', npcAcct('tower'), RULES.guardSalaryPerDay);
   }
@@ -853,7 +874,7 @@ function startNewDay(state) {
   // bad winter cannot stop a whole supply chain (wheat -> flour -> bread)
   for (const def of CRAFTSMEN) {
     if (def.id === 'tower') continue;
-    const left = balance(state, 'treasury') - RULES.treasuryReserve;
+    const left = balance(state, 'treasury') - lockedFunds(state);
     if (balance(state, npcAcct(def.id)) < 150 && left >= 150) {
       transfer(state, 'treasury', npcAcct(def.id), 150, { memo: `Emberwick: the treasury helps ${def.name} through a hard time` });
       addLog(state, `The treasury helped ${def.name} with 150 EMWK.`, 'info', 'log.bailout', { name: { $npc: def.id }, n: 150 });
@@ -870,6 +891,12 @@ function startNewDay(state) {
   for (const def of CRAFTSMEN) {
     const acct = npcAcct(def.id), bal = balance(state, acct);
     if (bal > RULES.profitTaxAbove) transfer(state, acct, 'treasury', (bal - RULES.profitTaxAbove) * RULES.profitTaxRate);
+  }
+  // council reserves are released when their time is up
+  if ((state.reserveHolds || []).length) {
+    const done = state.reserveHolds.filter((h) => h.until <= state.day);
+    state.reserveHolds = state.reserveHolds.filter((h) => h.until > state.day);
+    for (const h of done) addLog(state, `The ${h.asset} reserve of ${h.amount} EMWK is released and can be spent again.`, 'info', 'log.reserveFree', { n: h.amount, asset: h.asset });
   }
   // village tax: anyone holding more than villageTaxAbove pays a small share of the extra each morning.
   // Without it, money slowly piles up with the villagers while the treasury pays the guards and helps shops.
@@ -965,6 +992,7 @@ function clampProposal(kind, a) {
   if (kind === 'festival') return { amount: Math.round(Math.min(c.max, Math.max(c.min, Number(a.amount) || 0))) };
   if (kind === 'tower') return { cost: c.cost };
   if (kind === 'district') return { n: Number(a.n) || null };
+  if (kind === 'reserve') return { pct: Math.round(Math.min(c.max, Math.max(c.min, Number(a.pct) || 10))), asset: c.assets.includes(a.asset) ? a.asset : c.assets[0] };
   return null;
 }
 
@@ -1048,6 +1076,10 @@ function aiOpinion(state, voter, prop) {
       if (voter === 'npc:carpenter' || voter === 'npc:tower') return say(true, 'self');
       if (danger) return r < 0.85 ? say(true, 'danger') : say(false, 'poor');
       return (rich ? r < 0.5 : r < 0.2) ? say(true, 'safety') : say(false, rich ? 'notNeeded' : 'poor');
+    case 'reserve':
+      // craftsmen would rather see the money spent in the village; villagers like a safety net, more so with the dragon near
+      if (isNpc) return (danger ? r < 0.45 : r < 0.25) ? say(true, 'safety') : say(false, 'spendIt');
+      return (danger || rich ? r < 0.75 : r < 0.45) ? say(true, 'safety') : say(false, 'spendIt');
     case 'festival':
       if (isNpc) return (rich ? r < 0.45 : r < 0.15) ? say(true, 'customers') : say(false, rich ? 'waste' : 'poor');
       return r < 0.85 ? say(true, 'festival') : say(false, 'waste');
@@ -1057,7 +1089,7 @@ function aiOpinion(state, voter, prop) {
 
 function enact(state, prop) {
   const p = prop.params;
-  const spare = balance(state, 'treasury') - RULES.treasuryReserve;
+  const spare = balance(state, 'treasury') - lockedFunds(state);
   if (prop.kind === 'grant') {
     if (spare < p.amount) return 'poor';
     transfer(state, 'treasury', npcAcct(p.npc), p.amount);
@@ -1082,6 +1114,14 @@ function enact(state, prop) {
     transfer(state, 'treasury', npcAcct('carpenter'), p.cost, { memo: `Emberwick council #${prop.id}: build a watchtower (${spot})` });
     state.watchtowers = [...(state.watchtowers || []), spot];
     addLog(state, 'A new watchtower stands. The village is better prepared.', 'good', 'log.towerBuilt', {});
+  } else if (prop.kind === 'reserve') {
+    const amount = Math.round(spare * p.pct / 100);
+    if (amount < 50) return 'poor';
+    const q = prop.quote && prop.quote.ok ? prop.quote : null;
+    state.reserveHolds = [...(state.reserveHolds || []), { id: prop.id, asset: p.asset, pct: p.pct, amount, day: state.day, until: state.day + COUNCIL.reserve.days,
+      near: r2(amount / RULES.emwkPerNear), out: q ? q.out : null, usd: q ? q.usd : null }];
+    prop.params.amount = amount;
+    addLog(state, `The council set ${amount} EMWK aside as a ${p.asset} reserve for ${COUNCIL.reserve.days} days.`, 'good', 'log.reserveSet', { n: amount, asset: p.asset, days: COUNCIL.reserve.days });
   } else if (prop.kind === 'festival') {
     const people = [...Object.keys(state.players).map((id) => 'player:' + id), ...Object.keys(state.bots).map((id) => 'bot:' + id)];
     if (spare < p.amount * people.length) return 'poor';
@@ -1113,7 +1153,7 @@ function runCouncil(state, newDay) {
     prop.closedDay = state.day;
     delete prop.aiPlan;
     // the decision goes on NEAR: a 0.01 EMWK record from the treasury carries it in the memo
-    const what = { grant: `grant ${prop.params.amount} to ${prop.params.npc}`, tax: `market tax ${Math.round(prop.params.rate * 100)}%`, welcome: `${prop.params.amount} to newcomer fund`, festival: `festival ${prop.params.amount} per villager`, tower: `build a watchtower for ${prop.params.cost}`, district: `open ${(DISTRICTS[prop.params.n] || {}).name} for ${prop.params.cost}` }[prop.kind];
+    const what = { grant: `grant ${prop.params.amount} to ${prop.params.npc}`, tax: `market tax ${Math.round(prop.params.rate * 100)}%`, welcome: `${prop.params.amount} to newcomer fund`, festival: `festival ${prop.params.amount} per villager`, tower: `build a watchtower for ${prop.params.cost}`, district: `open ${(DISTRICTS[prop.params.n] || {}).name} for ${prop.params.cost}`, reserve: `set ${prop.params.pct}% aside as ${prop.params.asset}${prop.params.amount ? ` (${prop.params.amount} EMWK` + (prop.quote && prop.quote.ok ? `, NEAR Intents quote ${prop.quote.out} ${prop.params.asset}` : '') + ')' : ''}` }[prop.kind];
     transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick council #${prop.id} (${what}): ${prop.result.toUpperCase()}. Yes ${prop.yes} / No ${prop.no}, ${prop.voters} voters.`, council: prop.id });
     c.open = c.open.filter((x) => x !== prop);
     c.closed.unshift(prop);
@@ -1133,6 +1173,7 @@ function runCouncil(state, newDay) {
     if (nd && freePlots(state) <= 1 && tre > RULES.treasuryReserve + DISTRICTS[nd].cost + 500) ideas.push([bot(), 'district', { n: nd }]);
     if ((state.events.attackDay !== null || state.readiness < 60) && freeTowerSpot(state) && tre > RULES.treasuryReserve + 1500) ideas.push(['npc:tower', 'tower', {}]);
     if (tre > 7000) ideas.push([bot(), 'festival', { amount: 4 }]);
+    if (tre > 7500 && !(state.reserveHolds || []).length) ideas.push([bot(), 'reserve', { pct: 10, asset: 'USDC' }]);
     if (taxRate(state) > COUNCIL.tax.min) ideas.push(['npc:' + CRAFTSMEN[Math.floor(rng(state) * CRAFTSMEN.length)].id, 'tax', { rate: Math.max(COUNCIL.tax.min, r2(taxRate(state) - 0.01)) }]);
     if (tre < 4000 && taxRate(state) < COUNCIL.tax.max) ideas.push([bot(), 'tax', { rate: Math.min(COUNCIL.tax.max, r2(taxRate(state) + 0.01)) }]);
     if (balance(state, 'newcomerFund') < 1500) ideas.push([bot(), 'welcome', { amount: 200 }]);
@@ -1156,13 +1197,13 @@ function councilView(state, playerId) {
       left: open ? Math.max(0, prop.closesTick - state.tick) / RULES.ticksPerDay : 0,
       yes, no, voters: vs.length, myVote: me && prop.votes[me] ? prop.votes[me].yes : null,
       list: vs.map(([v, x]) => ({ who: v.startsWith('npc:') ? v : voterName(state, v), yes: x.yes, w: x.w, why: x.why || null, me: v === me })).sort((a, b) => b.w - a.w).slice(0, 20),
-      result: open ? null : prop.result, closedDay: prop.closedDay,
+      result: open ? null : prop.result, closedDay: prop.closedDay, quote: prop.quote || null,
     };
   };
   return {
     open: state.council.open.map((x) => show(x, true)),
     closed: state.council.closed.slice(0, 5).map((x) => show(x, false)),
-    taxRate: taxRate(state), rules: COUNCIL, reserve: RULES.treasuryReserve,
+    taxRate: taxRate(state), rules: COUNCIL, reserve: RULES.treasuryReserve, held: heldReserve(state), emwkPerNear: RULES.emwkPerNear,
     myWeight: me ? voteWeight(state, me) : null,
   };
 }
@@ -1669,7 +1710,7 @@ function resolveAttack(state) {
     const players = Object.keys(state.players);
     const reward = 5;
     for (const id of players) {
-      if (balance(state, 'treasury') - reward >= RULES.treasuryReserve) transfer(state, 'treasury', 'player:' + id, reward);
+      if (balance(state, 'treasury') - reward >= lockedFunds(state)) transfer(state, 'treasury', 'player:' + id, reward);
     }
     addLog(state, `The dragon attacked and was driven back! Readiness was ${state.readiness}%. Every villager earns ${reward} EMWK.`, 'good', 'log.repelled', { ready: state.readiness, reward });
   } else {
@@ -1750,6 +1791,8 @@ export function publicView(state, playerId) {
     events: state.events,
     readiness: state.readiness,
     treasury: Math.round(balance(state, 'treasury')),
+    oracle: state.oracle && state.oracle.usd ? { usd: state.oracle.usd, ref: r2(state.oracle.ref * 1000) / 1000, factor: oracleFactor(state), at: state.oracle.at } : null,
+    reserveHolds: (state.reserveHolds || []).map((h) => ({ ...h })),
     books: treasuryView(state),
     ff: state.ff ? { running: !!state.ff.running, done: state.ff.done || 0, total: state.ff.total, startDay: state.ff.startDay, by: state.ff.by } : null,
     week: state.ffResult || null,

@@ -490,8 +490,8 @@ function panelTreasury() {
   const row = (dir) => kinds.filter((c) => k.week[dir][c]).map((c) => `<tr><td>${t('books.k.' + c)}</td><td class="n">${Math.round(k.week[dir][c])} EMWK</td></tr>`).join('') || `<tr><td class="muted">${t('books.none')}</td><td></td></tr>`;
   const max = Math.max(1, ...k.days.map((d) => Math.max(d.in, d.out)));
   const bars = k.days.map((d) => `<div class="bday"><div class="bb in" style="height:${(d.in / max) * 46}px" title="+${Math.round(d.in)}"></div><div class="bb out" style="height:${(d.out / max) * 46}px" title="-${Math.round(d.out)}"></div><span>${d.day}</span></div>`).join('');
-  let h = `<div class="books-top"><div><span class="muted small">${t('books.balance')}</span><b>${Math.round(k.balance)} EMWK</b></div><div><span class="muted small">${t('books.reserve')}</span><b>${k.reserve}</b></div><div><span class="muted small">${t('books.spare')}</span><b class="ok">${Math.round(k.spare)}</b></div></div>`;
-  h += `<p class="small">${t('books.tax', { n: Math.round(k.tax * 100) })}</p>`;
+  let h = `<div class="books-top"><div><span class="muted small">${t('books.balance')}</span><b>${Math.round(k.balance)} EMWK</b></div><div><span class="muted small">${t('books.reserve')}</span><b>${k.reserve}${k.held ? ` + ${Math.round(k.held)}` : ''}</b></div><div><span class="muted small">${t('books.spare')}</span><b class="ok">${Math.round(k.spare)}</b></div></div>`;
+  h += `<p class="small">${t('books.tax', { n: Math.round(k.tax * 100) })}</p>` + reserveBox(false);
   h += `<p class="sub2">${t('books.week')}</p><div class="bchart">${bars}</div><div class="small muted"><span class="dot in"></span>${t('books.in')} <span class="dot out"></span>${t('books.out')}</div>`;
   h += `<p class="sub2">${t('books.inTitle')}</p><table>${row('in')}</table><p class="sub2">${t('books.outTitle')}</p><table>${row('out')}</table>`;
   h += `<p class="sub2">${t('books.recent')}</p><ul class="decided">${k.recent.slice(0, 8).map((x) => `<li><span class="${x.dir === 'in' ? 'ok' : 'bad'}">${x.dir === 'in' ? '+' : '−'}${x.amount}</span> ${who(x)}${x.memo ? ` <span class="muted small">· ${esc(x.memo)}</span>` : ''} <span class="muted small">(${t('ui.day', { n: x.day })})</span></li>`).join('') || `<li class="muted">${t('books.none')}</li>`}</ul>`;
@@ -549,6 +549,7 @@ function panelExchange() {
     if (!pr) h += `<p class="muted small">${t('ex.loading')}</p>`;
     else if (!pr.ok) h += `<p class="muted small">${t('ex.offline')}</p>`;
     else h += `<table>${pr.tokens.map((x) => `<tr><td><b>${esc(x.symbol)}</b> <span class="muted small">${esc(x.chain)}</span></td><td class="n">$${Number(x.price).toLocaleString(undefined, { maximumFractionDigits: x.price < 10 ? 3 : 0 })}</td></tr>`).join('')}</table><p class="muted small">${t('ex.pricesSource')}</p>`;
+    h += oracleBox() + reserveBox(true);
     h += `<p class="sub2">${t('ex.quoteTitle')}</p><div class="row exform"><input id="ex-q-amount" type="number" min="0.1" max="1000" step="0.1" value="${ui.exQAmount || 1}"> NEAR → <select id="ex-q-to">${['USDC', 'BTC', 'ETH', 'SOL'].map((k) => `<option${ui.exQTo === k ? ' selected' : ''}>${k}</option>`).join('')}</select><button class="primary" data-act="exQuote">${t('ex.getQuote')}</button></div>`;
     const q = ui.exQuote;
     if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
@@ -557,6 +558,20 @@ function panelExchange() {
     h += `<p class="muted small">${t('ex.changeNote')}</p>`;
   }
   return h;
+}
+// the live NEAR price from NEAR Intents and what it does to the village economy
+function oracleBox() {
+  const o = view.oracle;
+  if (!o) return `<div class="contract"><b>${t('oracle.title')}</b><p class="muted small">${t('oracle.waiting')}</p></div>`;
+  const pct = Math.round((o.usd / o.ref - 1) * 1000) / 10, f = Math.round((o.factor - 1) * 100);
+  return `<div class="contract"><b>${t('oracle.title')}</b><p class="small">${t('oracle.now', { usd: o.usd.toFixed(3), ref: o.ref.toFixed(3), pct: (pct > 0 ? '+' : '') + pct })}</p>` +
+    `<p class="small ${f > 0 ? 'ok' : f < 0 ? 'bad' : ''}">${t(f > 0 ? 'oracle.up' : f < 0 ? 'oracle.down' : 'oracle.flat', { n: Math.abs(f) })}</p><p class="muted small">${t('oracle.how')}</p></div>`;
+}
+// money the council has set aside in USDC or BTC (priced by a live NEAR Intents quote)
+function reserveBox(withHelp) {
+  const hs = view.reserveHolds || [];
+  if (!hs.length) return withHelp ? `<p class="muted small">${t('reserve.none')}</p>` : '';
+  return `<p class="sub2">${t('reserve.title')}</p><ul class="decided">${hs.map((h) => `<li><b>${h.amount} EMWK → ${esc(h.asset)}</b>${h.out ? ` · ${t('reserve.quote', { out: h.out, asset: h.asset, near: h.near })}` : ''} <span class="muted small">(${t('reserve.until', { n: h.until })})</span></li>`).join('')}</ul>`;
 }
 async function loadExPrices() {
   try { ui.exPrices = await (await fetch('/api/exchange/prices')).json(); } catch { ui.exPrices = { ok: false }; }
@@ -1018,6 +1033,7 @@ function proposalText(x) {
   if (x.kind === 'festival') return t('prop.festival', { n: p.amount });
   if (x.kind === 'tower') return t('prop.tower', { n: p.cost });
   if (x.kind === 'district') return t('prop.district', { name: t('district.' + p.n), n: p.cost });
+  if (x.kind === 'reserve') return t('prop.reserve', { pct: p.pct, asset: p.asset }) + (p.amount ? ` (${p.amount} EMWK)` : '');
   return x.kind;
 }
 const voterLabel = (who) => (who.startsWith('npc:') ? npcName(who.slice(4)) : who);
@@ -1036,6 +1052,7 @@ function panelCouncil() {
     const mine = x.myVote === null ? (me ? `<div class="row"><button class="primary" data-act="vote" data-id="${x.id}" data-yes="1">${t('council.yes')}</button><button data-act="vote" data-id="${x.id}" data-yes="0">${t('council.no')}</button></div>` : '')
       : `<p class="small ok">${x.myVote ? t('council.youYes') : t('council.youNo')}</p>`;
     return `<div class="prop"><b>#${x.id} ${esc(proposalText(x))}</b><div class="muted small">${t('council.by', { name: esc(byLabel(x)) })} · ${t('council.left', { n: Math.max(1, Math.ceil((x.left * world.rules.ticksPerDay * world.rules.tickMs) / 60000)) })}</div>` +
+      (x.kind === 'reserve' ? `<div class="small quote">${x.quote ? (x.quote.ok ? t('prop.reserveQuote', { emwk: x.quote.emwk, near: x.quote.near, out: x.quote.out, asset: x.params.asset, usd: x.quote.usd || '?' }) : t('prop.reserveNoQuote')) : t('prop.reserveWait')}</div>` : '') +
       `<div class="votebar"><div class="y" style="width:${(x.yes / total) * 100}%"></div></div>` +
       `<div class="small">${t('council.tally', { y: Math.round(x.yes), n: Math.round(x.no), v: x.voters })}</div>` +
       (x.list.length ? `<details${ui.openWho === x.id ? ' open' : ''} data-who="${x.id}"><summary class="small">${t('council.who')}</summary><ul class="voters">${x.list.map((v) => `<li class="${v.yes ? 'ok' : 'bad'}"><b>${v.me ? t('near.you') : esc(voterLabel(v.who))}</b>: ${v.yes ? t('council.yesShort') : t('council.noShort')} (${v.w})${v.why ? ` <span class="muted">· ${t('why.' + v.why)}</span>` : ''}</li>`).join('')}</ul></details>` : '') +
@@ -1051,6 +1068,7 @@ function panelCouncil() {
     if (k === 'tax') h += `<input id="prop-rate" type="number" min="${r.tax.min * 100}" max="${r.tax.max * 100}" step="1" value="${Math.round(c.taxRate * 100)}"> %`;
     if (k === 'welcome') h += `<input id="prop-amount" type="number" min="${r.welcome.min}" max="${r.welcome.max}" value="200">`;
     if (k === 'festival') h += `<input id="prop-amount" type="number" min="${r.festival.min}" max="${r.festival.max}" value="4">`;
+    if (k === 'reserve') h += `<input id="prop-pct" type="number" min="${r.reserve.min}" max="${r.reserve.max}" value="10"> % → <select id="prop-asset">${r.reserve.assets.map((a) => `<option>${a}</option>`).join('')}</select>`;
     const nd = view.districts.next, ndef = nd && view.districts.defs[nd];
     h += `<p class="muted small">${k === 'district' ? (nd ? t('prop.help.district', { name: t('district.' + nd), n: ndef.cost, free: view.districts.free }) : t('err.noDistrict')) : t('prop.help.' + k, { n: r.tower ? r.tower.cost : 250, r: r.tower ? r.tower.readiness : 10 })}</p><button class="primary" data-act="propose" ${c.open.length >= r.maxOpen ? 'disabled' : ''}>${t('council.submit', { n: r.fee })}</button></div>`;
     if (c.open.length >= r.maxOpen) h += `<p class="muted small">${t('council.full')}</p>`;
@@ -1729,6 +1747,8 @@ document.body.addEventListener('click', (e) => {
     if ($('prop-npc')) extra.npc = $('prop-npc').value;
     if ($('prop-amount')) extra.amount = Number($('prop-amount').value);
     if ($('prop-rate')) extra.rate = Number($('prop-rate').value) / 100;
+    if ($('prop-pct')) extra.pct = Number($('prop-pct').value);
+    if ($('prop-asset')) extra.asset = $('prop-asset').value;
     goAndDo('council', 'propose', () => councilAct('propose', extra));
     return;
   }
