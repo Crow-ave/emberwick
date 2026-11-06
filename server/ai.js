@@ -228,11 +228,22 @@ export async function planDay(brief) {
 
 const LANGS = { en: 'English', tr: 'Turkish', fr: 'French', de: 'German', ru: 'Russian', zh: 'Simplified Chinese' };
 
-// a player asks a craftsman something; the answer is words, plus (only at the bakery or inn, and only
-// inside what the rules allow) a little food on credit. The last few lines are remembered, so a
-// conversation can go on
+// each craftsman's character, so they do not all sound the same
+const PERSONA = {
+  woodcutter: 'gruff and of few words, smells of pine, proud of the forest; short sentences',
+  mill: 'slow and cheerful, always talks about the weather and the harvest',
+  bakery: 'warm and motherly, worries that people eat enough',
+  smithy: 'loud and blunt, loves good steel, hates haggling over swords',
+  carpenter: 'careful and precise, measures twice, proud of beds and carts',
+  inn: 'chatty and kind, knows all the village gossip',
+  tailor: 'elegant and a little vain, cares about warm, beautiful clothes',
+  tower: 'a stern soldier who buys swords and bread to guard against the dragon',
+};
+// a player talks to a craftsman. The model answers in character AND may suggest actions (buy, sell, order,
+// credit, go to another place). The suggestions are checked by the village rules and shown as buttons:
+// nothing happens unless the player presses one. The last few lines are remembered.
 const convs = new Map(); // `${player}:${npc}` -> recent messages
-export async function askCraftsman(card, question, lang, playerId, credit = null, order = null) {
+export async function askCraftsman(card, question, lang, playerId, ctx = {}) {
   const q = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!q) return { ok: false, error: 'empty' };
   const d = new Date().toISOString().slice(0, 10);
@@ -241,35 +252,39 @@ export async function askCraftsman(card, question, lang, playerId, credit = null
   if (n >= ASK_PER_PLAYER) return { ok: false, error: 'limit', code: 'ai.limit' };
   const key = `${playerId}:${card.id}`, past = convs.get(key) || [];
   const remember = (a) => convs.set(key, [...past, { role: 'user', content: q }, { role: 'assistant', content: a }].slice(-8));
+  const { credit, order, village, customer } = ctx;
   if (MODE === 'fake') {
     ai.asked[playerId] = n + 1;
-    const lend = credit && credit.ok && /hungry|aç|credit|borç/i.test(q) ? 1 : 0;
-    const make = order && order.ok && /\b(yes|ok|make|evet|dik|yap|al)\b/i.test(q) ? 1 : 0;
-    const answer = `(${card.name}) I heard: "${q}". Today I keep ${Object.keys(card.goods).join(', ')}.` + (lend ? ' Here, take it on credit.' : '');
+    const acts = [];
+    if (credit && credit.ok && /hungry|aç|credit|borç|veresiye/i.test(q)) acts.push({ type: 'credit', qty: 1 });
+    if (order && /\b(order|make|dik|yap|sipariş)\b/i.test(q)) acts.push({ type: 'order', n: 1 });
+    const firstSold = Object.entries(card.goods).find(([, x]) => x.sellsAt !== undefined);
+    if (firstSold && /\b(buy|al|satın)\b/i.test(q)) acts.push({ type: 'buy', good: firstSold[0], qty: 1 });
+    if (/kanepe|sofa/i.test(q)) acts.push({ type: 'goto', place: 'carpenter' });
+    const answer = `(${card.name}) I heard: "${q}".`;
     remember(answer);
-    return { ok: true, answer, lend, make, model: ai.model };
+    return { ok: true, answer, actions: acts, model: ai.model };
   }
   if (ai.status !== 'ready') return { ok: false, error: 'off', code: 'ai.off' };
-  const creditRule = !credit ? 'You never give goods on credit.' : credit.ok
-    ? `If the customer is hungry and asks for food on credit, you may give up to ${credit.max} ${credit.good} on credit (${credit.unitPrice} EMWK each, paid back within ${credit.payBackWithinDays} days). Decide like a kind but careful shopkeeper. If you give it, end your reply with the tag [LEND n] where n is how many. Never lend unless they ask.`
-    : `If they ask for food on credit, refuse kindly: ${credit.reason}.`;
-  const orderRule = !order ? 'You take no orders.' : order.ok
-    ? `You can make ${order.outQty} ${order.output} from the customer's own ${Object.entries(order.inputs).map(([g, q]) => q + ' ' + g).join(' + ')} for a work fee of ${order.fee} EMWK (at most ${order.max} a day). If the customer clearly agrees to such an order, do it now and end your reply with the tag [MAKE n] (n = how many). Never take an order they did not agree to.`
-    : `Orders: you make ${order.output} from the customer's ${Object.entries(order.inputs).map(([g, q]) => q + ' ' + g).join(' + ')} for ${order.fee} EMWK, but not right now: ${order.reason}.`;
-  const can = 'You can ONLY do these things: sell the goods you sell, buy the goods you buy (both at the counter), make your product from the customer\'s own materials (an order), and, if allowed, food on credit. Never promise anything else: no other products, no delivery, no later visits, no secrets.';
+  const orderTxt = !order ? 'This shop takes no orders.' : `Order service: from the customer's own ${Object.entries(order.inputs).map(([g, q2]) => q2 + ' ' + g).join(' + ')} you make ${order.outQty} ${order.output} for a ${order.fee} EMWK work fee` + (order.ok ? ' (possible now).' : ` (not possible now: ${order.reason}).`);
+  const creditTxt = !credit ? 'You never give credit.' : credit.ok ? `Credit: if the customer is hungry and asks, you may give up to ${credit.max} ${credit.good} on credit (${credit.unitPrice} EMWK each, pay back in ${credit.payBackWithinDays} days).` : `Credit: not possible (${credit.reason}).`;
+  const system = `You are ${card.name} in the medieval village of Emberwick, a game whose money is EMWK. Your character: ${PERSONA[card.id] || 'a friendly villager'}. ` +
+    `Answer in ${LANGS[lang] || 'English'}, in character, in at most 2 short sentences. Talk like a real villager, and react to what the customer actually said.\n` +
+    `RULES: Only goods in the village directory exist. You can only: sell what your shop sells, buy what your shop buys, take an order (below), give credit (below), or send the customer to the right place. ` +
+    `If they ask for something that does not exist (for example a sofa), say so kindly and suggest the closest real thing and who has it. If they need materials they do not have, tell them where to get them. Never promise anything else, never invent prices (use priceList), never pretend something happened: the customer confirms with a button.\n` +
+    `${orderTxt}\n${creditTxt}\n` +
+    `Reply with JSON only: {"say":"your words","actions":[...]} where actions (0 to 3) are buttons to offer, chosen from: ` +
+    `{"type":"buy","good":"<good you sell>","qty":n}, {"type":"sell","good":"<good you buy>","qty":n}, {"type":"order"}, {"type":"credit","qty":n}, {"type":"goto","place":"<shop id or forest/fields/mine/pasture/pond>"}.\n` +
+    `Your shop: ${JSON.stringify(card)}\nThe customer: ${JSON.stringify(customer)}\nVillage directory: ${JSON.stringify(village)}`;
   try {
     ai.asked[playerId] = n + 1;
-    const raw = await chat([
-      { role: 'system', content: `You are ${card.name} in the village of Emberwick, a medieval economy game whose money is EMWK. Stay in character, be warm and practical, talk like a real villager. ` +
-        `Answer in ${LANGS[lang] || 'English'} in at most 2 short sentences. When you name a price, use exactly the price in priceList (sellsAt / buysAt); recipe numbers are amounts, never prices. You cannot give away money. ${can} ${orderRule} ${creditRule} Facts: ${JSON.stringify(card)}` },
-      ...past,
-      { role: 'user', content: q },
-    ], 900);
-    let answer = raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    const m = /\[\s*LEND\s*(\d+)\s*\]/i.exec(answer), mk = /\[\s*MAKE\s*(\d+)\s*\]/i.exec(answer);
-    answer = answer.replace(/\[\s*(LEND|MAKE)\s*\d*\s*\]/gi, '').trim().slice(0, 400);
+    const raw = await chat([{ role: 'system', content: system }, ...past, { role: 'user', content: q }], 900);
+    let o = null;
+    try { o = jsonIn(raw); } catch {}
+    let answer = o && typeof o.say === 'string' ? o.say : raw.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/\{[\s\S]*\}/g, '');
+    answer = String(answer).replace(/\[[^\]]*\]/g, '').replace(/<[^>]*>/g, '').trim().slice(0, 400) || '…';
     remember(answer);
-    return { ok: true, answer, lend: m && credit && credit.ok ? Number(m[1]) : 0, make: mk && order && order.ok ? Number(mk[1]) : 0, model: ai.model };
+    return { ok: true, answer, actions: o && Array.isArray(o.actions) ? o.actions : [], model: ai.model };
   } catch (e) {
     ai.lastError = String(e.message || e).slice(0, 160);
     console.log('[AI] answer failed:', ai.lastError);

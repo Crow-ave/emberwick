@@ -280,7 +280,7 @@ function goAndDo(placeId, verb, run) {
 // ---------- close-up scenes ----------
 
 let sceneKey = null;
-function openScene(id) { ui.scene = id; sceneKey = null; renderScene(); }
+function openScene(id) { if (ui.scene !== id) ui.bub = null; ui.scene = id; sceneKey = null; renderScene(); } // a new visit: lines may be said again
 function closeScene() { ui.scene = null; sceneKey = null; renderScene(); renderMapNow(); }
 
 // the info bar sits right under the scene, however tall the side panel gets
@@ -320,10 +320,14 @@ function renderScene() {
     // picture is redrawn when stock changes, so what was said and when lives in ui.bub, not in the drawing
     const b0 = ui.bub && ui.bub.scene === id ? ui.bub : null;
     if (!b0 || b0.key !== talkKey) {
-      ui.bub = { scene: id, key: talkKey, gone: false };
+      // each line is shown once per visit: a greeting that faded does not pop up again
+      const seen = b0 ? b0.seen : new Set();
+      const again = seen.has(talkKey);
+      seen.add(talkKey);
+      ui.bub = { scene: id, key: talkKey, gone: again, seen };
       clearTimeout(ui.talkTimer);
       const ttl = Math.min(22000, 7000 + talkKey.length * 60);
-      ui.talkTimer = setTimeout(() => { if (ui.bub && ui.bub.key === talkKey) { ui.bub.gone = true; const g = document.querySelector('#scene-talk'); if (g) g.classList.add('gone'); } }, ttl);
+      if (!again) ui.talkTimer = setTimeout(() => { if (ui.bub && ui.bub.key === talkKey) { ui.bub.gone = true; const g = document.querySelector('#scene-talk'); if (g) g.classList.add('gone'); } }, ttl);
     }
     if (talkG.dataset.k !== talkKey) { talkG.dataset.k = talkKey; talkG.innerHTML = bubbles.map((b) => bubble(b.x, b.y, b.text, b.max || 34, b.anchor ?? (b.x > 400 ? 0.78 : 0.5))).join(''); }
     talkG.classList.toggle('gone', !!ui.bub.gone);
@@ -523,6 +527,34 @@ function panelCraftsman(b) {
   return h + `<p class="muted" style="font-size:12px">${t('panel.pricesNote')}</p>`;
 }
 
+// the buttons a craftsman offers in conversation (checked by the village rules on the server)
+function aiActions(list) {
+  if (!list.length) return '';
+  return `<div class="ai-acts">${list.map((x, k) => {
+    const lab = x.type === 'buy' ? t('aiact.buy', { n: x.qty, good: goodWord(x.good), p: Math.round(x.qty * x.price * 100) / 100 })
+      : x.type === 'meal' ? t('aiact.meal', { p: x.price })
+      : x.type === 'sell' ? t('aiact.sell', { n: x.qty, good: goodWord(x.good) })
+      : x.type === 'order' ? (x.ok ? t('order.btn', { n: x.outQty, good: goodWord(x.output) }) + ` (${x.fee} EMWK)` : t('aiact.orderNeed', { ins: Object.entries(x.inputs).map(([g, q]) => q + ' ' + goodWord(g)).join(' + '), n: x.outQty, good: goodWord(x.output) }))
+      : x.type === 'credit' ? t('aiact.credit', { n: x.qty, good: goodWord(x.good) })
+      : t('go.to', { place: placeName(x.place) });
+    const dis = x.type === 'order' && !x.ok;
+    return `<button class="${x.type === 'goto' ? '' : 'primary'} small" data-aiact="${k}" ${dis ? 'disabled' : ''}>${esc(lab)}</button>`;
+  }).join(' ')}</div>`;
+}
+async function runAiAction(npc, x) {
+  if (x.type === 'goto') { ui.scene = null; select(x.place); return; }
+  const body = x.type === 'buy' ? { type: 'buy', npc, good: x.good, qty: x.qty } : x.type === 'sell' ? { type: 'sell', npc, good: x.good, qty: x.qty }
+    : x.type === 'meal' ? { type: 'meal' } : x.type === 'order' ? { type: 'commission', npc, n: 1 } : { type: 'credit', npc, qty: x.qty };
+  const r = await post('/api/action', { player: playerId, ...body });
+  if (r.state && newer(r.state)) view = r.state;
+  if (!r.ok) { toast(errText(r), 'bad'); play('bad'); render(); return; }
+  play('coin');
+  toast(x.type === 'order' ? t('order.done', { n: r.qty, good: goodWord(r.output), fee: r.fee }) : x.type === 'credit' ? t('credit.got', { n: r.credit.qty, good: goodWord(r.credit.good), p: r.credit.amount, d: r.credit.due }) : t('aiact.done'), 'win');
+  const qa = (ui.aiAnswers || {})[npc];
+  if (qa) qa.actions = (qa.actions || []).filter((y) => y !== x);
+  render();
+}
+
 // food on credit: what you owe here, and paying it back
 function debtBox(id) {
   const d = view.player && (view.player.debts || {})[id];
@@ -561,7 +593,7 @@ function aiBox(id, n) {
   } else if (id !== 'tower') h += `<p class="small muted">${t(st.planFailed ? 'ai.unreachable' : 'ai.waiting')}</p>`;
   h += aiProof(true);
   const a = (ui.aiAnswers || {})[id];
-  if (a) h += `<div class="ai-qa"><div class="small muted">${t('ai.you')} ${esc(a.q)}</div><div class="quote">${a.a ? '"' + esc(a.a) + '"' : t('ai.thinking')}</div></div>`;
+  if (a) h += `<div class="ai-qa"><div class="small muted">${t('ai.you')} ${esc(a.q)}</div><div class="quote">${a.a ? '"' + esc(a.a) + '"' : t('ai.thinking')}</div>${aiActions(a.actions || [])}</div>`;
   if (view.player) h += `<form class="ai-ask row" data-npc="${id}"><input class="ai-q" maxlength="200" placeholder="${esc(t('ai.askPh', { name: npcName(id) }))}"><button type="submit">${t('ai.ask')}</button></form>`;
   return h + `</div>`;
 }
@@ -2014,6 +2046,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-hagclose]')) { ui.haggle = null; renderNow(); return; }
   if (e.target.closest('[data-hagsend]')) { sendHaggle(e.target.closest('.haggle')); return; }
   if (e.target.closest('[data-hagdeal]')) { takeDeal(); return; }
+  const aa = e.target.closest('[data-aiact]');
+  if (aa) { const npc = ui.selected, qa = (ui.aiAnswers || {})[npc], x = qa && (qa.actions || [])[Number(aa.dataset.aiact)]; if (x) runAiAction(npc, x); return; }
   const od = e.target.closest('[data-order]');
   if (od) { post('/api/action', { player: playerId, type: 'commission', npc: od.dataset.order, n: 1 }).then((r) => { if (r.state && newer(r.state)) view = r.state; if (r.ok) { play('coin'); toast(t('order.done', { n: r.qty, good: goodWord(r.output), fee: r.fee }), 'win'); } else toast(errText(r), 'bad'); render(); }); return; }
   const rp = e.target.closest('[data-repay]');
@@ -2332,10 +2366,8 @@ document.addEventListener('submit', async (e) => {
     ui.aiAnswers[npc].at = Date.now();
     const r = await post('/api/ai/ask', { player: playerId, npc, q, lang: getLang() });
     if (r.state && newer(r.state)) view = r.state;
-    ui.aiAnswers[npc] = { q, a: r.ok ? r.answer : '', at: Date.now() };
+    ui.aiAnswers[npc] = { q, a: r.ok ? r.answer : '', at: Date.now(), actions: r.ok ? r.actions || [] : [] };
     if (!r.ok) { delete ui.aiAnswers[npc]; toast(t(r.code || 'ai.busy'), 'bad'); }
-    if (r.ok && r.order) { play('coin'); toast(t('order.done', { n: r.order.qty, good: goodWord(r.order.output), fee: r.order.fee }), 'win'); }
-    if (r.ok && r.credit) { play('coin'); toast(t('credit.got', { n: r.credit.qty, good: goodWord(r.credit.good), p: r.credit.amount, d: r.credit.due }), 'win'); }
     render(); setTimeout(render, 21000); return;
   }
   if (e.target.id === 'rename-form') {

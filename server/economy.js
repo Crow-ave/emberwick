@@ -408,6 +408,43 @@ function buyFromNpc(state, actor, npcId, good, qty) {
   return { ok: true, unit, total, tax };
 }
 
+// ---------- what the AI craftsmen know about the village and the customer ----------
+// so a craftsman can say "a sofa? nobody makes those here; the carpenter makes beds" and point the way
+export function villageDirectory(state) {
+  const shops = CRAFTSMEN.filter((d) => d.id !== 'tower').map((d) => {
+    const n = state.npcs[d.id], r = d.recipe;
+    return { id: d.id, name: d.name, sells: Object.keys(n.sells), buys: Object.keys(n.buys),
+      makesFromCustomerMaterials: r && d.id !== 'inn' ? `${Object.entries(r.in).map(([g, q]) => q + ' ' + g).join(' + ')} -> ${Object.entries(r.out).map(([g, q]) => q + ' ' + g).join(' + ')}` : null };
+  });
+  const gather = Object.entries(GATHER_SPOTS).map(([id, g]) => `${g.good}: gather it yourself at the ${id}${toolFor(g.good) ? ' (needs a ' + toolFor(g.good) + ')' : ''}`);
+  return { shops, rawGoods: gather, note: 'Only these goods exist in Emberwick. Nothing else can be bought, made or ordered.' };
+}
+export function customerBrief(state, pid) {
+  const p = state.players[pid];
+  if (!p) return null;
+  return { name: p.name, coins: Math.floor(balance(state, 'player:' + pid)), energy: `${Math.round(p.energy)}/${maxEnergy(p)}`,
+    bag: Object.fromEntries(Object.entries(p.inv || {}).filter(([, v]) => v > 0).map(([g, v]) => [g, Math.floor(v)])), hasLand: !!p.plot, job: p.job ? p.job.npc : null };
+}
+// the AI may only *suggest* actions; each one is checked against the rules here and shown as a button the
+// player can press (nothing happens unless they do)
+export function checkAiActions(state, pid, npcId, list) {
+  const p = state.players[pid], n = state.npcs[npcId], out = [];
+  if (!p || !n || !Array.isArray(list)) return out;
+  const shopIds = CRAFTSMEN.map((c) => c.id).filter((x) => x !== 'tower');
+  for (const a of list.slice(0, 4)) {
+    if (!a || typeof a !== 'object') continue;
+    const type = String(a.type || '').toLowerCase(), good = String(a.good || '').toLowerCase(), qty = clamp(Math.round(Number(a.qty) || 1), 1, 50);
+    if (type === 'buy' && n.sells[good] !== undefined && good !== 'meal' && (n.stock[good] || 0) >= 1) out.push({ type: 'buy', npc: npcId, good, qty: Math.min(qty, Math.floor(n.stock[good])), price: price(n.sells[good]) });
+    else if (type === 'buy' && good === 'meal' && npcId === 'inn') out.push({ type: 'meal', npc: npcId, price: price(n.sells.meal) });
+    else if (type === 'sell' && n.buys[good] !== undefined && inv(p, good) >= 1) out.push({ type: 'sell', npc: npcId, good, qty: Math.min(qty, Math.floor(inv(p, good))) });
+    else if (type === 'order') { const o = commissionPolicy(state, pid, npcId, 1); if (o) out.push({ type: 'order', npc: npcId, ...o }); }
+    else if (type === 'credit') { const c = creditPolicy(state, pid, npcId); if (c && c.ok) out.push({ type: 'credit', npc: npcId, good: c.good, qty: Math.min(qty, c.max), price: c.unitPrice }); }
+    else if (type === 'goto' && (shopIds.includes(String(a.place)) || GATHER_SPOTS[a.place]) && a.place !== npcId) out.push({ type: 'goto', place: String(a.place) });
+  }
+  const seen = new Set();
+  return out.filter((a) => { const k = JSON.stringify(a); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
 // ---------- orders: bring your own materials, pay for the work ----------
 // a craftsman makes their product from the customer's own materials (e.g. 3 wool -> 1 coat at the tailor).
 // The fee is part of what the work adds (product price minus the materials' price), at least 2 EMWK
@@ -738,6 +775,7 @@ function doAction(state, p, actor, action, qty) {
     return haggle(state, p, action.npc, action.good, action.side === 'sell' ? 'sell' : 'buy', qty, Number(action.offer));
   }
   if (action.type === 'repay') return repayDebt(state, p, String(action.npc || ''));
+  if (action.type === 'credit') { const c = giveCredit(state, p.id, String(action.npc || ''), Number(action.qty) || 1); return c ? { ok: true, credit: c } : { ok: false, error: 'No credit here right now.', code: 'credit.no' }; }
   if (action.type === 'commission') return commission(state, p, actor, String(action.npc || ''), Number(action.n) || 1);
   if (action.type === 'deal') {
     const d = p.deal;

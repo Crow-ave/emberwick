@@ -658,3 +658,5 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .fair-ok { color: #2d6a2d; } .fair-no { color: #a33; } .fairline { margin: 4px 0; }
 .orderrow { margin-top: 10px; padding: 8px 10px; border: 1px dashed #c9a24a; border-radius: 8px; background: #fffaf0; }
 .orderrow p { margin: 3px 0; }
+.ai-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ai-acts button { font-size: 12px; padding: 4px 9px; }
