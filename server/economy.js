@@ -304,7 +304,7 @@ function villageBuysDeeds(state) {
     seller.plot = null;
     if (seller.sleep && seller.sleep.place === id) seller.sleep = null;
     seller.stats.earned = r2(seller.stats.earned + price - fee);
-    if (seller.nearVerified && seller.near && x.deed) emit('deedMove', { plot: id, tokenId: x.deed.tokenId, toBank: true });
+    // the deed NFT is already in the village bank's escrow (listing a deed puts it there), so nothing moves on chain
   }
   if (x.lease && x.lease.tenant && state.players[x.lease.tenant]) state.players[x.lease.tenant].lease = null;
   x.owner = null; x.sale = null; x.lease = null; x.since = state.day; x.resale = o.fair; // the deed stays with the village bank

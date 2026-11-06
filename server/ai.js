@@ -36,12 +36,14 @@ function countCall() {
 // fetch first; if the connection itself fails (some networks drop the first tries), retry with
 // node:https over IPv4 and a longer connect time
 let slowNet = false; // once the slow way worked, keep using it (no 10 s wait every time)
-async function api(p, body, ms = 25000) {
-  if (slowNet) return viaHttps(p, body, 60000);
+// ms is how long to wait for the whole answer: a thinking model can take a minute or more for a plan.
+// Only a failed *connection* is retried the other way; a slow answer is not asked twice (that would cost twice)
+async function api(p, body, ms = 30000) {
+  if (slowNet) return viaHttps(p, body, ms);
   try { return await viaFetch(p, body, ms); }
   catch (e) {
-    if (!/fetch failed|timed out|ECONN|ETIMEDOUT|UND_ERR|ENOTFOUND|EAI_AGAIN/i.test(String(e.message))) throw e;
-    const r = await viaHttps(p, body, 60000);
+    if (!/fetch failed|ECONN|UND_ERR_CONNECT|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(String(e.message))) throw e;
+    const r = await viaHttps(p, body, ms);
     if (!slowNet) { slowNet = true; console.log('[AI] slow connection to NEAR AI: using the longer-wait connection from now on.'); }
     return r;
   }
@@ -78,11 +80,26 @@ function viaHttps(p, body, ms) {
         try { resolve(JSON.parse(text)); } catch { reject(new Error('bad reply')); }
       });
     });
-    req.on('timeout', () => req.destroy(new Error(`no connection to ${u.hostname} after ${Math.round(ms / 1000)} s (network or firewall)`)));
+    let connected = false;
+    req.on('socket', (sk) => sk.on('secureConnect', () => { connected = true; }));
+    req.on('timeout', () => req.destroy(new Error(connected ? `no answer from ${u.hostname} within ${Math.round(ms / 1000)} s (the model is slow or busy)` : `no connection to ${u.hostname} after ${Math.round(ms / 1000)} s (network or firewall)`)));
     req.on('error', (e) => reject(new Error(`retry failed: ${e.code || ''} ${e.message}`.trim().slice(0, 160))));
     if (data) req.write(data);
     req.end();
   });
+}
+
+// ask a model to switch off long thinking (models ignore what they do not know; a 400 means it refused)
+const THINK_OFF = { chat_template_kwargs: { enable_thinking: false, thinking: false }, reasoning_effort: 'low' };
+async function testModel(m) {
+  for (const params of [{}, THINK_OFF]) {
+    try {
+      const r = await api('/chat/completions', { model: m, messages: [{ role: 'user', content: 'Reply with exactly this JSON and nothing else: {"ok":true}' }], max_tokens: 300, temperature: 0, ...params }, 60000);
+      const c = (r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content) || '';
+      if (/\{\s*"ok"\s*:\s*true\s*\}/.test(c.replace(/<think>[\s\S]*?<\/think>/g, ''))) return { params };
+    } catch (e) { if (!/HTTP 400/.test(e.message)) return null; }
+  }
+  return null;
 }
 
 // pick a model the account can use (or the one set in NEARAI_MODEL)
@@ -101,16 +118,27 @@ export async function startAi() {
     ai.tee = tee.has(ai.model);
     console.log(`[AI] ${ids.length} models on this account${tee.size ? `, ${tee.size} verifiable (TEE)` : ''}.`);
     if (all[0]) console.log('[AI] model fields:', Object.keys(all[0]).join(', ').slice(0, 200));
-    // no TEE flag in the list? Ask for an attestation report: the first open model that has one runs in NEAR's TEE
+    // no TEE flag in the list? Ask for an attestation report: an open model that has one runs in NEAR's TEE.
+    // Then a tiny test: thinking models can spend the whole answer on reasoning and send nothing back,
+    // so the first one that answers a short JSON question directly is used.
     if (!ai.tee && !process.env.NEARAI_MODEL) {
+      const rank = (id) => (/instruct/i.test(id) ? 0 : /gpt-oss/i.test(id) ? 1 : /thinking|reason|r1\b|flash/i.test(id) ? 3 : 2);
       const open = [...PREFER.filter((m) => ids.includes(m) && !/^(openai\/gpt-5|anthropic|google)/.test(m)),
-        ...ids.filter((id) => /qwen|glm|gpt-oss|deepseek|llama|kimi|mistral/i.test(id) && chatOk(id))].filter((v, k, a) => a.indexOf(v) === k).slice(0, 6);
+        ...ids.filter((id) => /qwen|glm|gpt-oss|deepseek|llama|kimi|mistral/i.test(id) && chatOk(id))].filter((v, k, a) => a.indexOf(v) === k)
+        .sort((a, b) => rank(a) - rank(b)).slice(0, 8);
+      console.log('[AI] trying:', open.join(', '));
+      let fallback = null;
       for (const m of open) {
-        try {
-          const r = await api(`/attestation/report?model=${encodeURIComponent(m)}&signing_algo=ecdsa`, null, 30000);
-          if ((r.model_attestations || []).length) { ai.model = m; ai.tee = true; ai.attestFull = r; console.log(`[AI] ${m} has a TEE attestation: using it.`); break; }
-        } catch (e) { console.log(`[AI] ${m}: no attestation (${String(e.message).slice(0, 60)})`); }
+        let att;
+        try { att = await api(`/attestation/report?model=${encodeURIComponent(m)}&signing_algo=ecdsa`, null, 30000); }
+        catch (e) { console.log(`[AI] ${m}: no attestation (${String(e.message).slice(0, 60)})`); continue; }
+        if (!(att.model_attestations || []).length) continue;
+        fallback = fallback || { m, att };
+        const extra = await testModel(m);
+        if (extra) { ai.model = m; ai.extra = extra.params; ai.tee = true; ai.attestFull = att; console.log(`[AI] ${m} has a TEE attestation and answers directly: using it.`); break; }
+        console.log(`[AI] ${m}: TEE ok, but it does not answer directly (a thinking model); trying the next one.`);
       }
+      if (!ai.tee && fallback) { ai.model = fallback.m; ai.tee = true; ai.attestFull = fallback.att; ai.extra = THINK_OFF; console.log(`[AI] using ${fallback.m} with thinking turned down.`); }
     }
     ai.status = ai.model ? 'ready' : 'error';
     if (!ai.model) ai.lastError = 'no models';
@@ -127,7 +155,7 @@ export async function startAi() {
 // and the answer is taken from content (or, if that is empty, from the end of the reasoning)
 async function chat(messages, maxTokens) {
   if (!countCall()) throw new Error('daily limit reached');
-  const r = await api('/chat/completions', { model: ai.model, messages, max_tokens: maxTokens, temperature: 0.7 });
+  const r = await api('/chat/completions', { model: ai.model, messages, max_tokens: maxTokens, temperature: 0.7, ...(ai.extra || {}) }, maxTokens > 2000 ? 180000 : 90000);
   const c = r.choices && r.choices[0], msg = (c && c.message) || {};
   let text = String(msg.content || '').trim();
   if (!text) {
@@ -158,15 +186,16 @@ export async function planDay(brief) {
   }
   if (ai.status !== 'ready') return null;
   const msgs = [{ role: 'system', content: SYSTEM_PLAN }, { role: 'user', content: JSON.stringify(brief) }];
-  let text = await chat(msgs, 4000), plan = null;
+  let text = await chat(msgs, 3000), plan = null;
   try { plan = jsonIn(text); } catch {}
   if (!plan || !Array.isArray(plan.craftsmen)) {
     console.log('[AI] the plan came back unreadable, asking once more. It began with:', text.replace(/\s+/g, ' ').slice(0, 160));
-    text = await chat([...msgs, { role: 'assistant', content: text.slice(0, 1500) }, { role: 'user', content: 'Reply again with only the JSON object, nothing before or after it.' }], 4000);
+    text = await chat([...msgs, { role: 'assistant', content: text.slice(0, 1500) }, { role: 'user', content: 'Reply again with only the JSON object, nothing before or after it.' }], 3000);
     try { plan = jsonIn(text); } catch {}
   }
   if (!plan || !Array.isArray(plan.craftsmen)) throw new Error('the model did not return a plan: ' + text.replace(/\s+/g, ' ').slice(0, 100));
   ai.lastPlanAt = Date.now(); ai.lastError = null; ai.planFailed = false;
+  console.log(`[AI] morning plan received for ${plan.craftsmen.length} craftsmen.`);
   return plan;
 }
 
