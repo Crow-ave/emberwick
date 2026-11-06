@@ -92,9 +92,11 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   const list = playerAction(state, me, { type: 'listHome', plot: owner.plot, rent: 8 });
   if (owner.home) playerAction(state, me, { type: 'leaveHouse' });
   const ob = state.balances['player:' + me];
+  const tax0 = state.players[me].stats.taxes || 0;
   const lease = playerAction(state, t1, { type: 'leaseHome', plot: owner.plot });
   for (let i = 0; i < RULES.ticksPerDay; i++) tick(state);
-  const got = Math.round((state.balances['player:' + me] - ob) * 100) / 100;
+  // the morning village tax is taken from the owner too; add it back to see the rent itself
+  const got = Math.round((state.balances['player:' + me] - ob + (state.players[me].stats.taxes || 0) - tax0) * 100) / 100;
   console.log('Home: sleep without bed', noBed.code, '| bed bought', bed.ok, 'installed', bed.installed, '| listed', list.ok, '| leased', lease.ok, '| owner got', got);
   if (noBed.code !== 'err.noBedYet' || !bed.installed || !list.ok || !lease.ok || got < 16) fail('beds or renting out a home did not work');
   const before = state.districts.length;
@@ -156,8 +158,9 @@ function playerView0() { return publicView(state, me).player; }
   if (prop) for (const k of Object.keys(prop.aiPlan)) prop.votes[k] = { yes: true, w: 1 }, delete prop.aiPlan[k];
   for (let i = 0; i < RULES.ticksPerDay + 2; i++) tick(state);
   const after = (state.watchtowers || []).length;
-  console.log('Watchtower: proposed', r.ok, '| towers', before, '->', after, '| carpenter +', Math.round(state.balances['npc:carpenter'] - carp));
+  console.log('Watchtower: proposed', r.ok, r.code, '| towers', before, '->', after, '| carpenter +', Math.round(state.balances['npc:carpenter'] - carp));
   if (r.code === 'err.noTowerSpot') console.log('  (all watchtower spots already built by the village)');
+  else if (r.code === 'err.sameProposal' && after === before + 1) console.log('  (a villager had already proposed one; it was built)');
   else if (!r.ok || after !== before + 1) fail('the council could not build a watchtower');
   if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with the watchtower');
 }

@@ -211,6 +211,8 @@ export const RULES = {
   priceStep: DEMO ? 0.12 : 0.06,  // how fast prices move toward their supply-and-demand level
   profitTaxAbove: 800,   // shops richer than this pay a profit tax
   profitTaxRate: 0.2,
+  villageTaxAbove: 300,  // villagers holding more than this pay a small morning tax on the extra
+  villageTaxRate: 0.01,  // 1% of the extra, every morning (keeps the treasury from slowly running dry)
   minPrice: 1,
   // nights and winter
   innBed: 5,             // a bed for the night at the inn, paid to the innkeeper

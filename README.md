@@ -22,7 +22,7 @@ Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what
 - Production chains: wood → lumber → carts, wheat → flour → bread → meals, ore + wood → swords and pickaxes
 - Gathering in the forest, fields and mine (energy-based, tools give a bonus)
 - Selling to and buying from craftsmen, with a 3% market tax to the village treasury
-- Village treasury with a fixed reserve, profit tax on rich shops and a guard salary
+- Village treasury with a fixed reserve, profit tax on rich shops, a guard salary and a small morning village tax (1% of what anyone holds above 300 EMWK), so the treasury stays steady instead of slowly running dry
 - Random events: droughts, winters, dragon warnings and attacks, judged by village readiness
 - Day and night: at night the shops close (the inn stays open), nobody gathers or works shifts, and villagers walk home to sleep
 - Shelter: at night a player sleeps in their rented home, their own house or a paid bed at the inn (5 EMWK) and recovers fast. A night outside means no rest and a cold morning (max energy −3 for the day)

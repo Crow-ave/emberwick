@@ -840,6 +840,23 @@ function startNewDay(state) {
     const acct = npcAcct(def.id), bal = balance(state, acct);
     if (bal > RULES.profitTaxAbove) transfer(state, acct, 'treasury', (bal - RULES.profitTaxAbove) * RULES.profitTaxRate);
   }
+  // village tax: anyone holding more than villageTaxAbove pays a small share of the extra each morning.
+  // Without it, money slowly piles up with the villagers while the treasury pays the guards and helps shops.
+  let villageTax = 0;
+  for (const k of Object.keys(state.balances)) {
+    if (!k.startsWith('player:') && !k.startsWith('bot:')) continue;
+    const extra = balance(state, k) - RULES.villageTaxAbove;
+    const due = Math.floor(extra * RULES.villageTaxRate * 100) / 100;
+    if (due >= 0.01 && transfer(state, k, 'treasury', due, { memo: 'Emberwick: morning village tax' })) {
+      villageTax += due;
+      if (k.startsWith('player:')) { const pl = state.players[k.slice(7)]; if (pl) { pl.stats = pl.stats || {}; pl.stats.taxes = r2((pl.stats.taxes || 0) + due); pl.lastTax = { day: state.day, amount: due }; } }
+    }
+  }
+  state.weekTax = r2((state.weekTax || 0) + villageTax);
+  if (state.day % 7 === 0 && state.weekTax >= 1) { // one line a week in the news, not every morning
+    addLog(state, `This week's village tax: ${state.weekTax} EMWK went to the treasury.`, 'info', 'log.villageTax', { n: state.weekTax });
+    state.weekTax = 0;
+  }
   // shops buy supplies from outside the village (salt, nails, cloth): rich shops
   // send part of their extra money to the travellers' fund, which pays the merchants
   for (const def of CRAFTSMEN) {
