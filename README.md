@@ -33,6 +33,7 @@ Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what
 - Twelve villager bots that keep the economy moving
 - One "Buy & sell" list (button under your name): every good in the village with the best price and the shop that has it. Press Buy or Sell and your villager walks there and trades
 - Close-up scenes for every work place, now also the sheep pasture (shearing among the sheep) and the fishing pond (on the jetty with a rod). Outdoor scenes follow the clock: moon and stars at night
+- **Pay from any chain (universal checkout preview):** buying a plot or renting a home shows a "pay from another chain" button. Pick USDC on Solana or Ethereum, ETH, BTC or SOL, and NEAR Intents quotes live how much you would send to cover the EMWK price (EXACT_OUTPUT into NEAR, dry run; nothing is sent because Intents runs on mainnet and the village on testnet)
 - **Live NEAR price feeds the economy:** the exchange quarter reads the NEAR price from NEAR Intents every 10 minutes. Travellers pay with NEAR, so when NEAR is above its 7-day average they pay more EMWK for the village's goods and meals (at most +20%), below it less (at most −15%)
 - **DAO treasury reserve with NEAR Intents:** the council can vote to set 5–25% of the spare treasury aside as USDC or BTC for 14 days. The proposal carries a live NEAR Intents quote (dry run: what it would buy today, at the village rate of 100 EMWK = 1 NEAR); the decision and the quote are recorded on NEAR, and the reserve cannot be spent until it is released
 - **Why the council has a fixed menu of decisions:** every passed proposal is carried out by the game itself, so only decisions the code knows how to execute can be voted on. Free-form "send treasury money anywhere" proposals are the classic DAO drain attack; here a proposal fee, a locked 2,000 EMWK reserve, caps per decision and vote weight that also counts time in the village and contribution keep the treasury safe
@@ -176,6 +177,10 @@ MIT
 
 
 ## Roadmap (after the hackathon)
+
+- Real universal checkout on mainnet: a NEAR Intents deposit address per purchase, the plot or home handed over once the payment lands (needs the village on mainnet first)
+- Swarm-for-Hire: the council posts a job, players fund AI apprentices with NEAR to pay for NEAR AI inference, the council reviews the work before it is paid
+- A village prediction market ("will the dragon attack this week?") that writes the village chronicle
 
 - Transport: a paid village bus and minibus; walking takes longer, so you can be late for work. Later carts and cars that need fuel.
 - Growing businesses: a workshop can grow into a factory (a sword foundry, a large joinery) as its owner levels up; later large workplaces and plazas in the town centre.

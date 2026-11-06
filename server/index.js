@@ -108,7 +108,9 @@ const view = (pid) => ({ ...publicView(state, pid), chain: chainView(), boot: BO
 // ---------- NEAR Intents (1Click API) for the change desk ----------
 const ONECLICK = 'https://1click.chaindefuser.com/v0';
 const SHOW = [['NEAR', 'near'], ['USDC', 'near'], ['BTC', 'btc'], ['ETH', 'eth'], ['SOL', 'sol']];
-let tokenCache = { at: 0, list: null }, quoteCache = new Map();
+let tokenCache = { at: 0, list: null, all: null }, quoteCache = new Map();
+// what a player could pay with from another chain (universal checkout preview)
+const PAY_FROM = [['USDC-SOL', 'USDC', 'sol'], ['USDC-ETH', 'USDC', 'eth'], ['ETH', 'ETH', 'eth'], ['BTC', 'BTC', 'btc'], ['SOL', 'SOL', 'sol']];
 async function getJson(url, opts = {}) {
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 9000);
   try {
@@ -123,7 +125,7 @@ async function intentsTokens() {
   if (tokenCache.list && Date.now() - tokenCache.at < 60000) return tokenCache.list;
   const all = await getJson(`${ONECLICK}/tokens`);
   const pick = (sym, chain) => all.find((t) => t.symbol === sym && t.blockchain === chain) || (sym === 'NEAR' ? all.find((t) => t.assetId === 'nep141:wrap.near') : null);
-  tokenCache = { at: Date.now(), list: SHOW.map(([sym, chain]) => [sym, pick(sym, chain)]).filter(([, t]) => t).map(([key, t]) => ({ key, symbol: t.symbol, chain: t.blockchain, assetId: t.assetId, decimals: t.decimals, price: t.price, updated: t.priceUpdatedAt })) };
+  tokenCache = { at: Date.now(), all, list: SHOW.map(([sym, chain]) => [sym, pick(sym, chain)]).filter(([, t]) => t).map(([key, t]) => ({ key, symbol: t.symbol, chain: t.blockchain, assetId: t.assetId, decimals: t.decimals, price: t.price, updated: t.priceUpdatedAt })) };
   return tokenCache.list;
 }
 async function intentsPrices() {
@@ -172,6 +174,33 @@ async function quoteReserves() {
 }
 setTimeout(pollOracle, 3000); setInterval(pollOracle, 10 * 60000);
 setInterval(quoteReserves, 20000);
+
+// universal checkout preview: how much of another chain's asset pays an EMWK price, through NEAR Intents.
+// The price is turned into NEAR at the village rate, then 1Click quotes EXACT_OUTPUT into NEAR (dry run, nothing is sent).
+async function intentsPayQuote(fromKey, emwk) {
+  try {
+    const near = Math.round((Math.min(100000, Math.max(1, emwk)) / RULES.emwkPerNear) * 100) / 100;
+    const key = `pay|${fromKey}|${near}`, hit = quoteCache.get(key);
+    if (hit && Date.now() - hit.at < 30000) return hit.res;
+    await intentsTokens();
+    const all = tokenCache.all || [];
+    const def = PAY_FROM.find((x) => x[0] === fromKey);
+    const to = all.find((t) => t.assetId === 'nep141:wrap.near');
+    const from = def && all.find((t) => t.symbol === def[1] && t.blockchain === def[2]);
+    if (!from || !to) return { ok: false, error: 'unknown asset' };
+    const units = (BigInt(Math.round(near * 1000)) * 10n ** BigInt(to.decimals)) / 1000n;
+    const q = await getJson(`${ONECLICK}/quote`, { method: 'POST', body: JSON.stringify({
+      dry: true, swapType: 'EXACT_OUTPUT', slippageTolerance: 100,
+      originAsset: from.assetId, depositType: 'ORIGIN_CHAIN', destinationAsset: to.assetId, amount: units.toString(),
+      refundTo: 'intents.near', refundType: 'INTENTS', recipient: 'intents.near', recipientType: 'INTENTS',
+      deadline: new Date(Date.now() + 10 * 60000).toISOString(),
+    }) });
+    const qq = q.quote || {};
+    const res = { ok: true, dry: true, from: def[1], chain: def[2], emwk, near, amountIn: qq.amountInFormatted || qq.amountIn, usdIn: qq.amountInUsd, timeEstimate: qq.timeEstimate, source: 'NEAR Intents 1Click API (dry run)' };
+    quoteCache.set(key, { at: Date.now(), res });
+    return res;
+  } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160) }; }
+}
 
 function save() {
   fs.mkdirSync(path.dirname(SAVE), { recursive: true });
@@ -277,6 +306,7 @@ const server = http.createServer(async (req, res) => {
   }
   // the change desk: live prices and cross-chain quotes from NEAR Intents (1Click API, dry run: nothing is swapped)
   if (url.pathname === '/api/exchange/prices') return sendJson(res, 200, await intentsPrices());
+  if (url.pathname === '/api/exchange/payquote') return sendJson(res, 200, await intentsPayQuote(url.searchParams.get('from'), Number(url.searchParams.get('emwk')) || 0));
   if (url.pathname === '/api/exchange/quote') return sendJson(res, 200, await intentsQuote(url.searchParams.get('to'), Number(url.searchParams.get('amount')) || 1));
   if (req.method === 'POST' && url.pathname === '/api/fastforward') {
     const body = await readBody(req);

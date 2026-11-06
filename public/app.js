@@ -922,7 +922,7 @@ function panelHouse(b) {
       `<button class="linkbtn" data-act="leaveHouse">${t('house.leave', { n: h.deposit })}</button></div>`;
   } else if (h.tenant) x += `<p class="muted">${t('house.taken', { name: esc(h.tenant) })}</p>`;
   else if (me && me.home) x += `<p class="muted small">${t('house.haveOther', { place: placeName(me.home.id) })}</p>`;
-  else x += `<p class="ok">${t('house.free')}</p><button class="primary" data-act="rentHouse" ${!me || me.coins < h.rent + h.deposit ? 'disabled' : ''}>${t('house.rent', { n: h.rent + h.deposit })}</button>`;
+  else x += `<p class="ok">${t('house.free')}</p><button class="primary" data-act="rentHouse" ${!me || me.coins < h.rent + h.deposit ? 'disabled' : ''}>${t('house.rent', { n: h.rent + h.deposit })}</button>` + payBox('house:' + b.id, h.rent + h.deposit);
   return x + `<p class="muted small">${t('house.note')}</p>`;
 }
 
@@ -963,7 +963,7 @@ function panelPlot(b) {
     h += `<p>${t('plot.forSale', { n: p.price })}</p><p class="muted small">${t(p.district ? 'plot.priceFar' : 'plot.priceCentre')}</p><p class="muted small">${t('plot.deedInfo')}</p>`;
     if (p.minLevel && me && me.level < p.minLevel) h += `<p class="closed small">${t('plot.needLevel', { n: p.minLevel, have: me.level })}</p>`;
     else if (me && me.plot) h += `<p class="muted small">${t('plot.haveOne', { place: placeName(me.plot) })}</p>`;
-    else h += `<button class="primary big" data-act="buyPlot" ${!me || me.coins < p.price ? 'disabled' : ''}>${t('plot.buy', { n: p.price })}</button>`;
+    else h += `<button class="primary big" data-act="buyPlot" ${!me || me.coins < p.price ? 'disabled' : ''}>${t('plot.buy', { n: p.price })}</button>` + payBox('plot:' + b.id, p.price);
   }
   return h + `<p class="muted small">${t('plot.note', { n: B.lumber, fee: B.fee })}</p>`;
 }
@@ -1022,6 +1022,21 @@ function boardSection() {
   return h;
 }
 
+
+
+// universal checkout preview: pay an EMWK price from another chain through NEAR Intents (a live quote, nothing is sent)
+const PAY_FROM = [['USDC-SOL', 'USDC · Solana'], ['USDC-ETH', 'USDC · Ethereum'], ['ETH', 'ETH · Ethereum'], ['BTC', 'BTC · Bitcoin'], ['SOL', 'SOL · Solana']];
+function payBox(what, emwk) {
+  const st = ui.pay && ui.pay.what === what ? ui.pay : null;
+  if (!st) return `<button class="linkbtn" data-act="payOpen" data-what="${esc(what)}" data-emwk="${emwk}">${t('pay.open')}</button>`;
+  let h = `<div class="contract pay"><b>${t('pay.title')}</b><p class="small">${t('pay.lead', { n: emwk, near: Math.round(emwk / (world.rules.emwkPerNear || 100) * 100) / 100 })}</p>` +
+    `<div class="row exform"><select id="pay-from">${PAY_FROM.map(([k, label]) => `<option value="${k}"${st.from === k ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select><button class="primary" data-act="payQuote" data-emwk="${emwk}">${t('pay.get')}</button></div>`;
+  const q = st.quote;
+  if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
+  else if (q && q.ok) h += `<p class="ok"><b>${t('pay.out', { a: q.amountIn, sym: q.from, chain: q.chain, near: q.near })}</b>${q.usdIn ? ` <span class="small">≈ $${q.usdIn}</span>` : ''}${q.timeEstimate ? ` <span class="muted small">· ${t('pay.time', { n: q.timeEstimate })}</span>` : ''}</p>`;
+  else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
+  return h + `<p class="muted small">${t('pay.note')}</p></div>`;
+}
 
 // ---------- the village council ----------
 
@@ -1735,6 +1750,13 @@ document.body.addEventListener('click', (e) => {
   if (a === 'cancelOrder' || a === 'fillOrder') { exAct(a, { id: Number(btn.dataset.id), qty: 1 }); return; }
   if (a === 'listDeed') { exAct('listDeed', { plot: btn.dataset.plot, price: Number(($('ex-deed-price') || {}).value) || 0 }); return; }
   if (a === 'unlistDeed' || a === 'buyDeed') { exAct(a, { plot: btn.dataset.plot }); return; }
+  if (a === 'payOpen') { ui.pay = { what: btn.dataset.what, from: (ui.pay && ui.pay.from) || 'USDC-SOL', quote: null }; renderPanel(); return; }
+  if (a === 'payQuote') {
+    const from = $('pay-from').value, emwk = Number(btn.dataset.emwk) || 0, st = ui.pay;
+    st.from = from; st.quote = 'wait'; renderPanel();
+    fetch(`/api/exchange/payquote?from=${encodeURIComponent(from)}&emwk=${emwk}`).then((r) => r.json()).then((q) => { st.quote = q; renderPanel(); }).catch(() => { st.quote = { ok: false }; renderPanel(); });
+    return;
+  }
   if (a === 'exQuote') {
     ui.exQAmount = Number($('ex-q-amount').value) || 1; ui.exQTo = $('ex-q-to').value; ui.exQuote = 'wait'; renderPanel();
     fetch(`/api/exchange/quote?to=${encodeURIComponent(ui.exQTo)}&amount=${ui.exQAmount}`).then((r) => r.json()).then((q) => { ui.exQuote = q; renderPanel(); }).catch(() => { ui.exQuote = { ok: false }; renderPanel(); });
