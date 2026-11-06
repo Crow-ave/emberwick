@@ -530,7 +530,7 @@ function aiProof(short) {
   let h = '';
   if (rec) {
     const tx = chainOk() ? aiTx(rec.day) : null;
-    h += `<p class="small ai-proof">⛓ ${t('ai.onChain', { d: rec.day, h: rec.hash.slice(0, 10) })} · <a href="/api/ai/plan?day=${rec.day}" target="_blank" rel="noopener">${t('ai.planJson')}</a>${tx ? ' · ' + exLink('txns/' + tx, t('ai.planTx')) : chainOk() ? ` · <span class="muted">${t('job.contractWait')}</span>` : ''}</p>`;
+    h += `<p class="small ai-proof">⛓ ${t(chainOk() ? 'ai.onChain' : 'ai.planHash', { d: rec.day, h: rec.hash.slice(0, 10) })} · <a href="/api/ai/plan?day=${rec.day}" target="_blank" rel="noopener">${t('ai.planJson')}</a>${tx ? ' · ' + exLink('txns/' + tx, t('ai.planTx')) : chainOk() ? ` · <span class="muted">${t('job.contractWait')}</span>` : ''}</p>`;
   }
   if (at && at.signer) h += `<p class="small ai-proof">🔒 ${t(at.gatewayOnly ? 'ai.attestGw' : 'ai.attest', { s: esc(String(at.signer).slice(0, 10)) + '…', q: at.quote ? 'Intel TDX ✓' : '' })} · <a href="/api/ai/attestation" target="_blank" rel="noopener">${t('ai.attestLink')}</a></p>`;
   return h;
