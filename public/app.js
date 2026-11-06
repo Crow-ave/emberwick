@@ -784,6 +784,8 @@ const closeBtn = () => `<button class="close" data-act="close" aria-label="${t('
 
 // big places (treasury, council) open as a card over the map, so nothing is lost below the side panel
 const MAP_CARD = new Set(['treasury', 'council', 'exchange', 'week']);
+// a plot for sale also opens as a big card on the game screen, so its Buy button is right there
+const onMapCard = (id) => MAP_CARD.has(id) || !!(id && view && view.plots && view.plots[id] && !view.plots[id].owner && !view.plots[id].built);
 function renderMapCard(id, top, html) {
   const card = $('map-card');
   if (!card) return false;
@@ -798,7 +800,7 @@ function renderPanel() {
   const panel = $('panel');
   const typing = document.activeElement && panel.contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
   if (typing) return; // keep what the player is typing
-  if (!MAP_CARD.has(ui.selected) && $('map-card')) { $('map-card').hidden = true; $('view').classList.remove('card-on'); }
+  if (!onMapCard(ui.selected) && $('map-card')) { $('map-card').hidden = true; $('view').classList.remove('card-on'); }
   if (ui.selected === 'near') { panel.innerHTML = closeBtn() + panelNear(); panel.hidden = false; return; }
   if (ui.selected === 'board') { panel.innerHTML = closeBtn() + boardSection(); panel.hidden = false; return; }
   if (ui.selected === 'trade') { panel.innerHTML = closeBtn() + panelTrade(); panel.hidden = false; return; }
@@ -821,7 +823,7 @@ function renderPanel() {
     const next = r.next ? t(r.next.key, resolve(r.next.p)) : null;
     top = `<div class="result${r.bad ? ' bad' : ''}"><b>${t(r.bad ? 'result.no' : 'result.done')}</b> ${esc(t(r.key, resolve(r.p)))}${next ? `<button class="primary next" data-go="${r.next.go}">${esc(next)} →</button>` : ''}</div>`;
   } else if (you && you.inside === b.id) top = `<div class="status">${esc(t('status.here', { place: placeName(b.id) }))}</div>`;
-  if (MAP_CARD.has(b.id) && renderMapCard(b.id, top, h)) {
+  if (onMapCard(b.id) && renderMapCard(b.id, top, h)) {
     panel.innerHTML = closeBtn() + `<h2>${esc(placeName(b.id))}</h2><p class="muted small">${t('card.onMap')}</p>`;
     panel.hidden = false;
     return;
@@ -968,7 +970,7 @@ function panelPlot(b) {
     h += `<p>${t('plot.forSale', { n: p.price })}</p><p class="muted small">${t(p.district ? 'plot.priceFar' : 'plot.priceCentre')}</p><p class="muted small">${t('plot.deedInfo')}</p>`;
     if (p.minLevel && me && me.level < p.minLevel) h += `<p class="closed small">${t('plot.needLevel', { n: p.minLevel, have: me.level })}</p>`;
     else if (me && me.plot) h += `<p class="muted small">${t('plot.haveOne', { place: placeName(me.plot) })}</p>`;
-    else h += `<button class="primary big" data-act="buyPlot" ${!me || me.coins < p.price ? 'disabled' : ''}>${t('plot.buy', { n: p.price })}</button>` + payBox('plot:' + b.id, p.price);
+    else h += `<button class="primary big" data-act="buyPlot" ${!me || me.coins < p.price ? 'disabled' : ''}>${t('plot.buy', { n: p.price })}</button>` + (me && me.coins < p.price ? `<p class="closed small">${t('plot.needCoins', { n: p.price, have: Math.floor(me.coins) })}</p>` : '') + payBox('plot:' + b.id, p.price);
   }
   return h + `<p class="muted small">${t('plot.note', { n: B.lumber, fee: B.fee })}</p>`;
 }
@@ -1480,6 +1482,7 @@ function renderChrome() {
 
 function renderMapNow() {
   ui.closedTag = t('ui.closedTag'); ui.nightTag = t('closed.night'); ui.mineTag = t('plot.mineTag'); ui.nameOf = placeName;
+  view.saleLabel = t('plot.saleTag');
   ui.laneName = t('district.1'); ui.villaName = t('district.2'); ui.exName = t('district.3');
   if (ui.district && view.districts) {
     ui.backTag = '← ' + t('district.back'); ui.villaTag = t('district.2') + ' →'; ui.laneTag = t('district.1') + ' →';

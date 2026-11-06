@@ -1,6 +1,6 @@
 {
   "name": "emberwick",
-  "version": "0.61.0",
+  "version": "0.62.0",
   "description": "A living village economy on NEAR",
   "main": "server/index.js",
   "type": "module",

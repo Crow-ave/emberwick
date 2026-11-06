@@ -152,8 +152,12 @@ function plotArt(id, cx, cy, v, big = 1) {
     for (let k = 0; k < 4; k++) a += `<rect x="${d[3][0] + k * 7}" y="${d[3][1] - 6 + k * 3.5}" width="1.6" height="7" fill="#7a5236"/>`;
     a += `<rect x="${cx - 4}" y="${cy - 2}" width="12" height="3" fill="#d8b98a" stroke="#9a7a5a" stroke-width=".5"/><rect x="${cx - 2}" y="${cy - 5}" width="12" height="3" fill="#d8b98a" stroke="#9a7a5a" stroke-width=".5"/>`;
   } else { // for sale
-    a += `<rect x="${cx - 1}" y="${cy - 20}" width="2" height="20" fill="#7a5236"/><rect x="${cx - 11}" y="${cy - 26}" width="22" height="10" rx="2" fill="#efe4cf" stroke="#9a7a5a"/>` +
-      `<text x="${cx}" y="${cy - 18.5}" font-size="6.5" text-anchor="middle" fill="#8a3b12" font-weight="bold">${p.price || (v.land ? v.land.price : '')}</text>`;
+    // a "for sale" sign with the price; the plot outline glows so it is easy to spot and click
+    const label = v.saleLabel || 'FOR SALE', w = Math.max(28, tlen(label) * 4.4 + 8);
+    a = a.replace('<polygon ', '<polygon class="saleplot" ');
+    a += `<rect x="${cx - 1}" y="${cy - 22}" width="2" height="22" fill="#7a5236"/><rect x="${cx - w / 2}" y="${cy - 36}" width="${w}" height="17" rx="3" fill="#fff6e2" stroke="#d9622b" stroke-width="1.2"/>` +
+      `<text x="${cx}" y="${cy - 29}" font-size="5.2" text-anchor="middle" fill="#d9622b" font-weight="bold" letter-spacing=".3">${label}</text>` +
+      `<text x="${cx}" y="${cy - 21.8}" font-size="6.8" text-anchor="middle" fill="#8a3b12" font-weight="bold">${p.price || (v.land ? v.land.price : '')} EMWK</text>`;
   }
   return a;
 }

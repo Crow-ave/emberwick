@@ -580,3 +580,6 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .bsteps { margin: 4px 0 2px 18px; padding: 0; font-size: 12px; line-height: 1.5; }
 .bsteps li.done { color: #2f7a3a; font-weight: 700; }
 .bsteps li.now { color: var(--ember-dark); font-weight: 700; }
+/* plots for sale: a soft glowing outline (v62) */
+@media (prefers-reduced-motion: no-preference) { #map .saleplot { animation: saleglow 2.2s ease-in-out infinite; } }
+@keyframes saleglow { 0%, 100% { fill: rgba(255,255,255,.28); stroke: #7a6a58; } 50% { fill: rgba(255,214,150,.55); stroke: #d9622b; } }
