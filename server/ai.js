@@ -194,7 +194,7 @@ export async function askCraftsman(card, question, lang, playerId, credit = null
 // village rules; the model only says it, in character and in the player's language
 const HAGGLE_PER_PLAYER = 40;
 const SAY = {
-  accept: 'You agree to the deal at the agreed price per unit. Sound pleased, maybe a little grudging if it was a hard bargain.',
+  accept: 'You agree to the deal at the final price per unit (the customer still has to say yes). Sound pleased, maybe a little grudging if it was a hard bargain. If the final price is better for the customer than what they offered, tell them honestly you keep to your own fair price.',
   counter: 'You do not accept their price, but you propose the counter price per unit. Haggle like a real market seller.',
   favor: 'Their price is too far from yours and you say so, but because they are a good customer you make them a special offer at the counter price per unit.',
   angry: 'Their offer insults you. React offended (no insults, no swearing) and refuse; make no new offer.',

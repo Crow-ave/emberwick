@@ -480,7 +480,8 @@ export function haggle(state, p, npcId, good, side, qty, offer) {
   else { outcome = 'angry'; mood.angry++; }
   if (outcome === 'angry' && mood.angry >= 2) outcome = 'closed';
   const res = { ok: true, outcome, side, good, npc: npcId, qty, offer, ask, unit, tries: mood.tries };
-  if (unit !== null && outcome !== 'accept') p.deal = { npc: npcId, good, side, qty, unit, day: state.day, tick: state.tick };
+  if (unit !== null) p.deal = { npc: npcId, good, side, qty, unit, day: state.day, tick: state.tick };
+  res.fair = outcome === 'accept' && unit !== offer; // you asked for less (or offered more) than their own price: they keep to theirs
   return res;
 }
 
@@ -663,10 +664,8 @@ function doAction(state, p, actor, action, qty) {
   // haggling: the player names a price per unit. The village rules decide (accept, counter, a favour, or
   // offence); NEAR AI only puts the craftsman's answer into words. A counter offer waits as p.deal.
   if (action.type === 'haggle') {
-    const r = haggle(state, p, action.npc, action.good, action.side === 'sell' ? 'sell' : 'buy', qty, Number(action.offer));
-    if (!r.ok || r.outcome !== 'accept') return r;
-    const done = tradeAt(state, p, actor, action.npc, action.good, r.side, r.qty, r.unit);
-    return done.ok ? { ...r, ...done, ok: true } : done;
+    // nothing changes hands yet: every agreed price waits for the player to confirm it (p.deal)
+    return haggle(state, p, action.npc, action.good, action.side === 'sell' ? 'sell' : 'buy', qty, Number(action.offer));
   }
   if (action.type === 'repay') return repayDebt(state, p, String(action.npc || ''));
   if (action.type === 'deal') {

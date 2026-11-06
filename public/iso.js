@@ -591,7 +591,7 @@ function distant(view, ui) {
   const lane = [[-34, 2], [-16, -4], [2, -6], [20, -2], [36, 4]].slice(0, Math.max(2, Math.min(5, built(1) + 2))).map(([dx, dy], k) => hut(L[0] + dx, L[1] - 8 + dy, ['#c4473a', '#3a6ea8', '#4f7a3a', '#8c3a2a', '#7a3b8a'][k])).join('');
   const villa = [[-28, 0], [6, -8], [34, 2]].map(([dx, dy]) => hut(V[0] + dx, V[1] - 8 + dy, '#2f4f6f', 1.5) + `<rect x="${V[0] + dx + 8}" y="${V[1] - 11 + dy}" width="8" height="3" fill="#6ec3ea"/>`).join('');
   const ex0 = E[0] - 22, ey = E[1] - 26;
-  const ex = `<rect x="${ex0}" y="${ey}" width="44" height="18" fill="#f1ead9" stroke="#c9bfa8"/>${[0, 1, 2, 3, 4].map((k) => `<rect x="${ex0 + 3 + k * 8.4}" y="${ey + 2}" width="3" height="16" fill="#fbf8f0"/>`).join('')}<path d="M${ex0 + 8} ${ey} Q${E[0]} ${ey - 20} ${ex0 + 36} ${ey} Z" fill="#4f9a82"/><rect x="${E[0] - 1}" y="${ey - 24}" width="2" height="8" fill="#e2b640"/><circle cx="${E[0]}" cy="${ey - 25}" r="2" fill="#e2b640"/>`;
+  const ex = `<rect x="${ex0 - 3}" y="${ey + 17}" width="50" height="4" fill="#e4dac4"/><rect x="${ex0}" y="${ey}" width="44" height="18" fill="#f6f1e4" stroke="#c9bfa8"/>${[0, 1, 2, 3, 4].map((k) => `<rect x="${ex0 + 3 + k * 8.4}" y="${ey + 2}" width="3" height="16" fill="#fdfbf5"/><rect x="${ex0 + 2.5 + k * 8.4}" y="${ey + 1}" width="4" height="1.6" fill="#e2b640"/>`).join('')}<rect x="${ex0 - 1}" y="${ey - 3}" width="46" height="3" fill="#d9a92e"/><polygon points="${ex0 - 2},${ey - 3} ${E[0]},${ey - 15} ${ex0 + 46},${ey - 3}" fill="#e2b640"/><polygon points="${ex0 + 3},${ey - 4} ${E[0]},${ey - 12} ${ex0 + 41},${ey - 4}" fill="#f8f3e6"/><circle cx="${E[0]}" cy="${ey - 7}" r="2.6" fill="#e2b640"/><circle cx="${E[0]}" cy="${ey - 17}" r="1.8" fill="#f2c94c"/>`;
   return `<g opacity=".97">` + place('go-d2', V[0], V[1], villa, ui.villaName || 'Villa hill', open.includes(2)) + place('go-d3', E[0], E[1], ex, ui.exName || 'Exchange', true) +
     place('go-d1', L[0], L[1], lane, ui.laneName || 'Ember Lane', open.includes(1)) + `</g>`;
 }
@@ -715,23 +715,43 @@ function villaArt(id, cx, cy, v) {
   return plotArt(id, cx, cy, v, 1.9);
 }
 
-// the exchange hall: a stone hall with columns, a green dome, a ticker board and banners
+// the exchange hall: a grand marble hall with gold trim, a pediment with the EMWK coin, wide steps,
+// columns, lamps and flags (a classical stock exchange)
 function exchangeArt(cx, cy, v) {
-  const sc = 2.1, h = 34;
-  let s = shadow(cx, cy, 70) + poly(diamond(cx, cy + 6, 120, 60), '#d9cdb6') + poly(diamond(cx, cy + 6, 104, 52), '#e9dfcc');
-  s += house(cx, cy - 4, sc, h, '#f1ead9', '#d6ccb6', '#3f7a6a', '#2f6656', 12);
+  const sc = 2.1, h = 36;
+  let s = shadow(cx, cy, 74) + poly(diamond(cx, cy + 6, 124, 62), '#cdbf9f') + poly(diamond(cx, cy + 6, 108, 54), '#efe6d2');
+  s += house(cx, cy - 4, sc, h, '#f6f1e4', '#ddd3bd', '#8d8a80', '#76736b', 2);
   const f = frame(cx, cy - 4, sc, h);
-  for (let k = 0; k < 6; k++) { // columns along the front
+  const uL = lift(f.L, h), uB = lift(f.B, h), uR = lift(f.R, h);
+  // wide steps in front with a red carpet
+  for (let k = 0; k < 3; k++) {
+    const o = 4 + k * 4, a = [f.L[0] - o * 0.9, f.L[1] + o * 0.45], b = [f.B[0] + o * 0.2, f.B[1] + o * 0.9];
+    s += `<polygon points="${a[0]},${a[1]} ${b[0]},${b[1]} ${b[0]},${b[1] + 3} ${a[0]},${a[1] + 3}" fill="${k % 2 ? '#e4dac4' : '#f3ecdc'}" stroke="#c9bfa8" stroke-width=".4"/>`;
+  }
+  const door = mid(f.L, f.B, 0.5);
+  s += `<polygon points="${door[0] - 5},${door[1] + 1} ${door[0] + 5},${door[1] + 6} ${door[0] - 2},${door[1] + 18} ${door[0] - 12},${door[1] + 13}" fill="#b8333a"/>`;
+  s += `<path d="M${door[0] - 4} ${door[1]} v-16 q4 -5 8 2 v16 z" fill="#5a3a22" stroke="#e2b640" stroke-width="1"/>`;
+  for (let k = 0; k < 6; k++) { // marble columns with gold capitals
     const p = mid(f.L, f.B, 0.08 + k * 0.168);
-    s += `<rect x="${p[0] - 2.6}" y="${p[1] - h + 3}" width="5.2" height="${h - 3}" fill="#fbf8f0" stroke="#c9bfa8" stroke-width=".6"/><rect x="${p[0] - 3.6}" y="${p[1] - h}" width="7.2" height="3" fill="#e6dcc6"/>`;
+    s += `<rect x="${p[0] - 2.8}" y="${p[1] - h + 4}" width="5.6" height="${h - 4}" fill="#fdfbf5" stroke="#cfc5ae" stroke-width=".6"/>` +
+      `<path d="M${p[0] - 1} ${p[1] - h + 6} V${p[1] - 1}" stroke="#e8e0cc" stroke-width="1"/>` +
+      `<rect x="${p[0] - 4}" y="${p[1] - h + 1}" width="8" height="3.4" fill="#e2b640"/><rect x="${p[0] - 3.8}" y="${p[1] - 3}" width="7.6" height="3" fill="#e6dcc6"/>`;
   }
   for (let k = 0; k < 3; k++) s += windowAt(mid(f.B, f.R, 0.12 + k * 0.3), f.R, h * 0.4, 1.2);
-  // dome
-  const top = [cx + 6, cy - h - 52];
-  s += `<ellipse cx="${top[0]}" cy="${top[1] + 16}" rx="26" ry="8" fill="#2f6656"/><path d="M${top[0] - 24} ${top[1] + 16} Q${top[0]} ${top[1] - 22} ${top[0] + 24} ${top[1] + 16} Z" fill="#4f9a82"/><path d="M${top[0] - 10} ${top[1] + 2} Q${top[0] - 4} ${top[1] - 10} ${top[0] + 4} ${top[1] - 12}" stroke="#9fdcc6" stroke-width="2" fill="none"/>`;
-  s += `<rect x="${top[0] - 1}" y="${top[1] - 22}" width="2" height="14" fill="#e2b640"/><circle cx="${top[0]}" cy="${top[1] - 24}" r="3" fill="#e2b640"/>`;
+  // gold frieze along the top of both walls
+  s += `<polygon points="${uL[0]},${uL[1]} ${uB[0]},${uB[1]} ${uB[0]},${uB[1] + 5} ${uL[0]},${uL[1] + 5}" fill="#d9a92e"/>` +
+    `<polygon points="${uB[0]},${uB[1]} ${uR[0]},${uR[1]} ${uR[0]},${uR[1] + 5} ${uB[0]},${uB[1] + 5}" fill="#b88c22"/>`;
+  // the pediment over the front, with the coin of the village in the middle
+  const apex = lift(mid(f.L, f.B), h + 34), c = [(uL[0] + uB[0] + apex[0]) / 3, (uL[1] + uB[1] + apex[1]) / 3 + 2];
+  s += `<polygon points="${uL[0] - 3},${uL[1] + 1} ${uB[0] + 3},${uB[1] + 2} ${apex[0]},${apex[1] - 3}" fill="#e2b640"/>` +
+    `<polygon points="${uL[0] + 3},${uL[1] - 1} ${uB[0] - 2},${uB[1]} ${apex[0]},${apex[1] + 3}" fill="#f8f3e6"/>` +
+    `<circle cx="${c[0]}" cy="${c[1]}" r="6.5" fill="#e2b640" stroke="#a87a18" stroke-width="1"/><text x="${c[0]}" y="${c[1] + 2.6}" font-size="7" font-weight="bold" text-anchor="middle" fill="#7a5410">E</text>`;
+  // little gold statues on the corners and top of the pediment
+  for (const p of [[uL[0] - 2, uL[1]], [uB[0] + 2, uB[1]], [apex[0], apex[1] - 3]]) s += `<path d="M${p[0] - 2.5} ${p[1]} h5 l-1 -3 h-3 z" fill="#c9971f"/><circle cx="${p[0]}" cy="${p[1] - 5}" r="2.4" fill="#f2c94c"/>`;
+  // gold lamps at the steps
+  for (const p of [mid(f.L, f.B, 0.02), mid(f.L, f.B, 0.98)]) s += `<rect x="${p[0] - 0.9}" y="${p[1] - 2}" width="1.8" height="18" fill="#3a2e22" transform="translate(0,6)"/><circle cx="${p[0]}" cy="${p[1] + 3}" r="3.2" fill="#ffe08a" stroke="#c9971f" stroke-width="1"/>`;
   // ticker board in front
-  const bx = cx - 70, by = cy + 30, rows = ['NEAR', 'EMWK', 'BTC'];
+  const bx = cx - 128, by = cy + 52, rows = ['NEAR', 'EMWK', 'BTC'];
   s += `<rect x="${bx - 2}" y="${by - 30}" width="4" height="32" fill="#4a3a2a"/><rect x="${bx + 52}" y="${by - 30}" width="4" height="32" fill="#4a3a2a"/><rect x="${bx - 6}" y="${by - 58}" width="66" height="32" rx="3" fill="#1f2a2a" stroke="#4a3a2a" stroke-width="2"/>`;
   // live prices from NEAR Intents on the board (v.exBoard is filled by the page); arrows only until they arrive
   const board = v.exBoard || {};
@@ -741,8 +761,8 @@ function exchangeArt(cx, cy, v) {
       `<text x="${bx + 54}" y="${by - 48 + k * 9}" font-size="${val ? 6.2 : 7}" text-anchor="end" fill="${k === 1 ? '#f2b04a' : '#6ee08a'}" font-family="monospace">${val || '▲'}</text>`;
   });
   // banners
-  for (const [x, c] of [[cx + 64, '#3f7a6a'], [cx + 82, '#e2b640']]) s += `<rect x="${x}" y="${cy - 30}" width="2" height="34" fill="#5a4a38"/><path d="M${x + 2} ${cy - 30} h12 v16 l-6 -4 l-6 4 z" fill="${c}"/>`;
-  return s + sign(cx - 96, cy - 6, 'coin', '#eef8f4');
+  for (const [x, y, c] of [[cx - 104, cy - 8, '#b8333a'], [cx + 70, cy - 30, '#e2b640'], [cx + 88, cy - 22, '#3f7a6a']]) s += `<rect x="${x}" y="${y - 46}" width="2" height="50" fill="#c9971f"/><circle cx="${x + 1}" cy="${y - 47}" r="2" fill="#f2c94c"/><path d="M${x + 2} ${y - 44} q8 -3 16 0 v14 q-8 -3 -16 0 z" fill="${c}"/>`;
+  return s + sign(cx + 104, cy + 20, 'coin', '#eef8f4');
 }
 
 const DROADS = {

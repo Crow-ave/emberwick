@@ -402,7 +402,7 @@ function sceneBubbles(id) {
   if (qa && Date.now() - (qa.at || 0) < 60000) return []; // just talked: no greeting popping up again
   if (me && n && hg && (hg.wait || (hg.reply && Date.now() - hg.reply.at < 25000))) {
     out.push({ x: youHead[0], y: youHead[1], text: t('haggle.myOffer', { p: hg.offer, n: hg.qty, good: goodWord(hg.good) }), anchor: 0.35, max: 26 });
-    if (hg.reply) out.push({ x: KEEPER_HEAD[0], y: KEEPER_HEAD[1], text: hg.reply.line || t('haggle.say.' + hg.reply.outcome, { p: hg.reply.unit, ask: hg.reply.ask, good: goodWord(hg.reply.good) }), anchor: 0.85, max: 34 });
+    if (hg.reply) out.push({ x: KEEPER_HEAD[0], y: KEEPER_HEAD[1], text: hg.reply.line || t(hg.reply.fair ? 'haggle.say.fair' : 'haggle.say.' + hg.reply.outcome, { p: hg.reply.unit, ask: hg.reply.ask, good: goodWord(hg.reply.good) }) , anchor: 0.85, max: 34 });
     return out;
   }
   const said = sceneTalk(id, true);
@@ -438,10 +438,10 @@ function haggleBox(id) {
     `<button class="primary" data-hagsend="1" ${hg.wait ? 'disabled' : ''}>${t(hg.wait ? 'ai.thinking' : 'haggle.offer')}</button></div>`;
   if (hg.reply) {
     const r = hg.reply;
-    const line = r.line || t('haggle.say.' + r.outcome, { p: r.unit, ask: r.ask, good: goodWord(r.good) });
+    const line = r.line || t(r.fair ? 'haggle.say.fair' : 'haggle.say.' + r.outcome, { p: r.unit, ask: r.ask, good: goodWord(r.good) });
     h += `<div class="hag-reply ${r.outcome}"><span class="quote">"${esc(line)}"</span></div>`;
     const d = me.deal;
-    if (d && d.npc === id && d.good === hg.good && d.side === hg.side) h += `<button class="primary" data-hagdeal="1">${t('haggle.take', { n: d.qty, p: d.unit, total: Math.round(d.qty * d.unit * 100) / 100 })}</button>`;
+    if (d && d.npc === id && d.good === hg.good && d.side === hg.side) h += `<p class="small">${t(d.side === 'sell' ? 'haggle.confirmSell' : 'haggle.confirmBuy')}</p><button class="primary" data-hagdeal="1">${t('haggle.take', { n: d.qty, p: d.unit, total: Math.round(d.qty * d.unit * 100) / 100 })}</button> <button data-hagclose="1">${t('haggle.no2')}</button>`;
   }
   return h + `</div>`;
 }
@@ -1676,8 +1676,7 @@ async function sendHaggle(box) {
   if (r.state && newer(r.state)) view = r.state;
   if (!r.ok) { toast(errText(r), 'bad'); render(); return; }
   hg.reply = { ...r, at: Date.now() };
-  if (r.deal) { play('coin'); toast(t('haggle.done', { n: r.qty, good: goodWord(r.good), p: r.unit, total: r.total }), 'win'); }
-  else play(r.outcome === 'angry' || r.outcome === 'closed' ? 'bad' : 'click');
+  play(r.outcome === 'angry' || r.outcome === 'closed' ? 'bad' : 'click');
   render(); setTimeout(render, 26000);
 }
 async function takeDeal() {
