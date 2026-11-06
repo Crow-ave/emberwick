@@ -573,3 +573,10 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   .view:not(.card-on) #map { transform: scale(.88); transform-origin: 38% 30%; }
 }
 .view.card-on .hint, .view.scene-on .hint { display: none !important; }
+
+/* NEAR Intents bridge picture (v61) */
+.bridgebox { background: linear-gradient(180deg, #fff8ee, #fdf1df); border: 2px solid #f0c69c; border-radius: 14px; padding: 8px 10px 6px; margin: 8px 0 10px; }
+.bridgebox .bridge { width: 100%; height: auto; display: block; }
+.bsteps { margin: 4px 0 2px 18px; padding: 0; font-size: 12px; line-height: 1.5; }
+.bsteps li.done { color: #2f7a3a; font-weight: 700; }
+.bsteps li.now { color: var(--ember-dark); font-weight: 700; }

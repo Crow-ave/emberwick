@@ -502,9 +502,10 @@ function panelTreasury() {
 // ---------- the exchange: player market, land deeds, and the change desk (NEAR Intents) ----------
 function panelExchange() {
   const me = view.player, mk = view.market;
-  const tab = ui.exTab || 'goods';
+  const tab = ui.exTab || 'change';
+  if (tab === 'change' && !ui.exPrices && !ui.exPricesLoading) { ui.exPricesLoading = true; loadExPrices(); }
   let h = `<h2>${t('b.exchange')}</h2><p class="muted small">${t('ex.intro', { fee: Math.round(mk.fee * 100) })}</p>`;
-  h += `<div class="tabs">${['goods', 'deeds', 'change'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
+  h += `<div class="tabs">${['change', 'goods', 'deeds'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
   if (tab === 'goods') {
     const mine = me ? mk.goods.filter((g) => (me.inv[g] || 0) > 0) : [];
     const shopPrice = (g) => { const n = Object.values(view.npcs).find((x) => x.sells[g] !== undefined); return n ? n.sells[g] : null; };
@@ -543,18 +544,21 @@ function panelExchange() {
     h += `<p class="muted small">${t('ex.deedNote')}</p>`;
   }
   if (tab === 'change') {
-    h += `<p class="sub2">${t('ex.bridgeTitle')}</p><p class="small">${t('ex.bridgeHelp', { n: me ? Math.floor(me.coins) : 0 })}</p><button class="primary" data-act="open-near">${t('ex.openNear')}</button>`;
+    // the live cross-chain quote comes first, with the bridge picture right under it
+    const eq = ui.exQuote && ui.exQuote.ok ? ui.exQuote : null;
+    h += `<p class="sub2">${t('ex.quoteTitle')}</p><div class="row exform"><input id="ex-q-amount" type="number" min="0.1" max="1000" step="0.1" value="${ui.exQAmount || 1}"> NEAR → <select id="ex-q-to">${['USDC', 'BTC', 'ETH', 'SOL'].map((k) => `<option${ui.exQTo === k ? ' selected' : ''}>${k}</option>`).join('')}</select><button class="primary" data-act="exQuote">${t('ex.getQuote')}</button></div>`;
+    h += bridgeSvg(eq ? { sym: 'NEAR', chain: 'near', amount: eq.amountIn } : { sym: 'NEAR', chain: 'near' }, eq ? { sym: eq.to, chain: eq.chain, amount: eq.amountOut } : { sym: ui.exQTo || 'USDC', chain: '' }, !!eq, 'swap');
+    const q = ui.exQuote;
+    if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
+    else if (q && q.ok) h += `<div class="contract"><b>${t('ex.quoteOut', { a: q.amountIn, b: q.amountOut, sym: q.to, chain: q.chain })}</b>${q.usdOut ? `<div class="small">≈ $${q.usdOut}</div>` : ''}<p class="muted small">${t('ex.quoteNote')}</p></div>`;
+    else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
+    h += oracleBox() + reserveBox(true);
     const pr = ui.exPrices;
     h += `<p class="sub2">${t('ex.pricesTitle')}</p>`;
     if (!pr) h += `<p class="muted small">${t('ex.loading')}</p>`;
     else if (!pr.ok) h += `<p class="muted small">${t('ex.offline')}</p>`;
     else h += `<table>${pr.tokens.map((x) => `<tr><td><b>${esc(x.symbol)}</b> <span class="muted small">${esc(x.chain)}</span></td><td class="n">$${Number(x.price).toLocaleString(undefined, { maximumFractionDigits: x.price < 10 ? 3 : 0 })}</td></tr>`).join('')}</table><p class="muted small">${t('ex.pricesSource')}</p>`;
-    h += oracleBox() + reserveBox(true);
-    h += `<p class="sub2">${t('ex.quoteTitle')}</p><div class="row exform"><input id="ex-q-amount" type="number" min="0.1" max="1000" step="0.1" value="${ui.exQAmount || 1}"> NEAR → <select id="ex-q-to">${['USDC', 'BTC', 'ETH', 'SOL'].map((k) => `<option${ui.exQTo === k ? ' selected' : ''}>${k}</option>`).join('')}</select><button class="primary" data-act="exQuote">${t('ex.getQuote')}</button></div>`;
-    const q = ui.exQuote;
-    if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
-    else if (q && q.ok) h += `<div class="contract"><b>${t('ex.quoteOut', { a: q.amountIn, b: q.amountOut, sym: q.to, chain: q.chain })}</b>${q.usdOut ? `<div class="small">≈ $${q.usdOut}</div>` : ''}<p class="muted small">${t('ex.quoteNote')}</p></div>`;
-    else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
+    h += `<p class="sub2">${t('ex.bridgeTitle')}</p><p class="small">${t('ex.bridgeHelp', { n: me ? Math.floor(me.coins) : 0 })}</p><button class="primary" data-act="open-near">${t('ex.openNear')}</button>`;
     h += `<p class="muted small">${t('ex.changeNote')}</p>`;
   }
   return h;
@@ -574,6 +578,7 @@ function reserveBox(withHelp) {
   return `<p class="sub2">${t('reserve.title')}</p><ul class="decided">${hs.map((h) => `<li><b>${h.amount} EMWK → ${esc(h.asset)}</b>${h.out ? ` · ${t('reserve.quote', { out: h.out, asset: h.asset, near: h.near })}` : ''} <span class="muted small">(${t('reserve.until', { n: h.until })})</span></li>`).join('')}</ul>`;
 }
 async function loadExPrices() {
+  ui.exPricesLoading = false;
   try { ui.exPrices = await (await fetch('/api/exchange/prices')).json(); } catch { ui.exPrices = { ok: false }; }
   ui.exPricesAt = Date.now();
   if (ui.selected === 'exchange') renderPanel();
@@ -1024,6 +1029,37 @@ function boardSection() {
 
 
 
+
+// ---------- the NEAR Intents bridge picture: where the money goes, step by step ----------
+const ASSET_COLOR = { BTC: '#f2a33a', ETH: '#7b8cde', SOL: '#9b6bf2', USDC: '#3a7bd5', NEAR: '#24302e' };
+function bridgeSvg(from, to, live, mode) {
+  const node = (x, a, right) => {
+    const c = ASSET_COLOR[a.sym] || '#556';
+    return `<g><circle cx="${x}" cy="74" r="30" fill="${c}"/><text x="${x}" y="79" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${esc(a.sym)}</text>` +
+      (a.chain ? `<text x="${x}" y="122" text-anchor="middle" font-size="11" fill="#7a6b58">${esc(a.chain)}</text>` : '') +
+      (a.amount != null ? `<text x="${x}" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="${live ? '#2f7a3a' : '#7a6b58'}">${esc(String(a.amount))}</text>` : '') + `</g>`;
+  };
+  const deck = (x1, x2) => `M${x1} 74 Q${(x1 + x2) / 2} 40 ${x2} 74`;
+  const arch = (x1, x2) => `<path d="${deck(x1, x2)}" fill="none" stroke="#b98a5a" stroke-width="5" stroke-linecap="round" ${live ? '' : 'stroke-dasharray="6 6" opacity=".6"'}/>` +
+    [0.25, 0.5, 0.75].map((f) => { const x = x1 + (x2 - x1) * f, y = 74 - 34 * 4 * f * (1 - f) * 1; return `<line x1="${x}" y1="${y + 2}" x2="${x}" y2="96" stroke="#c9a77f" stroke-width="2"/>`; }).join('');
+  const coins = (x1, x2, color, delay) => live ? [0, 0.8, 1.6].map((b) => `<circle r="5" fill="${color}" stroke="#fff" stroke-width="1.5" opacity="0"><set attributeName="opacity" to="1" begin="${b + delay}s"/><animateMotion dur="2.4s" begin="${b + delay}s" repeatCount="indefinite" path="${deck(x1, x2)}"/></circle>`).join('') : '';
+  const fc = ASSET_COLOR[from.sym] || '#556', tc = ASSET_COLOR[to.sym] || '#556';
+  let svg = `<svg class="bridge" viewBox="0 0 440 140" role="img" aria-label="${esc(t('bridge.aria', { a: from.sym, b: to.sym }))}">` +
+    `<rect x="0" y="96" width="440" height="44" rx="10" fill="#cfe3ee"/><path d="M0 104 q20 -6 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0" stroke="#a9cbe0" stroke-width="2" fill="none"/>` +
+    arch(85, 168) + arch(272, 355) + coins(85, 168, fc, 0) + coins(272, 355, tc, 1.2) +
+    `<g><rect x="168" y="48" width="104" height="52" rx="12" fill="#fff8ee" stroke="#e0742b" stroke-width="2"/><text x="220" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="#b4531c">NEAR Intents</text>` +
+    `<text x="220" y="88" text-anchor="middle" font-size="10" fill="#7a6b58">${esc(t('bridge.solvers'))}</text>` +
+    [196, 220, 244].map((x, i) => `<circle cx="${x}" cy="56" r="3" fill="#e0742b">${live ? `<animate attributeName="opacity" values="1;.2;1" dur="1.2s" begin="${i * 0.3}s" repeatCount="indefinite"/>` : ''}</circle>`).join('') + `</g>` +
+    node(55, from) + node(385, to);
+  if (mode === 'plot' || mode === 'house') svg += `<g transform="translate(408 40)"><polygon points="0,10 12,0 24,10" fill="#c0443a"/><rect x="3" y="10" width="18" height="13" fill="#f3e3c4"/></g>`;
+  svg += `</svg>`;
+  const steps = mode === 'swap'
+    ? [['quote', true], ['sign', false], ['solve', false], ['out', false]]
+    : [['quote', true], ['deposit', false], ['solve', false], ['arrive', false], [mode, false]];
+  const done = (k) => k === 'quote' && live;
+  return `<div class="bridgebox">${svg}<ol class="bsteps">${steps.map(([k, now]) => `<li class="${done(k) ? 'done' : now ? 'now' : ''}">${done(k) ? '✓ ' : ''}${t('bridge.s.' + k, { sym: to.sym, chain: to.chain, near: to.amount })}${!now ? ` <span class="muted">· ${t('bridge.mainnet')}</span>` : ''}</li>`).join('')}</ol></div>`;
+}
+
 // universal checkout preview: pay an EMWK price from another chain through NEAR Intents (a live quote, nothing is sent)
 const PAY_FROM = [['USDC-SOL', 'USDC · Solana'], ['USDC-ETH', 'USDC · Ethereum'], ['ETH', 'ETH · Ethereum'], ['BTC', 'BTC · Bitcoin'], ['SOL', 'SOL · Solana']];
 function payBox(what, emwk) {
@@ -1032,6 +1068,8 @@ function payBox(what, emwk) {
   let h = `<div class="contract pay"><b>${t('pay.title')}</b><p class="small">${t('pay.lead', { n: emwk, near: Math.round(emwk / (world.rules.emwkPerNear || 100) * 100) / 100 })}</p>` +
     `<div class="row exform"><select id="pay-from">${PAY_FROM.map(([k, label]) => `<option value="${k}"${st.from === k ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select><button class="primary" data-act="payQuote" data-emwk="${emwk}">${t('pay.get')}</button></div>`;
   const q = st.quote;
+  const def = PAY_FROM.find((x) => x[0] === st.from) || PAY_FROM[0], [psym, pchain] = def[1].split(' · ');
+  h += bridgeSvg({ sym: psym, chain: pchain, amount: q && q.ok ? q.amountIn : null }, { sym: 'NEAR', chain: 'near', amount: q && q.ok ? q.near : Math.round(emwk / (world.rules.emwkPerNear || 100) * 100) / 100 }, !!(q && q.ok), what.startsWith('house') ? 'house' : 'plot');
   if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
   else if (q && q.ok) h += `<p class="ok"><b>${t('pay.out', { a: q.amountIn, sym: q.from, chain: q.chain, near: q.near })}</b>${q.usdIn ? ` <span class="small">≈ $${q.usdIn}</span>` : ''}${q.timeEstimate ? ` <span class="muted small">· ${t('pay.time', { n: q.timeEstimate })}</span>` : ''}</p>`;
   else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
