@@ -6,6 +6,14 @@ export const N = 14, TW = 80, TH = 40, OX = 556, OY = 50, VW = 1112, VH = 660;
 const K = 1.34; // building scale relative to the original 60px tile art
 const BT = 60, BH = 30; // tile size the building art was drawn for
 
+// the grid cell under a map point, or null outside the village
+export function cellAt(x, y) {
+  const a = (x - OX) / (TW / 2), b = (y - OY - TH / 2) / (TH / 2);
+  const i = Math.round((a + b) / 2), j = Math.round((b - a) / 2);
+  return i >= 0 && j >= 0 && i < N && j < N ? [i, j] : null;
+}
+export const isWalkable = (i, j) => !!blocked && !blocked.has(`${i},${j}`);
+
 export function cellCenter(i, j) {
   return [OX + (i - j) * TW / 2, OY + (i + j) * TH / 2 + TH / 2];
 }

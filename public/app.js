@@ -1,4 +1,4 @@
-import { setupMap, renderMap, renderDistrict, buildGrid, entranceOf, findPath, cellCenter, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
+import { setupMap, renderMap, renderDistrict, buildGrid, entranceOf, findPath, cellCenter, cellAt, isWalkable, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
 import { t, LANGS, getLang, setLang } from './i18n.js';
 import { play, playWork, unlockSound, setSfx, setMusic, setNight, sound } from './sound.js';
 import { sceneMarkup, hasScene, homeHasScene, bubble, KEEPER_HEAD, SW, SH } from './scenes.js';
@@ -129,13 +129,16 @@ function syncOthers() {
       w.name = o.name; w.role = o.path; w.k = others.size + 5; w.player = true; w.pid = o.id;
       others.set(o.id, w);
     }
+    w.name = o.name; w.look.name = o.name; // follows a rename
     if (w.where !== o.where) {
       w.where = o.where;
-      w.path = findPath(w.cell, workCellOf(o.where, w.k));
+      const at = /^@(\d+),(\d+)$/.exec(o.where || ''); // a player who walked to a spot of their own
+      w.path = findPath(w.cell, at ? [Number(at[1]), Number(at[2])] : workCellOf(o.where, w.k));
       w.prog = 0;
     }
   }
   for (const id of [...others.keys()]) if (!seen.has(id)) others.delete(id);
+  if (you && view.player) you.look.name = view.player.name;
 }
 
 function stepWalker(w, dt) {
@@ -208,6 +211,7 @@ function animate(now) {
       over += hereBadge(bx, by - (b.w > 1 ? 70 : 62), esc(`${you.look.name}: ${t('ui.youHere')}`));
     }
   }
+  if (ui.walkTo && you && !ui.district) { const [mx, my] = cellCenter(ui.walkTo[0], ui.walkTo[1]); over = `<ellipse class="walkmark" cx="${mx}" cy="${my}" rx="16" ry="8"/>` + over; }
   for (const [w, [x, y]] of visible) if (w.say && w.say.until > now) over += speech(x, y - 12, w.say.raw != null ? w.say.raw : t(w.say.key, w.say.p));
   for (let k = fx.length - 1; k >= 0; k--) if (now - fx[k].t0 > 1800) fx.splice(k, 1);
   over += fx.map((f) => {
@@ -405,7 +409,11 @@ function tradeBlock(id) {
             const o = (n.offers || {})[g];
             if (have && o && o.qty < 1) return `<td class="n"><span class="muted small">${t('panel.noNeed')}</span></td></tr>`;
             const label = have && o ? t('panel.sellQuote', { n: o.qty, p: Math.round(o.total) }) : have ? t('panel.sellAll', { n: have }) : t('panel.sell');
-            return `<td class="n"><button class="${have ? 'sellbtn' : ''}" data-act="sell" data-good="${g}" ${!have || n.closed || n.shut ? 'disabled' : ''}>${label}</button>${have && o && o.qty < have ? `<div class="muted small">${t('panel.onlyNeeds', { n: o.qty })}</div>` : ''}</td></tr>`;
+            // how many to sell: the player picks; by default as many as the shopkeeper wants
+            const def = Math.max(1, Math.min(have, o ? o.qty : have)), pick = Math.min(have, (ui.sellQty || {})[g] || def);
+            const box = have > 1 ? `<div class="qtyrow"><button class="qbtn" data-qstep="-1" data-good="${g}" aria-label="−">−</button><input class="sellqty" type="number" min="1" max="${have}" value="${pick}" data-good="${g}" aria-label="${esc(t('panel.howMany'))}"><button class="qbtn" data-qstep="1" data-good="${g}" aria-label="+">+</button><button class="qbtn all" data-qall="${have}" data-good="${g}">${t('panel.all')}</button></div>` : '';
+            const btnLabel = have > 1 ? t('panel.sellN', { n: pick }) : label;
+            return `<td class="n">${box}<button class="${have ? 'sellbtn' : ''}" data-act="sell" data-good="${g}" ${!have || n.closed || n.shut ? 'disabled' : ''}>${btnLabel}</button>${have && o ? `<div class="muted small">${o.qty < have ? t('panel.onlyNeeds', { n: o.qty }) + ' · ' : ''}${t('panel.quoteAll', { n: o.qty, p: Math.round(o.total) })}</div>` : ''}</td></tr>`;
           })());
     }
     h += `</table>`;
@@ -1560,7 +1568,8 @@ async function post(url, body) {
 async function act(type, extra = {}) {
   if (!playerId) return toast(t('toast.join'), 'bad');
   const body = { player: playerId, type, ...extra };
-  if (type === 'sell') body.qty = view.player.inv[extra.good] || 0;
+  if (type === 'sell') setTimeout(() => { if (ui.sellQty) delete ui.sellQty[extra.good]; }, 0);
+  if (type === 'sell') body.qty = Math.min(view.player.inv[extra.good] || 0, (ui.sellQty || {})[extra.good] || view.player.inv[extra.good] || 0);
   const r = await post('/api/action', body);
   if (r.state && newer(r.state)) { view = r.state; render(); }
   if (r.ok && type !== 'visit') { explain(type, extra, r); if (ui.scene) renderScene(); }
@@ -1744,11 +1753,34 @@ $('map').addEventListener('pointerdown', (e) => {
 $('map').addEventListener('click', (e) => {
   if (ignoreClick) { ignoreClick = false; return; }
   const g = e.target.closest('.bld');
-  if (g) select(g.dataset.id);
+  if (g) { ui.walkTo = null; select(g.dataset.id); return; }
+  walkToGround(e);
 });
+// click on a road or on grass: your villager walks there (other players see it too)
+function walkToGround(e) {
+  if (!you || !playerId || ui.district || ui.scene) return;
+  const svg = $('map'), pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const c = cellAt(p.x, p.y);
+  if (!c || !isWalkable(c[0], c[1])) return;
+  const path = findPath(you.cell, c);
+  if (path.length <= 1 && !(you.cell[0] === c[0] && you.cell[1] === c[1])) return; // no way there
+  you.inside = null; you.path = path; you.prog = 0; you.arrived = () => { ui.walkTo = null; };
+  ui.walkTo = c;
+  if (ui.selected && ui.selected !== 'guide') { ui.selected = null; renderPanel(); }
+  post('/api/action', { player: playerId, type: 'walk', i: c[0], j: c[1] }).catch(() => {});
+}
 document.addEventListener('toggle', (e) => {
   if (e.target.dataset && e.target.dataset.who) ui.openWho = e.target.open ? Number(e.target.dataset.who) : null;
 }, true);
+document.addEventListener('input', (e) => {
+  if (e.target.classList && e.target.classList.contains('sellqty')) {
+    const max = Number(e.target.max) || 1, v = Math.max(1, Math.min(max, Math.floor(Number(e.target.value) || 1)));
+    (ui.sellQty = ui.sellQty || {})[e.target.dataset.good] = v;
+    const b = e.target.closest('td').querySelector('[data-act="sell"]'); if (b) b.textContent = t('panel.sellN', { n: v });
+  }
+});
 document.addEventListener('change', (e) => {
   if (e.target.id === 'prop-kind') { ui.propKind = e.target.value; e.target.blur(); renderPanel(); }
   if (e.target.id === 'ex-good') { ui.exGood = e.target.value; e.target.blur(); renderPanel(); }
@@ -1784,6 +1816,13 @@ document.body.addEventListener('click', (e) => {
   }
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   if (e.target.closest('[data-rename]')) { ui.selected = 'rename'; renderMapNow(); renderPanel(); setTimeout(() => { const i = $('rename-input'); if (i) { i.focus(); i.select(); } }, 50); return; }
+  const qs = e.target.closest('[data-qstep], [data-qall]');
+  if (qs) {
+    const td = qs.closest('td'), inp = td && td.querySelector('.sellqty');
+    if (inp) { const max = Number(inp.max) || 1; const v = qs.dataset.qall ? max : Math.max(1, Math.min(max, (Number(inp.value) || 1) + Number(qs.dataset.qstep)));
+      inp.value = v; (ui.sellQty = ui.sellQty || {})[qs.dataset.good] = v; const b = td.querySelector('[data-act="sell"]'); if (b) b.textContent = t('panel.sellN', { n: v }); }
+    return;
+  }
   const lt = e.target.closest('[data-logtab]');
   if (lt) { showLogTab(lt.dataset.logtab); return; }
   const cto = e.target.closest('[data-chatto]');

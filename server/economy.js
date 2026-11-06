@@ -418,7 +418,7 @@ export function playerAction(state, playerId, action) {
   const p = state.players[playerId];
   if (!p) return { ok: false, error: 'Unknown player. Join the village first.', code: 'err.unknownPlayer' };
   const actor = { acct: 'player:' + playerId, holder: p };
-  const qty = Math.max(1, Math.min(50, parseInt(action.qty, 10) || 1));
+  const qty = Math.max(1, Math.min(200, parseInt(action.qty, 10) || 1));
 
   ensurePlayer(p);
   ensureContracts(state);
@@ -444,6 +444,13 @@ const CHAT = { maxLen: 140, gapMs: 2500, keep: 60 };
 function doAction(state, p, actor, action, qty) {
   const c = contractAction(state, p, action);
   if (c) return c;
+  // walking to a spot of your own on the village map (other players see you go there)
+  if (action.type === 'walk') {
+    const i = Math.floor(Number(action.i)), j = Math.floor(Number(action.j));
+    if (!(i >= 0 && j >= 0 && i < 14 && j < 14)) return { ok: false, error: 'Unknown place.', code: 'err.unknownPlace' };
+    p.where = `@${i},${j}`;
+    return { ok: true, silent: true };
+  }
   // change your name: once a day, 2-20 letters, not the same as another villager's
   if (action.type === 'rename') {
     const nm = String(action.name || '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);

@@ -605,3 +605,12 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .ticker table { width: 100%; } .ticker td { padding: 2px 0; } .ticker tr.emwk td { border-top: 1px dashed #d8cbb4; padding-top: 4px; }
 .view.card-on .ticker { display: none; }
 @media (max-width: 700px) { .ticker { top: 100px; width: 170px; font-size: 12px; } }
+/* where you clicked to walk (v64) */
+#map .walkmark { fill: rgba(217,98,43,.18); stroke: #d9622b; stroke-width: 1.5; stroke-dasharray: 4 3; }
+@media (prefers-reduced-motion: no-preference) { #map .walkmark { animation: pulse 1.2s ease-in-out infinite; } }
+/* choose how many to sell (v64) */
+.qtyrow { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin-bottom: 4px; }
+.qtyrow .sellqty { width: 46px; padding: 3px 4px; text-align: center; border: 1px solid #e0d2bb; border-radius: 6px; font: inherit; font-size: 13px; }
+.qtyrow .qbtn { min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; border: 1px solid #e0d2bb; background: #fff; cursor: pointer; font-size: 13px; line-height: 1; }
+.qtyrow .qbtn.all { font-size: 11px; }
+.qtyrow .sellqty::-webkit-inner-spin-button { -webkit-appearance: none; }
