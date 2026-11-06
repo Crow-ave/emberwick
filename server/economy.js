@@ -375,6 +375,60 @@ function buyFromNpc(state, actor, npcId, good, qty) {
   return { ok: true, unit, total, tax };
 }
 
+// ---------- food on credit ----------
+// a hungry player with no money can ask the baker or the innkeeper for food on credit. The rules
+// decide what is possible (needy, no open debt, paid back last time); NEAR AI decides whether to say yes.
+const CREDIT_GOODS = { bakery: 'bread', inn: 'meal' };
+export function creditPolicy(state, pid, npcId) {
+  const p = state.players[pid], n = state.npcs[npcId], good = CREDIT_GOODS[npcId];
+  if (!p || !n || !good) return null;
+  const owe = p.debts && p.debts[npcId], unit = price(n.sells[good]), coins = balance(state, 'player:' + pid);
+  if (owe) return { ok: false, good, reason: `they already owe you ${owe.amount} EMWK (due on day ${owe.due})` };
+  if (p.badCredit && p.badCredit[npcId]) return { ok: false, good, reason: 'they did not pay you back last time' };
+  if (coins >= unit * 3) return { ok: false, good, reason: `they have ${Math.floor(coins)} EMWK, enough to pay` };
+  const stock = Math.floor(n.stock[good] || 0);
+  if (stock < 1) return { ok: false, good, reason: 'you have nothing left to give' };
+  return { ok: true, good, max: Math.min(good === 'meal' ? 1 : 2, stock), unitPrice: unit, payBackWithinDays: 3 };
+}
+export function giveCredit(state, pid, npcId, qty) {
+  const pol = creditPolicy(state, pid, npcId);
+  if (!pol || !pol.ok) return null;
+  const p = state.players[pid], n = state.npcs[npcId], good = pol.good;
+  qty = clamp(Math.round(qty) || 1, 1, pol.max);
+  n.stock[good] -= qty;
+  if (good === 'meal') p.energy = Math.min(maxEnergy(p), r2(p.energy + RULES.mealEnergy * qty)); // eaten on the spot
+  else addInv(p, good, qty);
+  const amount = r2(pol.unitPrice * qty);
+  p.debts = p.debts || {};
+  p.debts[npcId] = { amount, good, qty, day: state.day, due: state.day + 3 };
+  addLog(state, `${p.name} got ${qty} ${good} on credit (${amount} EMWK, to pay back by day ${state.day + 3}).`, 'info', 'log.credit', { name: p.name, npc: { $npc: npcId }, n: amount, d: state.day + 3 });
+  state.rev = (state.rev || 0) + 1;
+  return { qty, good, amount, due: state.day + 3 };
+}
+function repayDebt(state, p, npcId, auto = false) {
+  const d = p.debts && p.debts[npcId];
+  if (!d) return { ok: false, error: 'You owe nothing here.', code: 'credit.none' };
+  if (!transfer(state, 'player:' + p.id, npcAcct(npcId), d.amount, { memo: `Emberwick: ${p.name} paid back a debt` })) return { ok: false, error: 'You do not have enough EMWK.', code: 'err.noMoney' };
+  delete p.debts[npcId];
+  if (p.badCredit) delete p.badCredit[npcId];
+  addLog(state, `${p.name} paid back ${d.amount} EMWK.`, 'good', 'log.repaid', { name: p.name, npc: { $npc: npcId }, n: d.amount });
+  return { ok: true, amount: d.amount, npc: npcId, auto };
+}
+// each morning debts are paid from what the player has; an overdue debt costs the player their credit
+function collectDebts(state) {
+  for (const p of Object.values(state.players)) {
+    for (const npcId of Object.keys(p.debts || {})) {
+      const d = p.debts[npcId];
+      if (balance(state, 'player:' + p.id) >= d.amount + 5) repayDebt(state, p, npcId, true);
+      else if (state.day > d.due && !(p.badCredit && p.badCredit[npcId])) {
+        p.badCredit = p.badCredit || {};
+        p.badCredit[npcId] = true;
+        addLog(state, `${p.name} did not pay back in time. No more credit there.`, 'bad', 'log.creditLate', { name: p.name, npc: { $npc: npcId } });
+      }
+    }
+  }
+}
+
 // ---------- haggling ----------
 const r1 = (n) => Math.round(n * 10) / 10;
 export function haggle(state, p, npcId, good, side, qty, offer) {
@@ -614,6 +668,7 @@ function doAction(state, p, actor, action, qty) {
     const done = tradeAt(state, p, actor, action.npc, action.good, r.side, r.qty, r.unit);
     return done.ok ? { ...r, ...done, ok: true } : done;
   }
+  if (action.type === 'repay') return repayDebt(state, p, String(action.npc || ''));
   if (action.type === 'deal') {
     const d = p.deal;
     if (!d || d.day !== state.day || state.tick - d.tick > 24) { p.deal = null; return { ok: false, error: 'That offer is gone. Ask again.', code: 'haggle.gone' }; }
@@ -955,6 +1010,7 @@ function startNewDay(state) {
   state.day++;
   ensureContracts(state);
   settleContracts(state);
+  collectDebts(state);
   const ev = state.events;
   if (ev.drought > 0 && --ev.drought === 0) addLog(state, 'Rain returns to the fields. The drought is over.', 'good', 'log.rain');
 
@@ -1899,7 +1955,7 @@ function playerView(state, p) {
     restedToday: p.restedDay === state.day,
     asleep: !!(p.sleep && p.sleep.day === state.day && isNight(state)), sleepPlace: p.sleep && p.sleep.day === state.day ? p.sleep.place : null,
     cold: !!p.cold, freezing: freezing(state, p), coatLeft: hasCoat(p) ? RULES.coatWinterDays - ((p.wear && p.wear.coat) || 0) : 0,
-    innBed: RULES.innBed, level: playerLevel(p), deal: p.deal && p.deal.day === state.day && state.tick - p.deal.tick <= 24 ? p.deal : null,
+    innBed: RULES.innBed, level: playerLevel(p), deal: p.deal && p.deal.day === state.day && state.tick - p.deal.tick <= 24 ? p.deal : null, debts: p.debts || {},
     application: (() => { for (const [npc, list] of Object.entries(state.applications || {})) { const i = list.findIndex((x) => x.pid === p.id); if (i >= 0) return { npc, others: list.length - 1, next: nextInterview(state) }; } return null; })(),
     appResult: p.appResult || null,
     skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,

@@ -312,10 +312,22 @@ function renderScene() {
   }
   const me = view.player;
   // what the keeper (or you, at home) says right now, in a speech bubble inside the picture
-  const said = sceneTalk(id);
-  const talkKey = said ? said.text : '';
+  const bubbles = sceneBubbles(id);
+  const talkKey = bubbles.map((b) => b.text).join('|');
   const talkG = sc.querySelector('#scene-talk');
-  if (talkG && talkG.dataset.k !== talkKey) { talkG.dataset.k = talkKey; talkG.innerHTML = said ? bubble(said.x, said.y, said.text, 34, said.x > 400 ? 0.78 : 0.5) : ''; }
+  if (talkG) {
+    // a new line appears and fades after a while (a long answer stays a little longer). The scene
+    // picture is redrawn when stock changes, so what was said and when lives in ui.bub, not in the drawing
+    const b0 = ui.bub && ui.bub.scene === id ? ui.bub : null;
+    if (!b0 || b0.key !== talkKey) {
+      ui.bub = { scene: id, key: talkKey, gone: false };
+      clearTimeout(ui.talkTimer);
+      const ttl = Math.min(22000, 7000 + talkKey.length * 60);
+      ui.talkTimer = setTimeout(() => { if (ui.bub && ui.bub.key === talkKey) { ui.bub.gone = true; const g = document.querySelector('#scene-talk'); if (g) g.classList.add('gone'); } }, ttl);
+    }
+    if (talkG.dataset.k !== talkKey) { talkG.dataset.k = talkKey; talkG.innerHTML = bubbles.map((b) => bubble(b.x, b.y, b.text, b.max || 34, b.anchor ?? (b.x > 400 ? 0.78 : 0.5))).join(''); }
+    talkG.classList.toggle('gone', !!ui.bub.gone);
+  }
   if (SPOT_GOOD[id]) {
     const cost = me ? me.costs[id] : SPOT_COST[id];
     const working = status[id] && status[id].key === 'status.working';
@@ -357,11 +369,6 @@ function sceneTalk(id) {
   if (!me) return null;
   const home = homeHasScene(id, view), sleepingHere = view.night && me.sleepPlace === id;
   const at = home ? (sleepingHere ? [300, 330] : [600, 250]) : id === 'inn' && sleepingHere ? [190, 330] : view.npcs[id] ? KEEPER_HEAD : [556, 200];
-  const hg = ui.haggle;
-  if (hg && hg.npc === id && hg.reply && Date.now() - hg.reply.at < 25000) {
-    const r0 = hg.reply;
-    return { x: at[0], y: at[1], text: r0.line || t('haggle.say.' + r0.outcome, { p: r0.unit, ask: r0.ask, good: goodWord(r0.good) }) };
-  }
   const r = result[id];
   // "good night" belongs to the night: in the morning the keeper greets you again
   if (r && /^result\.slept/.test(r.key) && !view.night) delete result[id];
@@ -380,6 +387,26 @@ function sceneTalk(id) {
   // otherwise the keeper greets you with their own words
   if (n) return { x: at[0], y: at[1], text: t('talk.greet', { name: me.name }) + ' ' + (n.ai && n.ai.say && getLang() === 'en' ? n.ai.say : t('line.' + n.lineKey)) };
   return null;
+}
+
+// the bubbles in a shop scene: a conversation shows you and the keeper talking, each over their own head
+function sceneBubbles(id) {
+  const me = view.player, n = view.npcs[id], out = [];
+  const youHead = [id === 'inn' ? 420 : 250, 405];
+  const qa = (ui.aiAnswers || {})[id], hg = ui.haggle && ui.haggle.npc === id ? ui.haggle : null;
+  if (me && n && qa && Date.now() - (qa.at || 0) < 25000) {
+    out.push({ x: youHead[0], y: youHead[1], text: qa.q, anchor: 0.35, max: 26 });
+    out.push({ x: KEEPER_HEAD[0], y: KEEPER_HEAD[1], text: qa.a || '…', anchor: 0.85, max: 34 });
+    return out;
+  }
+  if (qa && Date.now() - (qa.at || 0) < 60000) return []; // just talked: no greeting popping up again
+  if (me && n && hg && (hg.wait || (hg.reply && Date.now() - hg.reply.at < 25000))) {
+    out.push({ x: youHead[0], y: youHead[1], text: t('haggle.myOffer', { p: hg.offer, n: hg.qty, good: goodWord(hg.good) }), anchor: 0.35, max: 26 });
+    if (hg.reply) out.push({ x: KEEPER_HEAD[0], y: KEEPER_HEAD[1], text: hg.reply.line || t('haggle.say.' + hg.reply.outcome, { p: hg.reply.unit, ask: hg.reply.ask, good: goodWord(hg.reply.good) }), anchor: 0.85, max: 34 });
+    return out;
+  }
+  const said = sceneTalk(id, true);
+  return said ? [said] : [];
 }
 
 // ---------- side panel ----------
@@ -472,7 +499,7 @@ function panelCraftsman(b) {
     h += `<p class="small ai-note">${t('ai.level', { n: n.level || 1 })}${learned.length ? ' · ' + learned.join(' · ') : ''}</p>`;
   }
   h += `<div class="quote">"${esc(n.ai && n.ai.say && getLang() === 'en' ? n.ai.say : t('line.' + n.lineKey))}"</div>`;
-  h += aiBox(b.id, n);
+  h += debtBox(b.id) + aiBox(b.id, n);
   if (b.id === 'inn') h += sleepBox('inn');
   if (b.id === 'tailor' && view.events.winter && me && !me.inv.coat) h += `<p class="closed small">${t('coat.need')}</p>`;
   // inside the shop the counter on the game screen has the buy/sell lists, so the side panel stays short
@@ -481,16 +508,25 @@ function panelCraftsman(b) {
   return h + `<p class="muted" style="font-size:12px">${t('panel.pricesNote')}</p>`;
 }
 
+// food on credit: what you owe here, and paying it back
+function debtBox(id) {
+  const d = view.player && (view.player.debts || {})[id];
+  if (!d) return '';
+  const late = view.day > d.due;
+  return `<div class="contract debt${late ? ' late' : ''}"><b>${t('credit.owe', { n: d.amount, d: d.due })}</b><p class="small">${t(late ? 'credit.late' : 'credit.how')}</p>` +
+    `<button class="primary" data-repay="${id}" ${view.player.coins < d.amount ? 'disabled' : ''}>${t('credit.pay', { n: d.amount })}</button></div>`;
+}
+
 // the craftsman's NEAR AI mind: today's plan, and a box to ask them something
 function aiBox(id, n) {
   const st = view.ai || {};
   if (st.status !== 'ready') return id === 'tower' ? '' : `<p class="small muted ai-off">${t('ai.offNote')}</p>`;
-  let h = `<div class="ai-box"><div class="ai-head"><span class="ai-dot"></span>${t('ai.mind', { model: esc(st.model || '') })}</div>`;
+  let h = `<div class="ai-box"><div class="ai-head"><span class="ai-dot${st.planFailed ? ' off' : ''}"></span>${t('ai.mind', { model: esc(st.model || '') })}${st.tee ? ` · <span class="ai-tee">${t('ai.tee')}</span>` : ''}</div>`;
   if (n.ai && n.ai.why) {
     const moves = [...Object.entries(n.ai.want || {}).filter(([, v]) => Math.abs(v - 1) >= 0.1).map(([g, v]) => t(v > 1 ? 'ai.stockUp' : 'ai.stockDown', { good: goodName(g) })),
       ...Object.entries(n.ai.price || {}).filter(([, v]) => Math.abs(v - 1) >= 0.03).map(([g, v]) => t(v > 1 ? 'ai.priceUp' : 'ai.priceDown', { good: goodName(g) }))];
     h += `<p class="small"><b>${t('ai.plan')}</b> ${esc(n.ai.why)}</p>` + (moves.length ? `<p class="small muted">${moves.join(' · ')}</p>` : '');
-  } else if (id !== 'tower') h += `<p class="small muted">${t('ai.waiting')}</p>`;
+  } else if (id !== 'tower') h += `<p class="small muted">${t(st.planFailed ? 'ai.unreachable' : 'ai.waiting')}</p>`;
   const a = (ui.aiAnswers || {})[id];
   if (a) h += `<div class="ai-qa"><div class="small muted">${t('ai.you')} ${esc(a.q)}</div><div class="quote">${a.a ? '"' + esc(a.a) + '"' : t('ai.thinking')}</div></div>`;
   if (view.player) h += `<form class="ai-ask row" data-npc="${id}"><input class="ai-q" maxlength="200" placeholder="${esc(t('ai.askPh', { name: npcName(id) }))}"><button type="submit">${t('ai.ask')}</button></form>`;
@@ -1642,7 +1678,7 @@ async function sendHaggle(box) {
   hg.reply = { ...r, at: Date.now() };
   if (r.deal) { play('coin'); toast(t('haggle.done', { n: r.qty, good: goodWord(r.good), p: r.unit, total: r.total }), 'win'); }
   else play(r.outcome === 'angry' || r.outcome === 'closed' ? 'bad' : 'click');
-  render();
+  render(); setTimeout(render, 26000);
 }
 async function takeDeal() {
   const r = await post('/api/action', { player: playerId, type: 'deal' });
@@ -1906,6 +1942,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-hagclose]')) { ui.haggle = null; renderNow(); return; }
   if (e.target.closest('[data-hagsend]')) { sendHaggle(e.target.closest('.haggle')); return; }
   if (e.target.closest('[data-hagdeal]')) { takeDeal(); return; }
+  const rp = e.target.closest('[data-repay]');
+  if (rp) { post('/api/action', { player: playerId, type: 'repay', npc: rp.dataset.repay }).then((r) => { if (r.state && newer(r.state)) view = r.state; if (r.ok) { play('coin'); toast(t('credit.paid', { n: r.amount }), 'win'); } else toast(errText(r), 'bad'); render(); }); return; }
   if (e.target.closest('[data-lands]')) { ui.selected = 'lands'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('[data-eat]')) { act('eat'); return; }
   if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
@@ -2214,10 +2252,13 @@ document.addEventListener('submit', async (e) => {
     ui.aiAnswers = ui.aiAnswers || {};
     ui.aiAnswers[npc] = { q, a: '' };
     inp.value = ''; inp.blur(); render();
+    ui.aiAnswers[npc].at = Date.now();
     const r = await post('/api/ai/ask', { player: playerId, npc, q, lang: getLang() });
-    ui.aiAnswers[npc] = { q, a: r.ok ? r.answer : '' };
+    if (r.state && newer(r.state)) view = r.state;
+    ui.aiAnswers[npc] = { q, a: r.ok ? r.answer : '', at: Date.now() };
     if (!r.ok) { delete ui.aiAnswers[npc]; toast(t(r.code || 'ai.busy'), 'bad'); }
-    render(); return;
+    if (r.ok && r.credit) { play('coin'); toast(t('credit.got', { n: r.credit.qty, good: goodWord(r.credit.good), p: r.credit.amount, d: r.credit.due }), 'win'); }
+    render(); setTimeout(render, 21000); return;
   }
   if (e.target.id === 'rename-form') {
     e.preventDefault();

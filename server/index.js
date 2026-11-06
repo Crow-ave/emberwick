@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, aiBrief, applyAiPlan, shopCard, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -216,18 +216,21 @@ function broadcast() {
 }
 
 // NEAR AI: each village morning one request plans the day for every craftsman, only while someone is playing
-let aiBusy = false;
+let aiBusy = false, aiTry = { day: 0, n: 0, at: 0 };
 async function aiMorning() {
   if (aiBusy || ai.status !== 'ready' || !clients.size || (state.ff && state.ff.running) || state.aiPlannedDay === state.day) return;
+  if (aiTry.day === state.day && (aiTry.n >= 3 || Date.now() - aiTry.at < 90000)) return; // up to 3 tries a village day
   aiBusy = true;
   const day = state.day;
+  aiTry = { day, n: aiTry.day === day ? aiTry.n + 1 : 1, at: Date.now() };
   try {
     const plan = await planDay(aiBrief(state));
     if (plan && applyAiPlan(state, plan, ai.model)) { state.aiPlannedDay = day; broadcast(); }
   } catch (e) {
     ai.lastError = String(e.message || e).slice(0, 160);
-    state.aiPlannedDay = day; // one try per village day; the craftsmen keep their usual habits
-    console.log('[AI] plan skipped:', ai.lastError);
+    ai.planFailed = true; // the craftsmen keep their rule-based habits until a plan comes through
+    console.log(`[AI] plan skipped (try ${aiTry.n}/3):`, ai.lastError);
+    broadcast();
   } finally { aiBusy = false; }
 }
 startAi().then(() => setTimeout(aiMorning, 4000));
@@ -309,8 +312,10 @@ const server = http.createServer(async (req, res) => {
     if (!card) return sendJson(res, 400, { ok: false, error: 'unknown craftsman' });
     const n = state.npcs[card.id];
     if (n.ai) card.todaysPlan = n.ai.why;
-    const r = await askCraftsman(card, body.q, String(body.lang || 'en').slice(0, 5), body.player);
-    return sendJson(res, r.ok ? 200 : 400, r);
+    const credit = creditPolicy(state, body.player, card.id);
+    const r = await askCraftsman(card, body.q, String(body.lang || 'en').slice(0, 5), body.player, credit);
+    if (r.ok && r.lend > 0) { r.credit = giveCredit(state, body.player, card.id, r.lend); if (r.credit) { save(); broadcast(); } }
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 
   // haggling: the village rules decide, NEAR AI says it in the craftsman's voice

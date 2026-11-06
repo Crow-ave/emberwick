@@ -634,3 +634,11 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .hag-reply { margin: 6px 0; font-size: 13px; }
 .hag-reply.angry .quote, .hag-reply.closed .quote { color: #a33; }
 .hag-reply.accept .quote { color: #2d6a2d; }
+.ai-dot.off { background: #c9a24a; animation: none; }
+.ai-tee { color: #2d6a2d; }
+
+/* speech bubbles in scenes fade away after a while */
+#scene-talk { transition: opacity .8s ease; }
+#scene-talk.gone { opacity: 0; }
+.contract.debt { border-color: #d9a34a; background: #fff6e4; }
+.contract.debt.late { border-color: #c44; background: #fdeeee; }
