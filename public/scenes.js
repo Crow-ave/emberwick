@@ -283,8 +283,8 @@ function shopScene(id, look, view) {
   if (id === 'inn') s += ITEM_ICON.meal(470, 372) + ITEM_ICON.meal(580, 372);
   if (id === 'bakery') s += ITEM_ICON.bread(450, 372) + ITEM_ICON.bread(490, 372) + ITEM_ICON.bread(610, 372);
   const me = view.player, asleep = id === 'inn' && me && view.night && me.sleepPlace === 'inn';
-  if (id === 'inn') s += `<g>${bedSvg(40, GROUND + 80, 300, '#7a3b2a')}</g>`; // a guest bed by the window
-  s += asleep ? `<g id="you-scene">${sleeper(40 + 49, GROUND + 80 - 63, 3, look)}</g>` : `<g id="you-scene">${bigPerson(id === 'inn' ? 420 : 250, GROUND + 70, 3.0, look)}</g>`;
+  if (id === 'inn') s += `<g>${bedSvg(40, GROUND + 20, 300, '#7a3b2a')}</g>`; // a guest bed by the window (high enough to clear the caption bar)
+  s += asleep ? `<g id="you-scene">${sleeper(40 + 49, GROUND + 20 - 63, 3, look)}</g>` : `<g id="you-scene">${bigPerson(id === 'inn' ? 420 : 250, GROUND + 70, 3.0, look)}</g>`;
   if (view.night) s += rect(0, 0, SW, SH, 'rgba(20,30,70,.28)');
   if (n.closed) s += rect(0, 0, SW, SH, 'rgba(40,30,20,.45)');
   return s;
@@ -306,9 +306,9 @@ function homeScene(id, look, view) {
   // a little table with a candle, a rug
   s += `<ellipse cx="560" cy="${GROUND + 70}" rx="200" ry="34" fill="#b5501e" opacity=".55"/>`;
   s += `${rect(820, GROUND - 60, 120, 14, '#7a5236', 'rx="4"')}${rect(832, GROUND - 46, 10, 46, '#6b4528')}${rect(918, GROUND - 46, 10, 46, '#6b4528')}${rect(872, GROUND - 92, 12, 32, '#f4efe4')}<ellipse cx="878" cy="${GROUND - 98}" rx="5" ry="9" fill="#f6b23a" class="flick"/>`;
-  if (hasBed) s += bedSvg(90, GROUND + 80, 320, house ? '#4f7a3a' : '#3a6ea8');
-  else s += `<g>${rect(90, GROUND + 40, 300, 60, 'rgba(0,0,0,.08)', 'rx="10" stroke="#9a7450" stroke-dasharray="10 8" stroke-width="3"')}</g>`;
-  s += asleep ? sleeper(90 + 49, GROUND + 80 - 63, 3, look) : `<g id="you-scene">${bigPerson(600, GROUND + 70, 3.0, look)}</g>`;
+  if (hasBed) s += bedSvg(200, GROUND + 20, 320, house ? '#4f7a3a' : '#3a6ea8');
+  else s += `<g>${rect(200, GROUND - 20, 300, 60, 'rgba(0,0,0,.08)', 'rx="10" stroke="#9a7450" stroke-dasharray="10 8" stroke-width="3"')}</g>`;
+  s += asleep ? sleeper(200 + 49, GROUND + 20 - 63, 3, look) : `<g id="you-scene">${bigPerson(600, GROUND + 70, 3.0, look)}</g>`;
   if (view.night) s += rect(0, 0, SW, SH, 'rgba(20,30,70,.3)');
   return s;
 }

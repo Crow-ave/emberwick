@@ -350,7 +350,8 @@ function sleepButton(place) {
 function sceneTalk(id) {
   const me = view.player;
   if (!me) return null;
-  const home = homeHasScene(id, view), at = home ? [600, 250] : view.npcs[id] ? KEEPER_HEAD : [556, 200];
+  const home = homeHasScene(id, view), sleepingHere = view.night && me.sleepPlace === id;
+  const at = home ? (sleepingHere ? [300, 330] : [600, 250]) : id === 'inn' && sleepingHere ? [190, 330] : view.npcs[id] ? KEEPER_HEAD : [556, 200];
   const r = result[id];
   if (r && !r.bad) return { x: at[0], y: at[1], text: t(r.key, resolve(r.p)) };
   if (r && r.bad) return { x: at[0], y: at[1], text: t(r.key, resolve(r.p)) };
@@ -902,7 +903,7 @@ function panelHouse(b) {
   if (h.mine) {
     const rested = me.home && me.home.restedToday;
     x += sleepBox(b.id) + `<div class="contract"><b>${t('house.yours')}</b>` +
-      (rested ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary big" data-act="rest">${h.rest >= 99 ? t('house.restFullBtn') : t('house.rest', { n: h.rest })}</button>`) +
+      (view.night && me.sleepPlace ? '' : rested ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary big" data-act="rest">${h.rest >= 99 ? t('house.restFullBtn') : t('house.rest', { n: h.rest })}</button>`) +
       `<button class="linkbtn" data-act="leaveHouse">${t('house.leave', { n: h.deposit })}</button></div>`;
   } else if (h.tenant) x += `<p class="muted">${t('house.taken', { name: esc(h.tenant) })}</p>`;
   else if (me && me.home) x += `<p class="muted small">${t('house.haveOther', { place: placeName(me.home.id) })}</p>`;
@@ -921,7 +922,7 @@ function panelPlot(b) {
       const leased = p.lease && p.lease.tenant;
       h += `<p class="small">${t(p.bed ? 'bed.yes' : 'bed.none', { p: view.npcs.carpenter.sells.bed })}</p>`;
       if (!p.bed) h += `<button data-go="carpenter">${esc(t('go.to', { place: placeName('carpenter') }))}</button>`;
-      if (!leased) h += sleepBox(b.id) + (p.bed ? (me.restedToday ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary" data-act="rest">${t('house.restFullBtn')}</button>`) : '');
+      if (!leased) h += sleepBox(b.id) + (p.bed && !(view.night && me.sleepPlace) ? (me.restedToday ? `<p class="small">${t('house.rested')}</p>` : `<button class="primary" data-act="rest">${t('house.restFullBtn')}</button>`) : '');
       // renting it out
       h += `<p class="sub2">${t('lease.title')}</p>`;
       if (leased) h += `<p class="small">${t('lease.tenant', { name: esc(p.lease.tenant), n: p.lease.rent })}</p>`;
@@ -1401,7 +1402,7 @@ function renderChrome() {
   if (view.ff && view.ff.running) { banner.className = 'banner ff'; banner.textContent = t('ff.running', { d: Math.min(7, Math.floor(view.ff.done / world.rules.ticksPerDay) + 1), p: Math.round((view.ff.done / view.ff.total) * 100) }); banner.hidden = false; }
   else if (e.attackDay) { banner.className = 'banner danger'; banner.textContent = t('banner.attack', { day: e.attackDay, ready: view.readiness }); banner.hidden = false; }
   else if (e.drought > 0) { banner.className = 'banner warn'; banner.textContent = t('banner.drought'); banner.hidden = false; }
-  else if (view.night) { banner.className = 'banner night'; banner.textContent = t('banner.night'); banner.hidden = false; }
+  else if (view.night && !(view.player && view.player.asleep)) { banner.className = 'banner night'; banner.textContent = t('banner.night'); banner.hidden = false; }
   else if (e.winter) { banner.className = 'banner winter'; banner.textContent = t('banner.winter'); banner.hidden = false; }
   else banner.hidden = true;
 }
