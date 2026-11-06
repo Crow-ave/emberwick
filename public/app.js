@@ -434,12 +434,14 @@ function haggleBox(id) {
   const list = hagList(n, hg.good, hg.side);
   let h = `<div class="haggle"><div class="hag-head"><b>🤝 ${t(hg.side === 'buy' ? 'haggle.buyTitle' : 'haggle.sellTitle', { good: goodName(hg.good) })}</b><button class="linkbtn" data-hagclose="1">✕</button></div>` +
     `<p class="muted small">${t(hg.side === 'buy' ? 'haggle.listBuy' : 'haggle.listSell', { p: list })}</p>` +
+    (hg.side === 'sell' && (n.offers || {})[hg.good] && n.offers[hg.good].qty > 1 ? `<p class="muted small">${t('haggle.plain', { n: n.offers[hg.good].qty, total: Math.round(n.offers[hg.good].total), first: n.offers[hg.good].first, last: n.offers[hg.good].last })}</p>` : '') +
     `<div class="row hag-row"><input class="hag-qty" type="number" min="1" max="${max}" value="${Math.min(max, hg.qty || 1)}" aria-label="${esc(t('panel.howMany'))}"> × <input class="hag-offer" type="number" min="0.1" step="0.1" value="${hg.offer}" aria-label="${esc(t('haggle.yourPrice'))}"> EMWK ` +
     `<button class="primary" data-hagsend="1" ${hg.wait ? 'disabled' : ''}>${t(hg.wait ? 'ai.thinking' : 'haggle.offer')}</button></div>`;
   if (hg.reply) {
     const r = hg.reply;
     const line = r.line || t(r.fair ? 'haggle.say.fair' : 'haggle.say.' + r.outcome, { p: r.unit, ask: r.ask, good: goodWord(r.good) });
     h += `<div class="hag-reply ${r.outcome}"><span class="quote">"${esc(line)}"</span></div>`;
+    if (r.side === 'sell' && r.unit !== null && r.unit !== undefined && r.plainTotal) h += `<p class="muted small">${t('haggle.vsPlain', { n: r.qty, plain: r.plainTotal, deal: Math.round(r.unit * r.qty * 100) / 100 })}</p>`;
     const d = me.deal;
     if (d && d.npc === id && d.good === hg.good && d.side === hg.side) h += `<p class="small">${t(d.side === 'sell' ? 'haggle.confirmSell' : 'haggle.confirmBuy')}</p><button class="primary" data-hagdeal="1">${t('haggle.take', { n: d.qty, p: d.unit, total: Math.round(d.qty * d.unit * 100) / 100 })}</button> <button data-hagclose="1">${t('haggle.no2')}</button>`;
   }

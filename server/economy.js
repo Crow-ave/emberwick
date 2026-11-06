@@ -456,7 +456,7 @@ export function haggle(state, p, npcId, good, side, qty, offer) {
     ask = list;
   } else {
     if (inv(p, good) < 1) return { ok: false, error: 'You do not have that.', code: 'err.notEnough' };
-    const q = sellQuote(state, npcId, good, Math.min(qty, inv(p, good)), 0);
+    const q = sellQuote(state, npcId, good, Math.min(qty, inv(p, good)), (lvl - 1) * RULES.tradeBonus); // the same quote as a plain sale
     if (q.want < 1) return { ok: false, error: 'The store room is full.', code: 'err.storeFull' };
     if (q.qty < 1) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
     qty = q.qty;
@@ -479,7 +479,7 @@ export function haggle(state, p, npcId, good, side, qty, offer) {
   else if (pastLimit >= 0.6) { outcome = 'favor'; unit = side === 'buy' ? r1(floor + (ask - floor) * 0.3) : r1(floor - (floor - ask) * 0.3); }
   else { outcome = 'angry'; mood.angry++; }
   if (outcome === 'angry' && mood.angry >= 2) outcome = 'closed';
-  const res = { ok: true, outcome, side, good, npc: npcId, qty, offer, ask, unit, tries: mood.tries };
+  const res = { ok: true, outcome, side, good, npc: npcId, qty, offer, ask, unit, tries: mood.tries, plainTotal: r2(ask * qty) };
   if (unit !== null) p.deal = { npc: npcId, good, side, qty, unit, day: state.day, tick: state.tick };
   res.fair = outcome === 'accept' && unit !== offer; // you asked for less (or offered more) than their own price: they keep to theirs
   return res;
