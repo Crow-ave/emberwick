@@ -9,7 +9,7 @@ import { createState, ensureContracts, aiBrief, applyAiPlan, shopCard, creditPol
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
-import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic } from './ai.js';
+import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, fetchAttestation } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(root, 'public');
@@ -225,7 +225,7 @@ async function aiMorning() {
   aiTry = { day, n: aiTry.day === day ? aiTry.n + 1 : 1, at: Date.now() };
   try {
     const plan = await planDay(aiBrief(state));
-    if (plan && applyAiPlan(state, plan, ai.model)) { state.aiPlannedDay = day; broadcast(); }
+    if (plan && applyAiPlan(state, plan, ai.model, { tee: !!ai.tee, signer: ai.attest && ai.attest.signer })) { state.aiPlannedDay = day; broadcast(); }
   } catch (e) {
     ai.lastError = String(e.message || e).slice(0, 160);
     ai.planFailed = true; // the craftsmen keep their rule-based habits until a plan comes through
@@ -233,7 +233,8 @@ async function aiMorning() {
     broadcast();
   } finally { aiBusy = false; }
 }
-startAi().then(() => setTimeout(aiMorning, 4000));
+startAi().then(async () => { await fetchAttestation(); setTimeout(aiMorning, 2000); });
+setInterval(fetchAttestation, 6 * 3600 * 1000); // a fresh proof a few times a day
 setInterval(aiMorning, 15000);
 
 setInterval(() => {
@@ -317,6 +318,15 @@ const server = http.createServer(async (req, res) => {
     if (r.ok && r.lend > 0) { r.credit = giveCredit(state, body.player, card.id, r.lend); if (r.credit) { save(); broadcast(); } }
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
+
+  // the exact JSON of a morning plan (its SHA-256 is in the memo on NEAR), and the TEE proof
+  if (url.pathname === '/api/ai/plan') {
+    const d = Number(url.searchParams.get('day')), rec = (state.aiLog || []).find((x) => x.day === d) || (state.aiLog || [])[0];
+    if (!rec) return sendJson(res, 404, { ok: false, error: 'no plan yet' });
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Plan-Sha256': rec.hash });
+    return res.end(rec.json);
+  }
+  if (url.pathname === '/api/ai/attestation') return sendJson(res, ai.attestFull ? 200 : 404, ai.attestFull || { ok: false, error: 'no attestation yet' });
 
   // haggling: the village rules decide, NEAR AI says it in the craftsman's voice
   if (req.method === 'POST' && url.pathname === '/api/ai/haggle') {

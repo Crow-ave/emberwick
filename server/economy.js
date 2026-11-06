@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // The Emberwick economy engine.
 // All money lives in one ledger (state.balances). Money only ever moves between
 // accounts, so the total always equals TOKEN.totalSupply. This mirrors how the
@@ -966,8 +967,25 @@ export function shopCard(state, id) {
   }
   return { id, name: def.name, wallet: Math.round(balance(state, npcAcct(id))), workshopLevel: n.level || 1, makes: def.recipe ? def.recipe : null, goods };
 }
+// the morning plan goes on NEAR: a 0.01 EMWK record from the treasury carries a SHA-256 of the exact plan
+// (served at /api/ai/plan?day=N so anyone can check it) and a short summary in the memo
+export function aiPlanRecord(state) {
+  const plan = {};
+  for (const d of CRAFTSMEN) { const a = state.npcs[d.id] && state.npcs[d.id].ai; if (a && a.day === state.day) plan[d.id] = { want: a.want, price: a.price, why: a.why }; }
+  return plan;
+}
+function recordAiPlan(state, model, extra) {
+  const plan = aiPlanRecord(state), json = JSON.stringify({ day: state.day, model, plan });
+  const hash = crypto.createHash('sha256').update(json).digest('hex');
+  const short = Object.entries(plan).map(([id, x]) => id + ':' + [...Object.entries(x.want).filter(([, v]) => Math.abs(v - 1) >= 0.1).map(([g, v]) => g + (v > 1 ? '+' : '-')),
+    ...Object.entries(x.price).filter(([, v]) => Math.abs(v - 1) >= 0.03).map(([g, v]) => g + '$' + (v > 1 ? '+' : '-'))].join(',')).filter((x) => !x.endsWith(':')).join(' ');
+  const memo = `Emberwick AI plan day ${state.day} by NEAR AI (${model || '?'})${extra.signer ? ' TEE ' + extra.signer.slice(0, 12) : ''}: sha256 ${hash.slice(0, 24)}. ${short}`.slice(0, 240);
+  state.aiLog = [{ day: state.day, model, hash, json, short, tee: !!extra.tee, signer: extra.signer || null }, ...(state.aiLog || []).filter((x) => x.day !== state.day)].slice(0, 10);
+  transfer(state, 'treasury', 'newcomerFund', 0.01, { memo, aiPlan: state.day });
+}
+
 // the plan is only allowed to nudge, inside fixed limits; money still moves only by the village rules
-export function applyAiPlan(state, plan, model) {
+export function applyAiPlan(state, plan, model, extra = {}) {
   let used = 0;
   for (const c of (plan && plan.craftsmen) || []) {
     const def = CRAFTSMEN.find((d) => d.id === c.id), n = def && def.id !== 'tower' && state.npcs[c.id];
@@ -982,7 +1000,10 @@ export function applyAiPlan(state, plan, model) {
     };
     used++;
   }
-  if (used) state.aiDays = (state.aiDays || 0) + 1;
+  if (used) {
+    state.aiDays = (state.aiDays || 0) + 1;
+    recordAiPlan(state, model, extra);
+  }
   return used;
 }
 
@@ -1992,6 +2013,7 @@ export function publicView(state, playerId) {
   }
   const p = playerId && state.players[playerId];
   return {
+    aiLog: (state.aiLog || []).map(({ json, ...x }) => x),
     token: TOKEN,
     rev: state.rev || 0,
     day: state.day,

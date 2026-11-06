@@ -51,6 +51,8 @@ Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what
 
 **Haggling:** every row at a shop counter has a 🤝 button. Name your price per unit; the craftsman accepts, meets you in the middle, refuses but makes you a special offer, or takes offence at a lowball (twice, and they stop haggling with you for the day). The village rules decide the outcome from stock, target and your trading skill; NEAR AI only voices the answer in character and in your language. A counter offer is one click away.
 
+**Verifiable AI on NEAR:** every morning plan is recorded on NEAR: a 0.01 EMWK transfer from the treasury carries the SHA-256 of the exact plan in its memo. `/api/ai/plan?day=N` serves that exact JSON, so anyone can hash it and compare. `/api/ai/attestation` serves NEAR AI Cloud's TEE attestation report (Intel TDX quote and the enclave signing key, fetched with a fresh nonce); the shop panel shows both.
+
 Safety by design: the model only *nudges* inside fixed limits (stock target ×0.7–1.4, sell price ×0.9–1.1). Every coin still moves by the village rules in `server/economy.js`, and answers are only words. Without a key, offline, or past the daily request limit, the craftsmen fall back to the rule-based behaviour below. The code is in `server/ai.js`.
 
 All pricing rules are in one readable file, **`server/pricing.js`**. Every price in a shop has an ⓘ tooltip with the craftsman's reasoning (stock vs. target, winter, dragon, drought, what they learned, workshop size).
@@ -119,6 +121,8 @@ Always open, reached from the signpost by the gate (or the hills on the horizon)
 | Open Innovation | Craftsmen who plan their day with NEAR AI Cloud (verifiable private inference) inside safe limits; a village DAO where AI villagers vote with reasons, recorded on NEAR |
 
 ## Try it as a judge (do X, see Y)
+
+**Fastest way:** press **Judge tour** in the top bar. It walks you through the NEAR parts in about two minutes (NEAR AI craftsmen, haggling and credit, the EMWK token, land-deed NFTs, NEAR Intents, the DAO, the one-week fast-forward), with links to every account on NearBlocks.
 
 1. `npm install && npm run demo`, open http://localhost:3000, type a name, pick **Miner**. → You stand at the gate; the guide on the right says what to do.
 2. Click the **Mine**, press the big button twice. → Ore in your bag; the guide points to the best buyer.

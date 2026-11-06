@@ -100,6 +100,18 @@ export async function startAi() {
       PREFER.find((m) => ids.includes(m)) || ids.find((id) => chatOk(id) && /instruct|chat|gpt|qwen|llama|glm|deepseek/i.test(id)) || ids[0] || null;
     ai.tee = tee.has(ai.model);
     console.log(`[AI] ${ids.length} models on this account${tee.size ? `, ${tee.size} verifiable (TEE)` : ''}.`);
+    if (all[0]) console.log('[AI] model fields:', Object.keys(all[0]).join(', ').slice(0, 200));
+    // no TEE flag in the list? Ask for an attestation report: the first open model that has one runs in NEAR's TEE
+    if (!ai.tee && !process.env.NEARAI_MODEL) {
+      const open = [...PREFER.filter((m) => ids.includes(m) && !/^(openai\/gpt-5|anthropic|google)/.test(m)),
+        ...ids.filter((id) => /qwen|glm|gpt-oss|deepseek|llama|kimi|mistral/i.test(id) && chatOk(id))].filter((v, k, a) => a.indexOf(v) === k).slice(0, 6);
+      for (const m of open) {
+        try {
+          const r = await api(`/attestation/report?model=${encodeURIComponent(m)}&signing_algo=ecdsa`, null, 30000);
+          if ((r.model_attestations || []).length) { ai.model = m; ai.tee = true; ai.attestFull = r; console.log(`[AI] ${m} has a TEE attestation: using it.`); break; }
+        } catch (e) { console.log(`[AI] ${m}: no attestation (${String(e.message).slice(0, 60)})`); }
+      }
+    }
     ai.status = ai.model ? 'ready' : 'error';
     if (!ai.model) ai.lastError = 'no models';
   } catch (e) {
@@ -221,4 +233,28 @@ export async function haggleLine(card, deal, lang, playerName, playerId) {
   } catch (e) { ai.lastError = String(e.message || e).slice(0, 160); return null; }
 }
 
-export const aiPublic = () => ({ status: ai.status, provider: ai.provider, model: ai.model, tee: !!ai.tee, lastPlanAt: ai.lastPlanAt, planFailed: !!ai.planFailed, error: ai.lastError ? String(ai.lastError).slice(0, 120) : null });
+// proof of where the thinking runs: NEAR AI Cloud's TEE attestation report (Intel TDX quote and the
+// enclave's signing key), fetched with a fresh nonce. The full report is served at /api/ai/attestation.
+export async function fetchAttestation() {
+  if (MODE === 'fake') { ai.attest = { at: Date.now(), signer: '0xtest0000000000', algo: 'ecdsa', quote: true, models: 1, nonce: 'test' }; return ai.attest; }
+  if (ai.status !== 'ready' || !KEY) return null;
+  const nonce = [...Array(32)].map(() => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join('');
+  const q = (n) => `/attestation/report?model=${encodeURIComponent(ai.model)}${n ? '&nonce=' + n : ''}&signing_algo=ecdsa`;
+  try {
+    let r;
+    try { r = await api(q(nonce), null, 30000); }
+    catch (e) {
+      if (/HTTP 400/.test(e.message)) r = await api(q(''), null, 30000);
+      // a model proxied to another provider has no enclave of its own: the NEAR AI gateway's TEE report is still there
+      else r = await api(`/attestation/report?nonce=${nonce}&signing_algo=ecdsa`, null, 30000);
+    }
+    const g = r.gateway_attestation || {}, m = (r.model_attestations || [])[0] || {};
+    ai.attestFull = r;
+    ai.attest = { at: Date.now(), signer: m.signing_address || g.signing_address || null, algo: m.signing_algo || g.signing_algo || null, quote: !!(m.intel_quote || g.intel_quote), models: (r.model_attestations || []).length, nonce: g.request_nonce || nonce, gateway: g.signing_address || null, gatewayOnly: !(r.model_attestations || []).length };
+    if (ai.attest.models > 0) ai.tee = true;
+    console.log(`[AI] TEE attestation received (${ai.attest.models} model report${ai.attest.models === 1 ? '' : 's'}).`);
+  } catch (e) { ai.attest = { at: Date.now(), error: String(e.message || e).slice(0, 120) }; console.log('[AI] attestation not available:', ai.attest.error); }
+  return ai.attest;
+}
+
+export const aiPublic = () => ({ status: ai.status, provider: ai.provider, model: ai.model, tee: !!ai.tee, attest: ai.attest || null, lastPlanAt: ai.lastPlanAt, planFailed: !!ai.planFailed, error: ai.lastError ? String(ai.lastError).slice(0, 120) : null });

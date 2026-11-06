@@ -159,7 +159,7 @@ export class Bridge {
     const a = this.chainOf(from), b = this.chainOf(to);
     if (!a || !b || a === b || amount <= 0) return;
     const player = from.startsWith('player:') ? from.slice(7) : to.startsWith('player:') ? to.slice(7) : null;
-    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) }, memo: note && note.memo, contract: note && note.contract, council: note && note.council });
+    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) }, memo: note && note.memo, contract: note && note.contract, council: note && note.council, aiPlan: note && note.aiPlan });
   }
 
   canWithdraw() { return this.status === 'ready'; }
@@ -378,7 +378,7 @@ export class Bridge {
     for (const [from, items] of bySender) {
       for (let i = 0; i < items.length; i += MAX_ACTIONS) {
         const chunk = items.slice(i, i + MAX_ACTIONS);
-        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw, player: c.player || null, n: c.n || 1, who: c.who || null, contract: c.contract || null, council: c.council || null, memo: c.memo || null })), hash: null, ok: false };
+        const entry = { at: Date.now(), from, items: chunk.map((c) => ({ to: c.to, amount: fromUnits(c.amount), label: c.label, withdraw: !!c.withdraw, player: c.player || null, n: c.n || 1, who: c.who || null, contract: c.contract || null, council: c.council || null, aiPlan: c.aiPlan || null, memo: c.memo || null })), hash: null, ok: false };
         try {
           const wallets = chunk.filter((c) => c.withdraw).map((c) => c.to);
           entry.hash = await this.adapter.ftTransfers(from, this.tokenId, chunk.map((c) => ({ to: c.to, amount: c.amount, memo: c.memo || c.label })), wallets);

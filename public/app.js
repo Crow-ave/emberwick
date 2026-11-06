@@ -519,6 +519,23 @@ function debtBox(id) {
     `<button class="primary" data-repay="${id}" ${view.player.coins < d.amount ? 'disabled' : ''}>${t('credit.pay', { n: d.amount })}</button></div>`;
 }
 
+// proof for judges: today's plan is on NEAR (hash in the memo, exact JSON to check) and the model runs in a TEE
+function aiTx(day) {
+  const c = view.chain;
+  if (c && c.feed) for (const f of c.feed) if (f.ok && f.hash && f.items.some((it) => it.aiPlan === day)) return f.hash;
+  return null;
+}
+function aiProof(short) {
+  const rec = (view.aiLog || [])[0], at = (view.ai || {}).attest;
+  let h = '';
+  if (rec) {
+    const tx = chainOk() ? aiTx(rec.day) : null;
+    h += `<p class="small ai-proof">⛓ ${t('ai.onChain', { d: rec.day, h: rec.hash.slice(0, 10) })} · <a href="/api/ai/plan?day=${rec.day}" target="_blank" rel="noopener">${t('ai.planJson')}</a>${tx ? ' · ' + exLink('txns/' + tx, t('ai.planTx')) : chainOk() ? ` · <span class="muted">${t('job.contractWait')}</span>` : ''}</p>`;
+  }
+  if (at && at.signer) h += `<p class="small ai-proof">🔒 ${t(at.gatewayOnly ? 'ai.attestGw' : 'ai.attest', { s: esc(String(at.signer).slice(0, 10)) + '…', q: at.quote ? 'Intel TDX ✓' : '' })} · <a href="/api/ai/attestation" target="_blank" rel="noopener">${t('ai.attestLink')}</a></p>`;
+  return h;
+}
+
 // the craftsman's NEAR AI mind: today's plan, and a box to ask them something
 function aiBox(id, n) {
   const st = view.ai || {};
@@ -529,6 +546,7 @@ function aiBox(id, n) {
       ...Object.entries(n.ai.price || {}).filter(([, v]) => Math.abs(v - 1) >= 0.03).map(([g, v]) => t(v > 1 ? 'ai.priceUp' : 'ai.priceDown', { good: goodName(g) }))];
     h += `<p class="small"><b>${t('ai.plan')}</b> ${esc(n.ai.why)}</p>` + (moves.length ? `<p class="small muted">${moves.join(' · ')}</p>` : '');
   } else if (id !== 'tower') h += `<p class="small muted">${t(st.planFailed ? 'ai.unreachable' : 'ai.waiting')}</p>`;
+  h += aiProof(true);
   const a = (ui.aiAnswers || {})[id];
   if (a) h += `<div class="ai-qa"><div class="small muted">${t('ai.you')} ${esc(a.q)}</div><div class="quote">${a.a ? '"' + esc(a.a) + '"' : t('ai.thinking')}</div></div>`;
   if (view.player) h += `<form class="ai-ask row" data-npc="${id}"><input class="ai-q" maxlength="200" placeholder="${esc(t('ai.askPh', { name: npcName(id) }))}"><button type="submit">${t('ai.ask')}</button></form>`;
@@ -1655,6 +1673,7 @@ function applyStatic() {
   $('lang').setAttribute('aria-label', t('ui.language'));
   $('lang').innerHTML = Object.entries(LANGS).map(([code, d]) => `<option value="${code}"${code === getLang() ? ' selected' : ''}>${d['lang.name']}</option>`).join('');
   document.documentElement.lang = getLang();
+  renderTour();
 }
 $('lang').addEventListener('change', (e) => {
   setLang(e.target.value);
@@ -1842,6 +1861,38 @@ $('elder-ok').addEventListener('click', async () => {
   let seen = null; try { seen = localStorage.getItem('ew.howto'); } catch {}
   if (!seen) openHowto();
 });
+// ---------- judge tour: the NEAR parts of Emberwick in about two minutes ----------
+const NB = 'https://testnet.nearblocks.io/address/';
+const TOUR = [
+  { k: 'start' },
+  { k: 'ai', go: () => select('bakery'), links: [['ai.attestLink', '/api/ai/attestation'], ['ai.planJson', '/api/ai/plan']] },
+  { k: 'haggle', go: () => select('inn') },
+  { k: 'token', go: () => select('treasury'), links: [['tour.l.token', NB + 'token.emberwick-village.testnet'], ['tour.l.bank', NB + 'emberwick-village.testnet'], ['tour.l.treasury', NB + 'treasury.emberwick-village.testnet']] },
+  { k: 'land', go: () => { ui.selected = 'lands'; ui.district = 0; render(); }, links: [['tour.l.deeds', NB + 'deeds.emberwick-village.testnet']] },
+  { k: 'intents', go: () => { ui.exTab = 'change'; select('go-d3'); } },
+  { k: 'council', go: () => { ui.district = 0; select('council'); } },
+  { k: 'week' },
+  { k: 'end' },
+];
+function renderTour() {
+  const box = $('tour');
+  if (ui.tour === undefined || ui.tour === null) { box.hidden = true; return; }
+  const i = ui.tour, st = TOUR[i];
+  const links = (st.links || []).map(([k, u]) => `<a href="${u}" target="_blank" rel="noopener">${t(k)} ↗</a>`).join(' · ');
+  box.innerHTML = `<div class="tour-head"><b>🧭 ${t('tour.title')} · ${i + 1}/${TOUR.length}</b><button class="linkbtn" data-tourclose="1">✕</button></div>` +
+    `<h3>${t('tour.' + st.k + '.t')}</h3><p>${t('tour.' + st.k + '.b')}</p>${links ? `<p class="small">${links}</p>` : ''}` +
+    `<div class="tour-nav">${i > 0 ? `<button data-tour="${i - 1}">← ${t('tour.back')}</button>` : '<span></span>'}` +
+    (i < TOUR.length - 1 ? `<button class="primary" data-tour="${i + 1}">${t(i === 0 ? 'tour.go' : 'tour.next')} →</button>` : `<button class="primary" data-tourclose="1">${t('tour.done')}</button>`) + `</div>`;
+  box.hidden = false;
+}
+function tourTo(i) {
+  ui.tour = Math.max(0, Math.min(TOUR.length - 1, i));
+  if (ui.scene && !['ai', 'haggle'].includes(TOUR[ui.tour].k)) { ui.scene = null; }
+  const st = TOUR[ui.tour];
+  if (st.go) { try { st.go(); } catch {} }
+  renderTour();
+}
+
 function openHowto() { $('howto').hidden = false; try { localStorage.setItem('ew.howto', '1'); } catch {} }
 $('howto-ok').addEventListener('click', () => { $('howto').hidden = true; });
 $('howto').addEventListener('click', (e) => { if (e.target.id === 'howto') $('howto').hidden = true; });
@@ -1961,6 +2012,9 @@ document.body.addEventListener('click', (e) => {
     return;
   }
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
+  const tb = e.target.closest('[data-tour]');
+  if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  if (e.target.closest('[data-tourclose]')) { ui.tour = null; renderTour(); return; }
   if (e.target.closest('[data-rename]')) { ui.selected = 'rename'; renderMapNow(); renderPanel(); setTimeout(() => { const i = $('rename-input'); if (i) { i.focus(); i.select(); } }, 50); return; }
   const qs = e.target.closest('[data-qstep], [data-qall]');
   if (qs) {

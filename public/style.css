@@ -642,3 +642,16 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 #scene-talk.gone { opacity: 0; }
 .contract.debt { border-color: #d9a34a; background: #fff6e4; }
 .contract.debt.late { border-color: #c44; background: #fdeeee; }
+.ai-proof { margin: 3px 0; color: #3b4a85; word-break: break-word; }
+.ai-proof a { color: #3b4a85; }
+
+/* judge tour */
+.tourbtn { background: #e2b640; color: #3a2a1e; border-color: #e2b640; }
+.tourbtn:hover { background: #f2c94c; }
+.tourcard { position: fixed; left: 16px; bottom: 16px; width: 380px; max-width: calc(100vw - 32px); z-index: 60; background: #fffaf2; border: 2px solid #e2b640; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); padding: 12px 14px; font-size: 14px; }
+.tourcard h3 { margin: 6px 0 4px; font-size: 16px; }
+.tourcard p { margin: 4px 0; line-height: 1.4; }
+.tourcard a { color: #3b4a85; }
+.tour-head { display: flex; justify-content: space-between; align-items: center; color: #8a6a1e; font-size: 12px; }
+.tour-nav { display: flex; justify-content: space-between; margin-top: 8px; gap: 8px; }
+@media (max-width: 700px) { .tourcard { left: 8px; right: 8px; bottom: 8px; width: auto; font-size: 13px; } }
