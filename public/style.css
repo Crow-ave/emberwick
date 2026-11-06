@@ -614,3 +614,23 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .qtyrow .qbtn { min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; border: 1px solid #e0d2bb; background: #fff; cursor: pointer; font-size: 13px; line-height: 1; }
 .qtyrow .qbtn.all { font-size: 11px; }
 .qtyrow .sellqty::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* NEAR AI craftsmen */
+.ai-box { margin: 10px 0; padding: 8px 10px; border: 1px solid #b9c3e6; background: #f2f4fc; border-radius: 8px; }
+.ai-head { font-size: 12px; font-weight: 600; color: #3b4a85; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: #5b6ee1; box-shadow: 0 0 0 0 rgba(91,110,225,.6); animation: aipulse 2s infinite; }
+@keyframes aipulse { 0% { box-shadow: 0 0 0 0 rgba(91,110,225,.6); } 70% { box-shadow: 0 0 0 6px rgba(91,110,225,0); } 100% { box-shadow: 0 0 0 0 rgba(91,110,225,0); } }
+.ai-box p { margin: 3px 0; }
+.ai-qa { margin: 6px 0; }
+.ai-ask { margin-top: 6px; gap: 6px; }
+.ai-ask .ai-q { flex: 1; min-width: 0; }
+
+/* haggling */
+.hagbtn { margin-left: 4px; font-size: 12px; padding: 3px 7px; }
+.haggle { border: 1px solid #e0b46a; background: #fff8ea; border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; }
+.hag-head { display: flex; justify-content: space-between; align-items: center; }
+.hag-row { gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.hag-row input { width: 64px; }
+.hag-reply { margin: 6px 0; font-size: 13px; }
+.hag-reply.angry .quote, .hag-reply.closed .quote { color: #a33; }
+.hag-reply.accept .quote { color: #2d6a2d; }

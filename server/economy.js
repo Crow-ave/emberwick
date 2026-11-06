@@ -307,6 +307,7 @@ function targetFor(state, npcId, good) {
   if (npc) {
     if (npc.learn && npc.learn[good]) t *= npc.learn[good];   // what this craftsman learned about demand
     if (npc.level > 1) t *= 1 + 0.2 * (npc.level - 1);        // a bigger workshop keeps more in stock
+    if (npc.ai && npc.ai.day >= state.day - 1 && npc.ai.want[good]) t *= npc.ai.want[good]; // today's NEAR AI plan
   }
   if (state.events.dragon > 0) {
     if (npcId === 'tower' && good === 'sword') t *= 3;
@@ -372,6 +373,90 @@ function buyFromNpc(state, actor, npcId, good, qty) {
   npc.soldToday = npc.soldToday || {};
   npc.soldToday[good] = (npc.soldToday[good] || 0) + qty; // the craftsman learns how much people want
   return { ok: true, unit, total, tax };
+}
+
+// ---------- haggling ----------
+const r1 = (n) => Math.round(n * 10) / 10;
+export function haggle(state, p, npcId, good, side, qty, offer) {
+  const n = state.npcs[npcId], def = CRAFTSMEN.find((c) => c.id === npcId);
+  if (!n || !def || npcId === 'tower') return { ok: false, error: 'You cannot haggle here.', code: 'haggle.no' };
+  if (n.damagedUntil > state.day || (isNight(state) && npcId !== 'inn')) return NIGHT_ERR;
+  if (!(offer > 0) || offer > 10000) return { ok: false, error: 'Name a price.', code: 'haggle.price' };
+  p.haggle = p.haggle && p.haggle.day === state.day ? p.haggle : { day: state.day };
+  const mood = (p.haggle[npcId] = p.haggle[npcId] || { tries: 0, angry: 0 });
+  p.deal = null; // a new offer replaces any older counter offer
+  if (mood.angry >= 2) return { ok: true, outcome: 'closed', side, good, npc: npcId, qty: 0, unit: null, offer, ask: null };
+  mood.tries++;
+  const lvl = skillLevel(p, 'trading');
+  offer = r1(offer);
+  let ask, floor, list;
+  if (side === 'buy') {
+    if (n.sells[good] === undefined || good === 'meal') return { ok: false, error: 'This shop does not sell that.', code: 'err.notSelling' };
+    qty = Math.min(qty, Math.floor(n.stock[good] || 0));
+    if (qty < 1) return { ok: false, error: 'Out of stock.', code: 'err.outOfStock' };
+    list = price(n.sells[good]);
+    const t = Math.max(1, targetFor(state, npcId, good)), s0 = n.stock[good] || 0;
+    // a full shelf makes them softer; a skilled trader gets a little more off
+    const give = (s0 > 1.5 * t ? 0.25 : s0 > t ? 0.18 : 0.1) + 0.02 * (lvl - 1);
+    floor = Math.max(RULES.minPrice * 0.8, r1(list * (1 - Math.min(0.3, give))));
+    ask = list;
+  } else {
+    if (inv(p, good) < 1) return { ok: false, error: 'You do not have that.', code: 'err.notEnough' };
+    const q = sellQuote(state, npcId, good, Math.min(qty, inv(p, good)), 0);
+    if (q.want < 1) return { ok: false, error: 'The store room is full.', code: 'err.storeFull' };
+    if (q.qty < 1) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
+    qty = q.qty;
+    list = r1(q.total / q.qty);
+    const t = Math.max(1, targetFor(state, npcId, good)), s0 = n.stock[good] || 0;
+    const give = (s0 < 0.5 * t ? 0.25 : s0 < t ? 0.18 : 0.1) + 0.02 * (lvl - 1); // they pay more when they run short
+    floor = r1(list * (1 + Math.min(0.3, give))); // the most they would pay
+    ask = list;
+    const cash = balance(state, npcAcct(npcId)) - 60;
+    if (floor * qty > cash) floor = Math.max(list, r1(cash / qty));
+  }
+  // how good is the offer for the craftsman? 1 = their own price, 0 = their limit, below 0 = past it
+  const good01 = side === 'buy' ? (offer - floor) / Math.max(0.1, ask - floor) : (floor - offer) / Math.max(0.1, floor - ask);
+  const pastLimit = side === 'buy' ? offer / ask : ask / offer; // how far from their price, as a ratio
+  let outcome, unit = null;
+  if (good01 >= 1) { outcome = 'accept'; unit = ask; }
+  else if (mood.tries > 4) { outcome = 'final'; unit = side === 'buy' ? r1(Math.max(floor, (floor + ask) / 2)) : r1(Math.min(floor, (floor + ask) / 2)); }
+  else if (good01 >= 0.5) { outcome = 'accept'; unit = offer; }
+  else if (good01 >= 0) { outcome = 'counter'; unit = r1((offer + ask) / 2); }
+  else if (pastLimit >= 0.6) { outcome = 'favor'; unit = side === 'buy' ? r1(floor + (ask - floor) * 0.3) : r1(floor - (floor - ask) * 0.3); }
+  else { outcome = 'angry'; mood.angry++; }
+  if (outcome === 'angry' && mood.angry >= 2) outcome = 'closed';
+  const res = { ok: true, outcome, side, good, npc: npcId, qty, offer, ask, unit, tries: mood.tries };
+  if (unit !== null && outcome !== 'accept') p.deal = { npc: npcId, good, side, qty, unit, day: state.day, tick: state.tick };
+  return res;
+}
+
+// a trade at an agreed price per unit (after haggling)
+function tradeAt(state, p, actor, npcId, good, side, qty, unit) {
+  const n = state.npcs[npcId];
+  if (!n) return { ok: false, error: 'Unknown shop.', code: 'err.unknownPlace' };
+  if (isNight(state) && npcId !== 'inn') return NIGHT_ERR;
+  const total = r2(unit * qty), tax = r2(total * taxRate(state));
+  if (side === 'buy') {
+    if ((n.stock[good] || 0) < qty) return { ok: false, error: 'Out of stock.', code: 'err.outOfStock' };
+    if (balance(state, actor.acct) < total) return { ok: false, error: 'You do not have enough EMWK.', code: 'err.noMoney' };
+    transfer(state, actor.acct, npcAcct(npcId), total, { memo: `Emberwick: ${p.name} haggled ${qty} ${good} at ${unit}` });
+    transfer(state, npcAcct(npcId), 'treasury', tax);
+    n.stock[good] -= qty;
+    addInv(p, good, qty);
+    n.soldToday = n.soldToday || {};
+    n.soldToday[good] = (n.soldToday[good] || 0) + qty;
+    p.stats.spent = r2(p.stats.spent + total);
+  } else {
+    if (inv(p, good) < qty) return { ok: false, error: 'You do not have enough.', code: 'err.notEnough' };
+    if (balance(state, npcAcct(npcId)) - 60 < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
+    transfer(state, npcAcct(npcId), actor.acct, total, { memo: `Emberwick: ${p.name} haggled ${qty} ${good} at ${unit}` });
+    transfer(state, actor.acct, 'treasury', tax);
+    addInv(p, good, -qty);
+    n.stock[good] = (n.stock[good] || 0) + qty;
+    p.stats.sells++; p.stats.sold += qty; p.stats.earned = r2(p.stats.earned + total - tax); p.stats.taxes = r2(p.stats.taxes + tax);
+  }
+  const levelUp = gainXp(p, 'trading');
+  return { ok: true, deal: true, side, good, npc: npcId, qty, unit, total, tax, levelUp };
 }
 
 // npc-to-npc trade, e.g. the baker buying flour from the miller
@@ -520,6 +605,20 @@ function doAction(state, p, actor, action, qty) {
     p.stats.spent = r2(p.stats.spent + res.total);
     p.energy = Math.min(maxEnergy(p), r2(p.energy + RULES.mealEnergy));
     return { ok: true, energy: RULES.mealEnergy, total: res.total, message: `You had a hot meal for ${res.total} EMWK. +${RULES.mealEnergy} energy.` };
+  }
+  // haggling: the player names a price per unit. The village rules decide (accept, counter, a favour, or
+  // offence); NEAR AI only puts the craftsman's answer into words. A counter offer waits as p.deal.
+  if (action.type === 'haggle') {
+    const r = haggle(state, p, action.npc, action.good, action.side === 'sell' ? 'sell' : 'buy', qty, Number(action.offer));
+    if (!r.ok || r.outcome !== 'accept') return r;
+    const done = tradeAt(state, p, actor, action.npc, action.good, r.side, r.qty, r.unit);
+    return done.ok ? { ...r, ...done, ok: true } : done;
+  }
+  if (action.type === 'deal') {
+    const d = p.deal;
+    if (!d || d.day !== state.day || state.tick - d.tick > 24) { p.deal = null; return { ok: false, error: 'That offer is gone. Ask again.', code: 'haggle.gone' }; }
+    p.deal = null;
+    return tradeAt(state, p, actor, d.npc, d.good, d.side, d.qty, d.unit);
   }
   if (action.type === 'sell') {
     const res = sellToNpc(state, actor, action.npc, action.good, qty);
@@ -788,8 +887,49 @@ function adjustPrices(state) {
     const npc = state.npcs[def.id];
     // the rules are in pricing.js
     for (const good of Object.keys(npc.buys)) npc.buys[good] = stepTowards(npc.buys[good], levelPrice(npc.base[good], npc.stock[good] || 0, targetFor(state, def.id, good), 'buy'), k);
-    for (const good of Object.keys(npc.sells)) npc.sells[good] = stepTowards(npc.sells[good], levelPrice(npc.base[good], npc.stock[good] || 0, targetFor(state, def.id, good), 'sell', GOODS[good] && GOODS[good].kind === 'tool'), k);
+    const plan = npc.ai && npc.ai.day >= state.day - 1 ? npc.ai.price : {};
+    for (const good of Object.keys(npc.sells)) npc.sells[good] = stepTowards(npc.sells[good], levelPrice(npc.base[good], npc.stock[good] || 0, targetFor(state, def.id, good), 'sell', GOODS[good] && GOODS[good].kind === 'tool') * ((plan && plan[good]) || 1), k);
   }
+}
+
+// ---------- NEAR AI craftsmen ----------
+// what the AI is told each morning: the real numbers of every shop
+export function aiBrief(state) {
+  return {
+    day: state.day, season: state.events.winter ? 'winter' : 'normal',
+    events: { dragonComing: state.events.dragon > 0, drought: state.events.drought > 0 },
+    nearPriceUsd: state.oracle ? state.oracle.usd : null,
+    craftsmen: CRAFTSMEN.filter((d) => d.id !== 'tower').map((d) => shopCard(state, d.id)),
+  };
+}
+export function shopCard(state, id) {
+  const def = CRAFTSMEN.find((c) => c.id === id), n = state.npcs[id];
+  if (!def || !n) return null;
+  const goods = {};
+  for (const g of new Set([...Object.keys(n.buys), ...Object.keys(n.sells)])) {
+    goods[g] = { stock: Math.round(n.stock[g] || 0), target: Math.round(targetFor(state, id, g) * 10) / 10,
+      ...(n.buys[g] !== undefined ? { buysAt: price(n.buys[g]) } : {}), ...(n.sells[g] !== undefined ? { sellsAt: price(n.sells[g]), soldRecently: (n.history && n.history[g]) || [] } : {}) };
+  }
+  return { id, name: def.name, wallet: Math.round(balance(state, npcAcct(id))), workshopLevel: n.level || 1, makes: def.recipe ? def.recipe : null, goods };
+}
+// the plan is only allowed to nudge, inside fixed limits; money still moves only by the village rules
+export function applyAiPlan(state, plan, model) {
+  let used = 0;
+  for (const c of (plan && plan.craftsmen) || []) {
+    const def = CRAFTSMEN.find((d) => d.id === c.id), n = def && def.id !== 'tower' && state.npcs[c.id];
+    if (!n) continue;
+    const pick = (obj, lo, hi, ok) => Object.fromEntries(Object.entries(obj || {}).filter(([g, v]) => ok(g) && Number.isFinite(Number(v))).map(([g, v]) => [g, Math.round(clamp(Number(v), lo, hi) * 100) / 100]));
+    const text = (v, m) => String(v || '').replace(/<[^>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, m);
+    n.ai = {
+      day: state.day, model: model || null,
+      want: pick(c.want, 0.7, 1.4, (g) => n.buys[g] !== undefined || n.sells[g] !== undefined),
+      price: pick(c.price, 0.9, 1.1, (g) => n.sells[g] !== undefined),
+      why: text(c.why, 140), say: text(c.say, 160),
+    };
+    used++;
+  }
+  if (used) state.aiDays = (state.aiDays || 0) + 1;
+  return used;
 }
 
 function updateReadiness(state) {
@@ -1759,7 +1899,7 @@ function playerView(state, p) {
     restedToday: p.restedDay === state.day,
     asleep: !!(p.sleep && p.sleep.day === state.day && isNight(state)), sleepPlace: p.sleep && p.sleep.day === state.day ? p.sleep.place : null,
     cold: !!p.cold, freezing: freezing(state, p), coatLeft: hasCoat(p) ? RULES.coatWinterDays - ((p.wear && p.wear.coat) || 0) : 0,
-    innBed: RULES.innBed, level: playerLevel(p),
+    innBed: RULES.innBed, level: playerLevel(p), deal: p.deal && p.deal.day === state.day && state.tick - p.deal.tick <= 24 ? p.deal : null,
     application: (() => { for (const [npc, list] of Object.entries(state.applications || {})) { const i = list.findIndex((x) => x.pid === p.id); if (i >= 0) return { npc, others: list.length - 1, next: nextInterview(state) }; } return null; })(),
     appResult: p.appResult || null,
     skills, maxEnergy: maxEnergy(p), costs, tradeBonus: r2((skills.trading.level - 1) * RULES.tradeBonus), toolUses: RULES.toolUses,
@@ -1781,6 +1921,7 @@ export function publicView(state, playerId) {
       closed: n.damagedUntil > state.day,
       shut: isNight(state) && def.id !== 'inn', // closed for the night
       level: n.level || 1, learn: n.learn || {},
+      ai: n.ai && n.ai.day >= state.day - 1 ? n.ai : null,
       why: Object.fromEntries([...new Set([...Object.keys(n.buys), ...Object.keys(n.sells)])].map((g) => {
         const target = targetFor(state, def.id, g), stock = n.stock[g] || 0;
         return [g, { stock: Math.round(stock * 10) / 10, target: Math.round(target * 10) / 10, reasons: priceReasons({ stock, target, learned: n.learn && n.learn[g], level: n.level || 1, winter: state.events.winter, dragon: state.events.dragon > 0, drought: state.events.drought > 0, good: g, npc: def.id }) }];

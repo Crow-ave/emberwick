@@ -45,6 +45,12 @@ Nobody sets the prices. Eight AI craftsmen, each with their own wallet, buy what
 
 ## AI craftsmen that haggle, learn and grow
 
+**The craftsmen think with [NEAR AI Cloud](https://docs.near.ai)** (OpenAI-compatible, TEE-backed private inference). Every village morning, while someone is playing, one request gives the model the real numbers of every shop (stock, target, prices, recent sales, winter, dragon, drought, the live NEAR price) and the model plans the day for each craftsman: what to stock up on, what to discount, and a reason. The shop panel shows the plan and the model name. Players can also **ask a craftsman a question** in any of the six languages; the craftsman answers in character from the shop's real numbers.
+
+**Haggling:** every row at a shop counter has a 🤝 button. Name your price per unit; the craftsman accepts, meets you in the middle, refuses but makes you a special offer, or takes offence at a lowball (twice, and they stop haggling with you for the day). The village rules decide the outcome from stock, target and your trading skill; NEAR AI only voices the answer in character and in your language. A counter offer is one click away.
+
+Safety by design: the model only *nudges* inside fixed limits (stock target ×0.7–1.4, sell price ×0.9–1.1). Every coin still moves by the village rules in `server/economy.js`, and answers are only words. Without a key, offline, or past the daily request limit, the craftsmen fall back to the rule-based behaviour below. The code is in `server/ai.js`.
+
 All pricing rules are in one readable file, **`server/pricing.js`**. Every price in a shop has an ⓘ tooltip with the craftsman's reasoning (stock vs. target, winter, dragon, drought, what they learned, workshop size).
 
 - **Hiring:** applying for a job hands in an application. The craftsman interviews every applicant at the next interview round (every ~1.5 game hours while the shop is open; applications made at night wait for the morning). The best fit for the work gets the job, and a more skilled apprentice is offered a higher wage (up to +60%). The others hear why they were not chosen.
@@ -86,6 +92,8 @@ All pricing rules are in one readable file, **`server/pricing.js`**. Every price
 - **Renting out a home:** an owner sets a daily rent and another player moves in. Every morning the rent goes from the tenant straight to the owner, player to player, on NEAR.
 - **Neighbourhoods:** when land runs out, the council votes to open Ember Lane (12 plots, 78–108 EMWK); the treasury pays the carpenter and the woodcutter for roads and clearing. After that, Villa hill (6 big plots, 312–360 EMWK, level 5 needed, a villa takes 14 lumber). The AI villagers propose a new neighbourhood themselves when free plots run low.
 
+**Land market:** one list with every deed (NFT) players sell, including your own listing, every free village plot, and recent deed sales, with links to each NFT on NEAR.
+
 ## Watchtowers
 
 - Anyone can propose "Build a watchtower" at the council. If it passes, the treasury pays the carpenter 250 EMWK and a new tower goes up on one of three free spots on the map.
@@ -106,13 +114,14 @@ Always open, reached from the signpost by the gate (or the hills on the horizon)
 | Games With Real Economies | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token |
 | Unstoppable DeFi | The Exchange quarter: player order book, deed escrow, NEAR Intents quotes |
 | NFTs That Do Something | Land deeds (NEP-171): a deed earns rent from a tenant, lets you sleep at home, and can be sold on the exchange |
-| Open Innovation | A village DAO where AI villagers vote with reasons, recorded on NEAR |
+| Open Innovation | Craftsmen who plan their day with NEAR AI Cloud (verifiable private inference) inside safe limits; a village DAO where AI villagers vote with reasons, recorded on NEAR |
 
 ## Try it as a judge (do X, see Y)
 
 1. `npm install && npm run demo`, open http://localhost:3000, type a name, pick **Miner**. → You stand at the gate; the guide on the right says what to do.
 2. Click the **Mine**, press the big button twice. → Ore in your bag; the guide points to the best buyer.
 3. Click the **Smithy**. → The scene opens, the smith greets you in a speech bubble; sell on the counter card. Watch prices move in "Prices now".
+   In the shop panel, the blue **NEAR AI** box shows today's plan from the model; type a question ("What is expensive today?") and the craftsman answers in your language.
 4. Click the **Treasury**. → The books open over the map: balance, locked reserve, where money came from this week.
 5. Click **Neighbourhoods** (or the hills top left) → **Exchange quarter**. Sell an item on the **Goods market**; open **Change desk** and press **Get a live quote**. → A real NEAR Intents quote (dry run).
 6. Wait for evening (≈1.5 min in demo mode). → The guide asks where you will sleep; at the inn take a bed, your character lies down.
@@ -149,6 +158,8 @@ npm start
 
 Then open http://localhost:3000. One game day lasts 8 minutes.
 
+To let the craftsmen think with NEAR AI, create an API key at [cloud.near.ai](https://cloud.near.ai) and either set `NEARAI_API_KEY` or save the key in `~/.emberwick/nearai-key.txt` (outside the repo). Optional: `NEARAI_MODEL` picks a model, `NEARAI_DAILY_LIMIT` caps requests per day (default 400), `EMBERWICK_AI=0` turns it off.
+
 ```bash
 npm run demo   # fast mode for recording: one game day lasts 2 minutes
 ```
@@ -164,6 +175,7 @@ npm test   # 100 game days of economy checks, then the NEAR bridge against an in
 | `server/world.js` | The fixed world: buildings, goods, craftsmen, rules, token supply |
 | `server/economy.js` | The economy engine: ledger, trading, craftsmen AI, events |
 | `server/index.js` | Game server and live updates |
+| `server/ai.js` | NEAR AI Cloud: the craftsmen's morning plan and answers to players' questions |
 | `server/near.js` | NEAR bridge: account setup, token deploy, batched transfers, balance sync |
 | `public/vendor/near-wallet.js` | Meteor Wallet through NEAR Wallet Selector, bundled for the browser (source in `tools/wallet/`) |
 | `contracts/emwk_deeds.wasm` | Standard NEP-171 NFT contract for land deeds (near-sdk-rs 4.0 example) |

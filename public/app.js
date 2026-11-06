@@ -357,9 +357,16 @@ function sceneTalk(id) {
   if (!me) return null;
   const home = homeHasScene(id, view), sleepingHere = view.night && me.sleepPlace === id;
   const at = home ? (sleepingHere ? [300, 330] : [600, 250]) : id === 'inn' && sleepingHere ? [190, 330] : view.npcs[id] ? KEEPER_HEAD : [556, 200];
+  const hg = ui.haggle;
+  if (hg && hg.npc === id && hg.reply && Date.now() - hg.reply.at < 25000) {
+    const r0 = hg.reply;
+    return { x: at[0], y: at[1], text: r0.line || t('haggle.say.' + r0.outcome, { p: r0.unit, ask: r0.ask, good: goodWord(r0.good) }) };
+  }
   const r = result[id];
-  if (r && !r.bad) return { x: at[0], y: at[1], text: t(r.key, resolve(r.p)) };
-  if (r && r.bad) return { x: at[0], y: at[1], text: t(r.key, resolve(r.p)) };
+  // "good night" belongs to the night: in the morning the keeper greets you again
+  if (r && /^result\.slept/.test(r.key) && !view.night) delete result[id];
+  else if (r && !r.bad) return { x: at[0], y: at[1], text: t(r.key, resolve(r.p)) };
+  if (result[id] && result[id].bad) return { x: at[0], y: at[1], text: t(result[id].key, resolve(result[id].p)) };
   if (home) {
     const plot = view.plots[id];
     if (plot && plot.mine && !plot.bed) return { x: at[0], y: at[1], text: t('talk.home.noBed', { p: view.npcs.carpenter.sells.bed }) };
@@ -371,7 +378,7 @@ function sceneTalk(id) {
   if (n && n.shut) return { x: at[0], y: at[1], text: t('talk.shut') };
   if (id === 'tailor' && view.events.winter && !me.inv.coat) return { x: at[0], y: at[1], text: t('talk.tailor.winter', { p: n.sells.coat }) };
   // otherwise the keeper greets you with their own words
-  if (n) return { x: at[0], y: at[1], text: t('talk.greet', { name: me.name }) + ' ' + t('line.' + n.lineKey) };
+  if (n) return { x: at[0], y: at[1], text: t('talk.greet', { name: me.name }) + ' ' + (n.ai && n.ai.say && getLang() === 'en' ? n.ai.say : t('line.' + n.lineKey)) };
   return null;
 }
 
@@ -389,9 +396,32 @@ function whyTip(n, g) {
   const text = [t('why.stockLine', { s: w.stock, t: w.target }), ...w.reasons.map((r) => t('price.' + r))].join(' · ');
   return ` <span class="tip" tabindex="0" data-tip="${esc(text)}" aria-label="${esc(text)}">ⓘ</span>`;
 }
+// haggling: name your price per unit; the craftsman answers (the rules decide, NEAR AI speaks)
+// the price the shop would pay or ask per unit right now (a big sale gets a lower average price per unit)
+const hagList = (n, g, side) => { const o = (n.offers || {})[g]; return side === 'buy' ? n.sells[g] : o && o.qty ? Math.round((o.total / o.qty) * 10) / 10 : n.buys[g]; };
+const hagBtn = (id, g, side) => `<button class="hagbtn" data-haggle="${side}" data-npc="${id}" data-good="${g}" title="${esc(t('haggle.btn'))}">🤝 ${t('haggle.short')}</button>`;
+function haggleBox(id) {
+  const hg = ui.haggle, me = view.player, n = view.npcs[id];
+  if (!hg || hg.npc !== id || !me) return '';
+  const max = hg.side === 'sell' ? me.inv[hg.good] || 0 : Math.floor(n.stock[hg.good] || 0);
+  const list = hagList(n, hg.good, hg.side);
+  let h = `<div class="haggle"><div class="hag-head"><b>🤝 ${t(hg.side === 'buy' ? 'haggle.buyTitle' : 'haggle.sellTitle', { good: goodName(hg.good) })}</b><button class="linkbtn" data-hagclose="1">✕</button></div>` +
+    `<p class="muted small">${t(hg.side === 'buy' ? 'haggle.listBuy' : 'haggle.listSell', { p: list })}</p>` +
+    `<div class="row hag-row"><input class="hag-qty" type="number" min="1" max="${max}" value="${Math.min(max, hg.qty || 1)}" aria-label="${esc(t('panel.howMany'))}"> × <input class="hag-offer" type="number" min="0.1" step="0.1" value="${hg.offer}" aria-label="${esc(t('haggle.yourPrice'))}"> EMWK ` +
+    `<button class="primary" data-hagsend="1" ${hg.wait ? 'disabled' : ''}>${t(hg.wait ? 'ai.thinking' : 'haggle.offer')}</button></div>`;
+  if (hg.reply) {
+    const r = hg.reply;
+    const line = r.line || t('haggle.say.' + r.outcome, { p: r.unit, ask: r.ask, good: goodWord(r.good) });
+    h += `<div class="hag-reply ${r.outcome}"><span class="quote">"${esc(line)}"</span></div>`;
+    const d = me.deal;
+    if (d && d.npc === id && d.good === hg.good && d.side === hg.side) h += `<button class="primary" data-hagdeal="1">${t('haggle.take', { n: d.qty, p: d.unit, total: Math.round(d.qty * d.unit * 100) / 100 })}</button>`;
+  }
+  return h + `</div>`;
+}
+
 function tradeBlock(id) {
   const n = view.npcs[id], me = view.player;
-  let h = '';
+  let h = haggleBox(id);
   if (id === 'inn') {
     const full = me && me.energy >= me.maxEnergy;
     h += `<button class="primary big" data-act="meal" ${!me || n.closed || full ? 'disabled' : ''}>${t('panel.meal', { p: n.sells.meal })}</button>` +
@@ -413,7 +443,7 @@ function tradeBlock(id) {
             const def = Math.max(1, Math.min(have, o ? o.qty : have)), pick = Math.min(have, (ui.sellQty || {})[g] || def);
             const box = have > 1 ? `<div class="qtyrow"><button class="qbtn" data-qstep="-1" data-good="${g}" aria-label="−">−</button><input class="sellqty" type="number" min="1" max="${have}" value="${pick}" data-good="${g}" aria-label="${esc(t('panel.howMany'))}"><button class="qbtn" data-qstep="1" data-good="${g}" aria-label="+">+</button><button class="qbtn all" data-qall="${have}" data-good="${g}">${t('panel.all')}</button></div>` : '';
             const btnLabel = have > 1 ? t('panel.sellN', { n: pick }) : label;
-            return `<td class="n">${box}<button class="${have ? 'sellbtn' : ''}" data-act="sell" data-good="${g}" ${!have || n.closed || n.shut ? 'disabled' : ''}>${btnLabel}</button>${have && o ? `<div class="muted small">${o.qty < have ? t('panel.onlyNeeds', { n: o.qty }) + ' · ' : ''}${t('panel.quoteAll', { n: o.qty, p: Math.round(o.total) })}</div>` : ''}</td></tr>`;
+            return `<td class="n">${box}<button class="${have ? 'sellbtn' : ''}" data-act="sell" data-good="${g}" ${!have || n.closed || n.shut ? 'disabled' : ''}>${btnLabel}</button>${have && id !== 'tower' && !n.closed && !n.shut ? hagBtn(id, g, 'sell') : ''}${have && o ? `<div class="muted small">${o.qty < have ? t('panel.onlyNeeds', { n: o.qty }) + ' · ' : ''}${t('panel.quoteAll', { n: o.qty, p: Math.round(o.total) })}</div>` : ''}</td></tr>`;
           })());
     }
     h += `</table>`;
@@ -424,7 +454,7 @@ function tradeBlock(id) {
     for (const [g, p] of sells) {
       const stock = n.stock[g] || 0;
       h += `<tr><td>${goodName(g)} <span class="muted">(${t('panel.left', { n: stock })})</span></td><td class="n">${p} EMWK${whyTip(n, g)}</td>` +
-        `<td class="n"><button data-act="buy" data-good="${g}" ${!me || !stock || n.closed ? 'disabled' : ''}>${t('panel.buy')}</button></td></tr>`;
+        `<td class="n"><button data-act="buy" data-good="${g}" ${!me || !stock || n.closed ? 'disabled' : ''}>${t('panel.buy')}</button>${me && stock && id !== 'tower' && !n.closed && !n.shut ? hagBtn(id, g, 'buy') : ''}</td></tr>`;
     }
     h += `</table>`;
   }
@@ -441,13 +471,30 @@ function panelCraftsman(b) {
     const learned = Object.entries(n.learn || {}).filter(([, v]) => Math.abs(v - 1) >= 0.15).map(([g, v]) => t(v > 1 ? 'ai.more' : 'ai.less', { good: goodName(g) }));
     h += `<p class="small ai-note">${t('ai.level', { n: n.level || 1 })}${learned.length ? ' · ' + learned.join(' · ') : ''}</p>`;
   }
-  h += `<div class="quote">"${esc(t('line.' + n.lineKey))}"</div>`;
+  h += `<div class="quote">"${esc(n.ai && n.ai.say && getLang() === 'en' ? n.ai.say : t('line.' + n.lineKey))}"</div>`;
+  h += aiBox(b.id, n);
   if (b.id === 'inn') h += sleepBox('inn');
   if (b.id === 'tailor' && view.events.winter && me && !me.inv.coat) h += `<p class="closed small">${t('coat.need')}</p>`;
   // inside the shop the counter on the game screen has the buy/sell lists, so the side panel stays short
   h += (ui.scene === b.id && me && !phoneLayout() ? `<p class="small muted">${t('scene.tradeHint')}</p>` : tradeBlock(b.id)) + jobSection(b.id);
   if (chainOk()) h += `<p class="small">${exLink('address/' + view.chain.accounts.npcs[b.id], t('near.view') + ' · ' + esc(view.chain.accounts.npcs[b.id]))}</p>`;
   return h + `<p class="muted" style="font-size:12px">${t('panel.pricesNote')}</p>`;
+}
+
+// the craftsman's NEAR AI mind: today's plan, and a box to ask them something
+function aiBox(id, n) {
+  const st = view.ai || {};
+  if (st.status !== 'ready') return id === 'tower' ? '' : `<p class="small muted ai-off">${t('ai.offNote')}</p>`;
+  let h = `<div class="ai-box"><div class="ai-head"><span class="ai-dot"></span>${t('ai.mind', { model: esc(st.model || '') })}</div>`;
+  if (n.ai && n.ai.why) {
+    const moves = [...Object.entries(n.ai.want || {}).filter(([, v]) => Math.abs(v - 1) >= 0.1).map(([g, v]) => t(v > 1 ? 'ai.stockUp' : 'ai.stockDown', { good: goodName(g) })),
+      ...Object.entries(n.ai.price || {}).filter(([, v]) => Math.abs(v - 1) >= 0.03).map(([g, v]) => t(v > 1 ? 'ai.priceUp' : 'ai.priceDown', { good: goodName(g) }))];
+    h += `<p class="small"><b>${t('ai.plan')}</b> ${esc(n.ai.why)}</p>` + (moves.length ? `<p class="small muted">${moves.join(' · ')}</p>` : '');
+  } else if (id !== 'tower') h += `<p class="small muted">${t('ai.waiting')}</p>`;
+  const a = (ui.aiAnswers || {})[id];
+  if (a) h += `<div class="ai-qa"><div class="small muted">${t('ai.you')} ${esc(a.q)}</div><div class="quote">${a.a ? '"' + esc(a.a) + '"' : t('ai.thinking')}</div></div>`;
+  if (view.player) h += `<form class="ai-ask row" data-npc="${id}"><input class="ai-q" maxlength="200" placeholder="${esc(t('ai.askPh', { name: npcName(id) }))}"><button type="submit">${t('ai.ask')}</button></form>`;
+  return h + `</div>`;
 }
 
 function tiredHelp(me) {
@@ -539,10 +586,10 @@ function panelExchange() {
     if (tr.length) h += `<p class="sub2">${t('ex.trades')}</p><ul class="decided">${tr.slice(0, 6).map((x) => `<li>${x.qty} ${goodName(x.good)} · ${x.price} EMWK · ${esc(x.seller)} → ${esc(typeof x.buyer === 'object' ? npcName(x.buyer.$npc) : x.buyer)} <span class="muted small">(${t('ui.day', { n: x.day })})</span></li>`).join('')}</ul>`;
   }
   if (tab === 'deeds') {
-    const sale = Object.entries(view.plots).filter(([, x]) => x.sale && !x.mine);
+    const sale = Object.entries(view.plots).filter(([, x]) => x.sale);
     h += `<p class="sub2">${t('ex.deedsForSale')}</p>`;
     h += sale.length ? `<table>${sale.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${esc(x.owner)} · ${x.built ? t(x.bed ? 'ex.withHouseBed' : 'ex.withHouse') : t('ex.bareLand')}${x.lease && x.lease.tenant ? ' · ' + t('ex.rented', { n: x.lease.rent }) : ''}</div></td><td class="n">${x.sale.price} EMWK</td><td class="n">` +
-      `<button class="primary" data-act="buyDeed" data-plot="${id}" ${!me || me.plot || me.coins < x.sale.price || (x.minLevel && me.level < x.minLevel) ? 'disabled' : ''}>${t('ex.buy1')}</button></td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noDeeds')}</p>`;
+      (x.mine ? `<span class="muted small">${t('lands.yours')}</span>` : `<button class="primary" data-act="buyDeed" data-plot="${id}" ${!me || me.plot || me.coins < x.sale.price || (x.minLevel && me.level < x.minLevel) ? 'disabled' : ''}>${t('ex.buy1')}</button>`) + `</td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noDeeds')}</p>`;
     h += COL;
     if (me && me.plot) {
       const x = view.plots[me.plot];
@@ -823,6 +870,7 @@ function renderPanel() {
   if (ui.selected === 'rename' && view.player) { panel.innerHTML = closeBtn() + `<h2>${t('rename.title')}</h2><p class="small">${t('rename.help')}</p><form id="rename-form" class="row"><input id="rename-input" maxlength="20" value="${esc(view.player.name)}"><button class="primary" type="submit">${t('rename.save')}</button></form>`; panel.hidden = false; return; }
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
+  if (ui.selected === 'lands') { panel.innerHTML = closeBtn() + panelLands(); panel.hidden = false; return; }
   if (ui.selected === 'week' && view.week && renderMapCard('week', '', panelWeek())) { panel.innerHTML = closeBtn() + `<h2>${t('ff.title')}</h2><p class="muted small">${t('card.onMap')}</p>`; panel.hidden = false; return; }
   const b = world.buildings.find((x) => x.id === ui.selected);
   if (!b && ui.district) { panel.innerHTML = panelRoadsign(); panel.hidden = false; return; }
@@ -948,6 +996,26 @@ function panelHouse(b) {
   else if (me && me.home) x += `<p class="muted small">${t('house.haveOther', { place: placeName(me.home.id) })}</p>`;
   else x += `<p class="ok">${t('house.free')}</p><button class="primary" data-act="rentHouse" ${!me || me.coins < h.rent + h.deposit ? 'disabled' : ''}>${t('house.rent', { n: h.rent + h.deposit })}</button>` + payBox('house:' + b.id, h.rent + h.deposit);
   return x + `<p class="muted small">${t('house.note')}</p>`;
+}
+
+// the land market: every deed (NFT) for sale and every free village plot, in one list
+function panelLands() {
+  const me = view.player, plots = Object.entries(view.plots);
+  const deedLink = (x) => { const d = (view.chain || {}).deeds || {}; return x.deed && x.deed.minted && d.contract ? ` · ${exLink('nft-token/' + d.contract + '/' + encodeURIComponent(x.deed.tokenId), t('lands.nft', { id: esc(x.deed.tokenId) }))}` : x.deed ? ` · ${t('lands.nft', { id: esc(x.deed.tokenId || '') })}` : ''; };
+  let h = `<h2>${t('lands.title')}</h2><p class="muted small">${t('lands.intro')}</p>`;
+  if (me && me.plot) h += `<p class="small closed">${t('plot.haveOne', { place: placeName(me.plot) })}</p>`;
+  const sale = plots.filter(([, x]) => x.sale).sort((a, b) => a[1].sale.price - b[1].sale.price);
+  h += `<h4>${t('lands.deeds', { n: sale.length })}</h4>`;
+  h += sale.length ? `<table>${sale.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${x.mine ? `<b>${t('lands.yours')}</b>` : esc(x.owner)} · ${x.built ? t(x.bed ? 'ex.withHouseBed' : 'ex.withHouse') : t('ex.bareLand')}${x.lease && x.lease.tenant ? ' · ' + t('ex.rented', { n: x.lease.rent }) : ''}${deedLink(x)}</div></td><td class="n">${x.sale.price} EMWK</td><td class="n">` +
+    (x.mine ? `<button data-act="unlistDeed" data-plot="${id}">${t('ex.unlist')}</button>` : `<button class="primary" data-act="buyDeed" data-plot="${id}" ${!me || me.plot || me.coins < x.sale.price || (x.minLevel && me.level < x.minLevel) ? 'disabled' : ''}>${t('ex.buy1')}</button>`) +
+    ` <button class="linkbtn" data-go="${id}">${t('lands.see')}</button></td></tr>`).join('')}</table>` : `<p class="muted small">${t('ex.noDeeds')}</p>`;
+  const free = plots.filter(([, x]) => !x.owner && x.open).sort((a, b) => a[1].price - b[1].price);
+  h += `<h4>${t('lands.free', { n: free.length })}</h4>`;
+  h += free.length ? `<table>${free.map(([id, x]) => `<tr><td><b>${esc(placeName(id))}</b><div class="muted small">${x.district ? t('district.' + x.district) : t('lands.district.village')}${x.minLevel ? ' · ' + t('lands.minLevel', { n: x.minLevel }) : ''}</div></td><td class="n">${x.price} EMWK</td><td class="n"><button class="primary" data-go="${id}">${t('lands.see')}</button></td></tr>`).join('')}</table>` : `<p class="muted small">${t('lands.noFree')}</p>`;
+  if (me && me.plot && !view.plots[me.plot].sale) h += `<p class="small">${t('lands.sellYours')}</p><button data-go="exchange">${esc(t('go.to', { place: placeName('exchange') }))}</button>`;
+  const dt = (view.market.trades || []).filter((x) => x.deed);
+  if (dt.length) h += `<h4>${t('ex.trades')}</h4><ul class="decided">${dt.slice(0, 6).map((x) => `<li>${esc(placeName(x.deed))} · ${x.price} EMWK · ${esc(x.seller)} → ${esc(x.buyer)}</li>`).join('')}</ul>`;
+  return h + `<p class="muted small">${t('ex.deedNote')}</p>`;
 }
 
 function panelPlot(b) {
@@ -1384,7 +1452,7 @@ function renderHud() {
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)} <button class="editname" data-rename="1" title="${esc(t('rename.title'))}" aria-label="${esc(t('rename.title'))}">✎</button></h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
     `<div class="energy" id="energy-row" title="${esc(t('rank.' + String(me.rank).toLowerCase()))}">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
-    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button></div>` +
+    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button></div>` +
     (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}" title="${esc(t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage }))}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}" title="${esc(t('me.homeInfo', { r: me.home.rent, left: dayLeftText() }))}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
   '';
   const q = me.questInfo;
@@ -1559,6 +1627,32 @@ $('lang').addEventListener('change', (e) => {
 });
 
 // ---------- actions ----------
+
+function renderNow() { render(); }
+async function sendHaggle(box) {
+  const hg = ui.haggle;
+  if (!hg || hg.wait) return;
+  if (box) { hg.qty = Number(box.querySelector('.hag-qty').value) || 1; hg.offer = Number(box.querySelector('.hag-offer').value) || 0; }
+  if (!(hg.offer > 0)) return toast(t('haggle.price'), 'bad');
+  hg.wait = true; render();
+  const r = await post('/api/ai/haggle', { player: playerId, npc: hg.npc, good: hg.good, side: hg.side, qty: hg.qty, offer: hg.offer, lang: getLang() });
+  hg.wait = false;
+  if (r.state && newer(r.state)) view = r.state;
+  if (!r.ok) { toast(errText(r), 'bad'); render(); return; }
+  hg.reply = { ...r, at: Date.now() };
+  if (r.deal) { play('coin'); toast(t('haggle.done', { n: r.qty, good: goodWord(r.good), p: r.unit, total: r.total }), 'win'); }
+  else play(r.outcome === 'angry' || r.outcome === 'closed' ? 'bad' : 'click');
+  render();
+}
+async function takeDeal() {
+  const r = await post('/api/action', { player: playerId, type: 'deal' });
+  if (r.state && newer(r.state)) view = r.state;
+  if (!r.ok) { toast(errText(r), 'bad'); render(); return; }
+  play('coin');
+  toast(t('haggle.done', { n: r.qty, good: goodWord(r.good), p: r.unit, total: r.total }), 'win');
+  if (ui.haggle) ui.haggle.reply = { outcome: 'accept', line: t('haggle.say.deal'), unit: r.unit, good: r.good, at: Date.now() };
+  render();
+}
 
 async function post(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -1800,6 +1894,19 @@ $('map').addEventListener('pointermove', (e) => {
   if (id !== ui.hover) { ui.hover = id; renderMapNow(); $('hint').hidden = true; }
 });
 document.body.addEventListener('click', (e) => {
+  const hb = e.target.closest('[data-haggle]');
+  if (hb) {
+    if (!playerId) return toast(t('toast.join'), 'bad');
+    const n = view.npcs[hb.dataset.npc], g = hb.dataset.good, side = hb.dataset.haggle, me = view.player;
+    const list = hagList(n, g, side);
+    const qty = side === 'sell' ? Math.min(me.inv[g] || 1, (ui.sellQty || {})[g] || (n.offers[g] ? n.offers[g].qty : 0) || me.inv[g] || 1) : 1;
+    ui.haggle = { npc: hb.dataset.npc, good: g, side, qty, offer: Math.max(0.1, Math.round(list * (side === 'buy' ? 0.8 : 1.2) * 10) / 10) };
+    renderNow(); return;
+  }
+  if (e.target.closest('[data-hagclose]')) { ui.haggle = null; renderNow(); return; }
+  if (e.target.closest('[data-hagsend]')) { sendHaggle(e.target.closest('.haggle')); return; }
+  if (e.target.closest('[data-hagdeal]')) { takeDeal(); return; }
+  if (e.target.closest('[data-lands]')) { ui.selected = 'lands'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('[data-eat]')) { act('eat'); return; }
   if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
   const go = e.target.closest('[data-go]');
@@ -2100,6 +2207,18 @@ function showLogTab(tab) {
   if (tab === 'chat') { ui.chatUnread = 0; renderChat(); }
 }
 document.addEventListener('submit', async (e) => {
+  if (e.target.classList && e.target.classList.contains('ai-ask')) {
+    e.preventDefault();
+    const npc = e.target.dataset.npc, inp = e.target.querySelector('.ai-q'), q = inp.value.trim();
+    if (!q) return;
+    ui.aiAnswers = ui.aiAnswers || {};
+    ui.aiAnswers[npc] = { q, a: '' };
+    inp.value = ''; inp.blur(); render();
+    const r = await post('/api/ai/ask', { player: playerId, npc, q, lang: getLang() });
+    ui.aiAnswers[npc] = { q, a: r.ok ? r.answer : '' };
+    if (!r.ok) { delete ui.aiAnswers[npc]; toast(t(r.code || 'ai.busy'), 'bad'); }
+    render(); return;
+  }
   if (e.target.id === 'rename-form') {
     e.preventDefault();
     const r = await post('/api/action', { player: playerId, type: 'rename', name: $('rename-input').value });

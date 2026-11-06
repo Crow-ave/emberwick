@@ -5,10 +5,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, aiBrief, applyAiPlan, shopCard, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
+import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(root, 'public');
@@ -103,7 +104,7 @@ function moveHeldDeeds(pid) {
 const chainView = () => (bridge ? bridge.view() : { status: 'off' });
 // a new id every time the server starts: pages that were open before a restart know to start over
 const BOOT = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const view = (pid) => ({ ...publicView(state, pid), chain: chainView(), boot: BOOT });
+const view = (pid) => ({ ...publicView(state, pid), chain: chainView(), boot: BOOT, ai: aiPublic() });
 
 // ---------- NEAR Intents (1Click API) for the change desk ----------
 const ONECLICK = 'https://1click.chaindefuser.com/v0';
@@ -214,6 +215,24 @@ function broadcast() {
   for (const [res, pid] of clients) res.write(`data: ${JSON.stringify(view(pid))}\n\n`);
 }
 
+// NEAR AI: each village morning one request plans the day for every craftsman, only while someone is playing
+let aiBusy = false;
+async function aiMorning() {
+  if (aiBusy || ai.status !== 'ready' || !clients.size || (state.ff && state.ff.running) || state.aiPlannedDay === state.day) return;
+  aiBusy = true;
+  const day = state.day;
+  try {
+    const plan = await planDay(aiBrief(state));
+    if (plan && applyAiPlan(state, plan, ai.model)) { state.aiPlannedDay = day; broadcast(); }
+  } catch (e) {
+    ai.lastError = String(e.message || e).slice(0, 160);
+    state.aiPlannedDay = day; // one try per village day; the craftsmen keep their usual habits
+    console.log('[AI] plan skipped:', ai.lastError);
+  } finally { aiBusy = false; }
+}
+startAi().then(() => setTimeout(aiMorning, 4000));
+setInterval(aiMorning, 15000);
+
 setInterval(() => {
   if (state.ff && state.ff.running) return; // the fast-forward drives the clock for now
   tick(state);
@@ -271,6 +290,7 @@ const server = http.createServer(async (req, res) => {
     clients.set(res, url.searchParams.get('player'));
     res.write(`data: ${JSON.stringify(view(url.searchParams.get('player')))}\n\n`);
     req.on('close', () => clients.delete(res));
+    setTimeout(aiMorning, 1500); // someone is here: the craftsmen plan the day if they have not yet
     return;
   }
 
@@ -279,6 +299,30 @@ const server = http.createServer(async (req, res) => {
     const r = joinPlayer(state, body.name, body.path);
     if (r.ok) { save(); broadcast(); }
     return sendJson(res, r.ok ? 200 : 400, r);
+  }
+
+  // ask a craftsman a question; NEAR AI answers in character (words only, it never moves money)
+  if (req.method === 'POST' && url.pathname === '/api/ai/ask') {
+    const body = await readBody(req);
+    if (!body.player || !state.players[body.player]) return sendJson(res, 400, { ok: false, error: 'join first' });
+    const card = shopCard(state, String(body.npc || ''));
+    if (!card) return sendJson(res, 400, { ok: false, error: 'unknown craftsman' });
+    const n = state.npcs[card.id];
+    if (n.ai) card.todaysPlan = n.ai.why;
+    const r = await askCraftsman(card, body.q, String(body.lang || 'en').slice(0, 5), body.player);
+    return sendJson(res, r.ok ? 200 : 400, r);
+  }
+
+  // haggling: the village rules decide, NEAR AI says it in the craftsman's voice
+  if (req.method === 'POST' && url.pathname === '/api/ai/haggle') {
+    const body = await readBody(req);
+    const r = playerAction(state, body.player, { type: 'haggle', npc: body.npc, good: body.good, side: body.side, qty: body.qty, offer: body.offer });
+    if (r.ok) {
+      const card = shopCard(state, r.npc), p = state.players[body.player];
+      r.line = card ? await haggleLine(card, r, String(body.lang || 'en').slice(0, 5), p.name, body.player) : null;
+      save(); broadcast();
+    }
+    return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/action') {
