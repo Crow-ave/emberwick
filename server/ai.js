@@ -379,3 +379,74 @@ export async function fetchAttestation() {
 }
 
 export const aiPublic = () => ({ status: ai.status, provider: ai.provider, model: ai.model, tee: !!ai.tee, attest: ai.attest || null, lastPlanAt: ai.lastPlanAt, planFailed: !!ai.planFailed, error: ai.lastError ? String(ai.lastError).slice(0, 120) : null });
+
+// ---------- a swap said in words: "send 0.3 NEAR to my Solana wallet as USDC" ----------
+// NEAR AI only reads the sentence into a form (direction, tokens, amount, addresses); the server checks every
+// value against the swap menu and the limits, and the player still sends the money from their own wallet.
+const SWAP_OUT = ['USDC', 'USDC-SOL', 'SOL', 'USDC-BASE']; // wNEAR on NEAR -> these
+const SWAP_IN = ['USDC-SOL', 'SOL', 'USDC-BASE'];          // these -> wNEAR on NEAR
+const ADDR = { near: /\b(?:(?:[a-z\d]+[-_])*[a-z\d]+\.)+near\b|\b[0-9a-f]{64}\b/gi, base: /\b0x[0-9a-fA-F]{40}\b/g, sol: /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g };
+export function addressesIn(text) {
+  const s = String(text || '');
+  const near = s.match(ADDR.near) || [], base = s.match(ADDR.base) || [];
+  const sol = (s.match(ADDR.sol) || []).filter((a) => !/^[0-9a-f]{64}$/i.test(a) && !near.includes(a));
+  return { near: near.map((a) => a.toLowerCase()), base, sol };
+}
+// a plain reader that needs no network: the number, the token right after it, and where it should go
+export function readSwapRule(text) {
+  const s = ' ' + String(text || '').toLowerCase().replace(/[’']/g, ' ') + ' ';
+  const m = s.match(/(\d+(?:[.,]\d+)?)\s*(w?near|usdc|sol)\b/);
+  const amount = m ? Number(m[1].replace(',', '.')) : null;
+  const src = m ? m[2] : null;
+  const has = (re) => re.test(s);
+  const onBase = has(/\bbase\b/), onSol = has(/\bsolana\b|\bphantom\b/);
+  let dir = null, from = null, to = null;
+  if (src === 'near' || src === 'wnear') {
+    dir = 'out';
+    const rest = s.slice(s.indexOf(m[0]) + m[0].length);
+    const wantSol = /\bsol\b/.test(rest), wantUsdc = /\busdc\b/.test(rest) || /\b(dolar|dollar|stable)/.test(rest);
+    if (wantUsdc) to = onBase ? 'USDC-BASE' : onSol ? 'USDC-SOL' : 'USDC';
+    else if (wantSol) to = 'SOL';
+    else if (onSol) to = 'SOL';
+  } else if (src === 'usdc') { dir = 'in'; from = onBase ? 'USDC-BASE' : 'USDC-SOL'; }
+  else if (src === 'sol') { dir = 'in'; from = 'SOL'; }
+  else if (has(/\bnear\b/) && has(/\b(al|get|buy|almak|istiyorum|want)\b/)) dir = 'in';
+  return { dir, from, to, amount };
+}
+export async function readSwapCommand(text, lang, playerId) {
+  const q = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!q) return { ok: false, code: 'aiswap.empty' };
+  const rule = readSwapRule(q);
+  const d = new Date().toISOString().slice(0, 10);
+  if (ai.day !== d) { ai.day = d; ai.calls = 0; ai.asked = {}; }
+  if (MODE === 'fake' || ai.status !== 'ready') return { ok: true, form: rule, say: null, by: 'rules' };
+  const n = ai.asked[playerId] || 0;
+  if (n >= ASK_PER_PLAYER) return { ok: true, form: rule, say: null, by: 'rules' };
+  ai.asked[playerId] = n + 1;
+  const sys = `You turn a player's sentence into a token swap form for NEAR Intents. Reply with ONE JSON object only:
+{"dir":"out"|"in"|null,"from":KEY|null,"to":KEY|null,"amount":number|null,"say":"one short sentence in language '${lang}'"}
+Menu (nothing else exists):
+- dir "out": the player sends wNEAR from NEAR. "to" is one of: "USDC" (USDC on NEAR), "USDC-SOL" (USDC on Solana), "SOL" (SOL on Solana), "USDC-BASE" (USDC on Base). "from" is null. amount is in NEAR, 0.1 to 5.
+- dir "in": the player pays from another chain and gets wNEAR on NEAR. "from" is one of: "USDC-SOL", "SOL", "USDC-BASE". "to" is null. amount is in the token paid: USDC 0.5 to 15, SOL 0.003 to 0.1.
+Rules: "SOL" as a token means SOL; "Solana" alone means the chain. If the player names an amount of the token they receive instead of the one they send, set amount null.
+If something is missing or not on the menu, set it null and say in "say" what is missing or not possible. Never invent numbers or addresses. "say" must not promise that money was sent.`;
+  try {
+    const raw = await chat([{ role: 'system', content: sys }, { role: 'user', content: q }], 400);
+    const o = jsonIn(raw) || {};
+    const form = {
+      dir: o.dir === 'out' || o.dir === 'in' ? o.dir : rule.dir,
+      from: SWAP_IN.includes(o.from) ? o.from : null,
+      to: SWAP_OUT.includes(o.to) ? o.to : null,
+      amount: Number(o.amount) > 0 ? Number(o.amount) : null,
+    };
+    if (form.dir === 'out') form.from = null; else form.to = null;
+    if (form.dir === 'out' && !form.to) form.to = rule.to;
+    if (form.dir === 'in' && !form.from) form.from = rule.from;
+    if (!form.amount && rule.dir === form.dir) form.amount = rule.amount;
+    const say = typeof o.say === 'string' ? o.say.replace(/\s+/g, ' ').trim().slice(0, 220) : null;
+    return { ok: true, form, say, by: 'ai', model: ai.model, tee: !!ai.tee };
+  } catch (e) {
+    ai.lastError = e.message;
+    return { ok: true, form: rule, say: null, by: 'rules' };
+  }
+}

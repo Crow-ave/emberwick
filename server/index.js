@@ -9,7 +9,7 @@ import { createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, 
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
-import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, fetchAttestation } from './ai.js';
+import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(root, 'public');
@@ -449,6 +449,41 @@ const server = http.createServer(async (req, res) => {
     if (!body.player || !state.players[body.player]) return sendJson(res, 400, { ok: false, error: 'join first' });
     const r = await realQuote(body.player, body.to, body.amount, body.refundTo, body.recipient, body.dir === 'in' ? body.from : null);
     return sendJson(res, r.ok ? 200 : 400, r);
+  }
+  // a swap said in words: NEAR AI fills the form, the server checks it, and if nothing is missing the real
+  // quote is taken right away (the player still sends the money from their own wallet)
+  if (req.method === 'POST' && url.pathname === '/api/ai/swap') {
+    const body = await readBody(req);
+    if (!body.player || !state.players[body.player]) return sendJson(res, 400, { ok: false, error: 'join first' });
+    const r = await readSwapCommand(body.text, String(body.lang || 'en').slice(0, 5), body.player);
+    if (!r.ok) return sendJson(res, 400, r);
+    const f = r.form, said = addressesIn(body.text), w = body.wallets && typeof body.wallets === 'object' ? body.wallets : {};
+    const wallet = (chain, k = 0) => (said[chain] || [])[k] || (k === 0 && recipientOk(chain, String(w[chain] || '')) ? String(w[chain]) : '');
+    const out = { dir: f.dir || 'out', from: f.from || 'USDC-SOL', to: f.to || 'USDC', amount: f.amount, refundTo: '', recipient: '' };
+    const missing = [];
+    if (!f.dir) missing.push('dir');
+    let srcChain = 'near', dstChain = 'near', min = REAL_MIN_NEAR, max = REAL_MAX_NEAR, sym = 'NEAR';
+    if (out.dir === 'out') {
+      if (!f.to) missing.push('to');
+      dstChain = REAL_TO[out.to][1];
+      out.refundTo = wallet('near');
+      out.recipient = dstChain === 'near' ? wallet('near', 1) || wallet('near') : wallet(dstChain);
+    } else {
+      if (!f.from) missing.push('from');
+      const d = REAL_FROM[out.from]; srcChain = d[1]; min = d[2]; max = d[3]; sym = d[0];
+      out.refundTo = wallet(srcChain); out.recipient = wallet('near');
+    }
+    if (!(out.amount > 0)) missing.push('amount');
+    else if (out.amount < min || out.amount > max) missing.push('range');
+    if (!recipientOk(srcChain, out.refundTo)) missing.push('wallet:' + srcChain);
+    if (!recipientOk(dstChain, out.recipient) && !(srcChain === dstChain && missing.includes('wallet:' + srcChain))) missing.push('wallet:' + dstChain);
+    if (!out.amount) out.amount = out.dir === 'out' ? 0.3 : REAL_FROM[out.from][0] === 'SOL' ? 0.005 : 0.5;
+    const reply = { ok: true, form: out, say: r.say, by: r.by, model: r.model || null, tee: !!r.tee, missing, limits: { min, max, sym } };
+    if (!missing.length) {
+      const q = await realQuote(body.player, out.to, out.amount, out.refundTo, out.recipient, out.dir === 'in' ? out.from : null);
+      if (q.ok) reply.swap = q.swap; else reply.quoteError = q.code || 'real.noQuote';
+    }
+    return sendJson(res, 200, reply);
   }
   if (url.pathname === '/api/intents/real/status') {
     const r = await realStatus(String(url.searchParams.get('depositAddress') || ''));

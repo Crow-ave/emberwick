@@ -730,3 +730,14 @@ table.mh td.in { color: #2d6a2d; font-weight: 600; } table.mh td.out { color: #a
 .sc-flip:hover { transform: rotate(180deg); }
 .sc-go { margin-top: 4px; font-size: 15px; padding: 10px; }
 .bflip:hover circle { fill: #c85f1c; }
+
+/* say the swap in words */
+.aiswap { background: linear-gradient(180deg, #f2f6ff, #eaf1ff); border: 1.5px solid #c9d7f5; border-radius: 14px; padding: 10px 12px; margin: 6px 0 10px; display: grid; gap: 6px; }
+.aiswap-head { font-weight: 800; font-size: 14px; color: #2c3e73; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.aiswap-tag { font-size: 10.5px; font-weight: 800; background: #2c3e73; color: #fff; border-radius: 999px; padding: 2px 8px; letter-spacing: .04em; }
+.aiswap .row { display: flex; gap: 6px; }
+.aiswap .row input { flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px; border-radius: 10px; }
+.aiswap-ex { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 12.5px; }
+.aiswap-reply { background: #fff; border-radius: 10px; padding: 8px 10px; display: grid; gap: 3px; }
+.aiswap-reply p { margin: 0; }
+.aiswap-say { font-style: italic; color: #3b4a6b; }
