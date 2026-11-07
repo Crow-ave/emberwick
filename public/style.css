@@ -706,3 +706,27 @@ table.mh td.in { color: #2d6a2d; font-weight: 600; } table.mh td.out { color: #a
 .modeswitch button.on { background: #e0742b; color: #fff; font-weight: 600; }
 #view.card-on .nearbar, #view.card-wide .nearbar { display: none !important; }
 .modeswitch.small2 button { font-size: 12px; padding: 4px 10px; }
+
+/* the real swap card: send on top, get below, a round flip button between */
+.swapcard { position: relative; display: grid; gap: 6px; margin: 4px 0 10px; }
+.sc-side { background: #fffdf8; border: 1.5px solid #ecd9bf; border-radius: 14px; padding: 10px 12px; display: grid; gap: 5px; }
+.sc-head { font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #b4531c; }
+.tokrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.tokchip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 5px; border: 1.5px solid #e6d6c0; border-radius: 999px; background: #fff; cursor: pointer; font: inherit; color: #2b2b2b; }
+.tokchip.on { border-color: #e0742b; background: #fff3e6; box-shadow: 0 0 0 2px #f6c9a3 inset; }
+.tokchip[disabled] { cursor: default; opacity: 1; border-color: #e0742b; background: #fff3e6; }
+.tc-coin { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 15px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18), inset 0 3px 0 rgba(255,255,255,.3); }
+.tc-txt { display: flex; flex-direction: column; line-height: 1.1; text-align: left; }
+.tc-txt b { font-size: 13.5px; }
+.tc-chain { font-size: 11px; font-weight: 700; }
+.sc-amt { display: flex; align-items: center; gap: 8px; }
+.sc-amt input { flex: 1; font-size: 22px; font-weight: 700; padding: 6px 10px; border-radius: 10px; }
+.sc-amt b { font-size: 16px; }
+.sc-est { font-size: 18px; font-weight: 700; color: #555; }
+.sc-lab { font-size: 12.5px; color: #555; margin-top: 4px; }
+.sc-side input { width: 100%; box-sizing: border-box; }
+.sc-hint { font-size: 11.5px; color: #8a7a66; }
+.sc-flip { justify-self: center; margin: -16px 0; z-index: 2; width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; background: #e0742b; color: #fff; font-size: 20px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.18); transition: transform .25s; }
+.sc-flip:hover { transform: rotate(180deg); }
+.sc-go { margin-top: 4px; font-size: 15px; padding: 10px; }
+.bflip:hover circle { fill: #c85f1c; }

@@ -907,31 +907,14 @@ function realSwapBox() {
   const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
   const shown = active || (sw && sw.status === 'SUCCESS');
   const dir = shown ? sw.dir || 'out' : f.dir || 'out';
-  // which way: from NEAR to another chain, or from another chain to NEAR (the picture turns round)
-  if (!active) h += `<div class="modeswitch small2"><button class="${dir === 'out' ? 'on' : ''}" data-realdir="out">Ⓝ NEAR → ${t('real.otherChain')}</button><button class="${dir === 'in' ? 'on' : ''}" data-realdir="in">${t('real.otherChain')} → Ⓝ NEAR</button></div>`;
   const moving = !!(sw && ['KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'].includes(sw.status));
-  if (dir === 'out') {
-    const d = REAL_DST[shown ? sw.to : f.to] || REAL_DST.USDC;
-    h += bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount }, { sym: d[0], chain: d[1], amount: shown ? sw.amountOut : null }, moving, 'real');
-  } else {
-    const src = REAL_SRC[shown ? sw.from : f.from] || REAL_SRC['USDC-SOL'];
-    h += bridgeSvg({ sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount }, { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountOut : null }, moving, 'real');
-  }
-  if (!active && dir === 'out') {
-    h += `<div class="realform"><label>${t('real.amount')}</label><div class="row"><input id="real-amount" type="number" min="0.1" max="5" step="0.1" value="${f.amount}"> <b>wNEAR</b></div>` +
-      `<label>${t('real.to')}</label><select id="real-to">${[['USDC', 'USDC · NEAR'], ['USDC-SOL', 'USDC · Solana'], ['SOL', 'SOL · Solana'], ['USDC-BASE', 'USDC · Base']].map(([k, l]) => `<option value="${k}"${f.to === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` +
-      `<label>${t('real.refund')}</label><input id="real-refund" placeholder="yourname.near" value="${esc(f.refundTo)}">` +
-      `<label>${t(f.to === 'USDC' ? 'real.recipNear' : f.to === 'USDC-BASE' ? 'real.recipBase' : 'real.recipSol')}</label><input id="real-recip" placeholder="${f.to === 'USDC' ? 'yourname.near' : f.to === 'USDC-BASE' ? '0x…' : 'Solana address'}" value="${esc(f.recipient)}">` +
-      `<button class="primary" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
-  }
-  if (!active && dir === 'in') {
-    const src = REAL_SRC[f.from] || REAL_SRC['USDC-SOL'], chainName = src[1] === 'sol' ? 'Solana' : 'Base';
-    h += `<div class="realform"><label>${t('real.payWith')}</label><select id="real-from">${[['USDC-SOL', 'USDC · Solana'], ['SOL', 'SOL · Solana'], ['USDC-BASE', 'USDC · Base']].map(([k, l]) => `<option value="${k}"${f.from === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` +
-      `<label>${t('real.amountIn', { sym: src[0], min: src[2], max: src[3] })}</label><div class="row"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${f.amount >= src[2] && f.amount <= src[3] ? f.amount : src[4]}"> <b>${src[0]}</b></div>` +
-      `<label>${t('real.refundIn', { chain: chainName })}</label><input id="real-refund" placeholder="${src[1] === 'base' ? '0x…' : 'Solana address'}" value="${esc(f.refundTo)}">` +
-      `<label>${t('real.recipIn')}</label><input id="real-recip" placeholder="yourname.near" value="${esc(f.recipient)}">` +
-      `<button class="primary" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
-  }
+  // the picture: what leaves on the left, what arrives on the right; the ⇄ on it turns the swap round
+  const src = dir === 'in' ? REAL_SRC[shown ? sw.from : f.from] || REAL_SRC['USDC-SOL'] : null;
+  const dst = dir === 'out' ? REAL_DST[shown ? sw.to : f.to] || REAL_DST.USDC : null;
+  const left = dir === 'out' ? { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount } : { sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount };
+  const right = dir === 'out' ? { sym: dst[0], chain: dst[1], amount: shown ? sw.amountOut : null } : { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountOut : null };
+  h += bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
+  if (!shown) h += swapCard(f, dir);
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
     const inDir = sw.dir === 'in', srcName = sw.fromChain === 'base' ? 'Base' : 'Solana';
@@ -950,6 +933,60 @@ function realSwapBox() {
   const done = view.realDone || [];
   if (done.length) h += `<p class="sub2">${t('real.doneTitle')}</p><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(x.amountOut))} ${x.to}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul>`;
   return h;
+}
+// a swap card like an exchange: "you send" on top, "you get" below, a ⇄ button between them
+const CH_NAME = { near: 'NEAR', sol: 'Solana', base: 'Base' };
+const ADDR_PH = { near: 'yourname.near', sol: 'Solana address (e.g. 7xKX…)', base: '0x…' };
+function tokChip(kind, key, sym, chain, on) {
+  const c = ASSET_COLOR[sym] || '#556', ch = chainOf(chain);
+  return `<button type="button" class="tokchip${on ? ' on' : ''}" ${kind ? `data-realpick="${kind}:${key}"` : 'disabled'}><span class="tc-coin" style="background:${c}">${GLYPH[sym] || esc(sym[0])}</span><span class="tc-txt"><b>${esc(sym)}</b><span class="tc-chain" style="color:${ch ? ch[1] : '#555'}">${t('real.onChain', { chain: ch ? ch[0] : chain })}</span></span></button>`;
+}
+function swapCard(f, dir) {
+  const out = dir === 'out';
+  const src = out ? ['wNEAR', 'near', 0.1, 5, 0.3] : REAL_SRC[f.from] || REAL_SRC['USDC-SOL'];
+  const dst = out ? REAL_DST[f.to] || REAL_DST.USDC : ['wNEAR', 'near'];
+  const amt = f.amount >= src[2] && f.amount <= src[3] ? f.amount : src[4];
+  const sendChips = out ? tokChip(null, 'wNEAR', 'wNEAR', 'near', true)
+    : Object.entries(REAL_SRC).map(([k, v]) => tokChip('from', k, v[0], v[1], f.from === k)).join('');
+  const getChips = out ? Object.entries(REAL_DST).map(([k, v]) => tokChip('to', k, v[0], v[1], f.to === k)).join('')
+    : tokChip(null, 'wNEAR', 'wNEAR', 'near', true);
+  return `<div class="swapcard">` +
+    `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div><div class="tokrow">${sendChips}</div>` +
+    `<div class="sc-amt"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${amt}"><b>${esc(src[0])}</b></div>` +
+    `<div class="sc-hint">${t('real.range', { min: src[2], max: src[3], sym: src[0] })}</div>` +
+    `<label class="sc-lab">${t('real.fromWallet', { chain: CH_NAME[src[1]] })}</label><input id="real-refund" placeholder="${esc(ADDR_PH[src[1]])}" value="${esc(f.refundTo)}">` +
+    `<div class="sc-hint">${t('real.fromHint')}</div></div>` +
+    `<button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
+    `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div><div class="tokrow">${getChips}</div>` +
+    `<div class="sc-est">≈ ? <b>${esc(dst[0])}</b> <span class="muted small">${t('real.est')}</span></div>` +
+    `<label class="sc-lab">${t('real.toWallet', { chain: CH_NAME[dst[1]] })}</label><input id="real-recip" placeholder="${esc(ADDR_PH[dst[1]])}" value="${esc(f.recipient)}">` +
+    `<div class="sc-hint">${t('real.toHint', { sym: dst[0], chain: CH_NAME[dst[1]] })}</div></div>` +
+    `<button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
+}
+// turn the swap round, keeping the token and the wallets that still fit
+function flipReal() {
+  readRealForm();
+  const f = ui.real;
+  if (f.dir === 'out') {
+    const d = REAL_DST[f.to] || REAL_DST.USDC;
+    const from = d[1] === 'near' ? 'USDC-SOL' : f.to;
+    const s0 = REAL_SRC[from];
+    ui.real = { ...f, dir: 'in', from, amount: s0[4], refundTo: d[1] === s0[1] ? f.recipient : '', recipient: f.refundTo };
+  } else {
+    const s0 = REAL_SRC[f.from] || REAL_SRC['USDC-SOL'];
+    ui.real = { ...f, dir: 'out', to: f.from, amount: 0.3, refundTo: f.recipient, recipient: f.refundTo };
+    if (!REAL_DST[ui.real.to]) ui.real.to = 'USDC';
+    if ((REAL_DST[ui.real.to] || [])[1] !== s0[1]) ui.real.recipient = '';
+  }
+  play('pick');
+  render();
+}
+function pickReal(spec) {
+  readRealForm();
+  const [kind, key] = spec.split(':'), f = ui.real;
+  if (kind === 'from' && f.from !== key) { const old = REAL_SRC[f.from] || [], s0 = REAL_SRC[key]; ui.real = { ...f, from: key, amount: s0[4], refundTo: old[1] === s0[1] ? f.refundTo : '' }; }
+  if (kind === 'to' && f.to !== key) { const old = REAL_DST[f.to] || [], d = REAL_DST[key]; ui.real = { ...f, to: key, recipient: old[1] === d[1] ? f.recipient : '' }; }
+  render();
 }
 function readRealForm() {
   const g = (id) => { const el = $(id); return el ? el.value : ''; };
@@ -1426,9 +1463,10 @@ function bridgeSvg(from, to, live, mode) {
     `<text x="220" y="88" text-anchor="middle" font-size="10" fill="#7a6b58">${esc(t('bridge.solvers'))}</text>` +
     [196, 220, 244].map((x, i) => `<circle cx="${x}" cy="56" r="3" fill="#e0742b">${live ? `<animate attributeName="opacity" values="1;.2;1" dur="1.2s" begin="${i * 0.3}s" repeatCount="indefinite"/>` : ''}</circle>`).join('') + `</g>` +
     node(55, from, 'f') + node(385, to, 't');
+  if (mode === 'real-flip') svg += `<g class="bflip" data-realflip="1" style="cursor:pointer"><title>${esc(t('real.flip'))}</title><circle cx="220" cy="24" r="17" fill="#e0742b" stroke="#fff" stroke-width="3"/><text x="220" y="31" text-anchor="middle" font-size="20" font-weight="800" fill="#fff">⇄</text></g>`;
   if (mode === 'plot' || mode === 'house') svg += `<g transform="translate(408 40)"><polygon points="0,10 12,0 24,10" fill="#c0443a"/><rect x="3" y="10" width="18" height="13" fill="#f3e3c4"/></g>`;
   svg += `</svg>`;
-  if (mode === 'real') return `<div class="bridgebox">${svg}</div>`;
+  if (mode === 'real' || mode === 'real-flip') return `<div class="bridgebox">${svg}</div>`;
   const steps = mode === 'swap'
     ? [['quote', true], ['sign', false], ['solve', false], ['out', false]]
     : [['quote', true], ['deposit', false], ['solve', false], ['arrive', false], [mode, false]];
@@ -2262,6 +2300,9 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  if (e.target.closest('[data-realflip]')) { flipReal(); return; }
+  const rpk = e.target.closest('[data-realpick]');
+  if (rpk) { pickReal(rpk.dataset.realpick); return; }
   const rd = e.target.closest('[data-realdir]');
   if (rd) { readRealForm(); ui.real = { ...ui.real, dir: rd.dataset.realdir, refundTo: '', recipient: '', amount: rd.dataset.realdir === 'in' ? 0.5 : 0.3 }; render(); return; }
   const em = e.target.closest('[data-exmode]');
