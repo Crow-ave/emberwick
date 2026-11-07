@@ -228,7 +228,7 @@ const shortUsd = (v) => { const n = Number(v); return Number.isFinite(n) ? Numbe
 const nearAcct = (a) => /^(([a-z\d]+[-_])*[a-z\d]+\.)+near$/.test(a) || /^[0-9a-f]{64}$/.test(a);
 const recipientOk = (chain, a) => chain === 'near' ? nearAcct(a) : chain === 'sol' ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) : chain === 'base' ? /^0x[0-9a-fA-F]{40}$/.test(a) : false;
 const realAsk = new Map(); // player -> times of recent real quotes
-async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null) {
+async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null, opts = {}) {
   if (fromKey) return realQuoteIn(pid, fromKey, amount, refundTo, recipient);
   const def = REAL_TO[toKey];
   if (!def) return { ok: false, error: 'Unknown destination.', code: 'real.badTo' };
@@ -238,9 +238,11 @@ async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null
   if (def[1] === 'near') recipient = recipient.toLowerCase();
   if (!nearAcct(refundTo)) return { ok: false, error: 'Refund account must be a NEAR mainnet account (name.near).', code: 'real.badRefund' };
   if (!recipientOk(def[1], recipient)) return { ok: false, error: 'That address does not fit the destination chain.', code: 'real.badRecipient' };
-  const times = (realAsk.get(pid) || []).filter((x) => Date.now() - x < 3600000);
-  if (times.length >= 5) return { ok: false, error: 'Too many real quotes this hour.', code: 'real.limit' };
-  realAsk.set(pid, [...times, Date.now()]);
+  if (!opts.noLimit) {
+    const times = (realAsk.get(pid) || []).filter((x) => Date.now() - x < 3600000);
+    if (times.length >= 5) return { ok: false, error: 'Too many real quotes this hour.', code: 'real.limit' };
+    realAsk.set(pid, [...times, Date.now()]);
+  }
   try {
     await intentsTokens();
     const all = tokenCache.all || [];
@@ -494,13 +496,40 @@ const server = http.createServer(async (req, res) => {
     const r = await realStatus(String(url.searchParams.get('depositAddress') || ''));
     return sendJson(res, r.ok ? 200 : 400, r);
   }
+  // split one NEAR send into 2-5 parts, each to its own token, chain and receiver; all quotes or none
+  if (req.method === 'POST' && url.pathname === '/api/intents/real/multi') {
+    const body = await readBody(req);
+    if (!body.player || !state.players[body.player]) return sendJson(res, 400, { ok: false, error: 'join first' });
+    const legs = Array.isArray(body.legs) ? body.legs.slice(0, 6) : [];
+    if (legs.length < 2 || legs.length > 5) return sendJson(res, 400, { ok: false, error: '2 to 5 receivers', code: 'split.count' });
+    const total = legs.reduce((a, l) => a + Number(l.amount || 0), 0);
+    if (!(total <= REAL_MAX_NEAR + 1e-9)) return sendJson(res, 400, { ok: false, error: `At most ${REAL_MAX_NEAR} NEAR in all.`, code: 'split.tooMuch' });
+    const times = (realAsk.get(body.player) || []).filter((x) => Date.now() - x < 3600000);
+    if (times.length >= 5) return sendJson(res, 400, { ok: false, error: 'Too many real quotes this hour.', code: 'real.limit' });
+    realAsk.set(body.player, [...times, Date.now()]); // the whole split counts as one quote
+    const batch = 'b' + Date.now().toString(36), made = [];
+    for (let i = 0; i < legs.length; i++) {
+      const l = legs[i];
+      const q = await realQuote(body.player, l.to, l.amount, body.refundTo, l.recipient, null, { noLimit: true });
+      if (!q.ok) {
+        for (const m of made) { m.status = 'CANCELLED'; m.cancelledAt = Date.now(); }
+        save();
+        return sendJson(res, 400, { ...q, leg: i + 1 });
+      }
+      q.swap.batch = batch; q.swap.leg = i + 1; made.push(q.swap);
+    }
+    save();
+    return sendJson(res, 200, { ok: true, batch, swaps: made });
+  }
   // give up a swap before any money was sent (a wrong address, a change of mind); the deposit address just expires
   if (req.method === 'POST' && url.pathname === '/api/intents/real/cancel') {
     const body = await readBody(req);
     const swap = (state.realSwaps || []).find((x) => x.depositAddress === body.depositAddress && x.player === body.player);
     if (!swap) return sendJson(res, 400, { ok: false, error: 'unknown swap' });
-    if (swap.status !== 'PENDING_DEPOSIT' || swap.sentTx) return sendJson(res, 400, { ok: false, error: 'money is already on the way', code: 'real.cantCancel' });
-    swap.status = 'CANCELLED'; swap.cancelledAt = Date.now(); save();
+    const group = swap.batch ? state.realSwaps.filter((x) => x.batch === swap.batch) : [swap];
+    if (group.some((x) => x.status !== 'PENDING_DEPOSIT' || x.sentTx)) return sendJson(res, 400, { ok: false, error: 'money is already on the way', code: 'real.cantCancel' });
+    for (const x of group) { x.status = 'CANCELLED'; x.cancelledAt = Date.now(); }
+    save();
     return sendJson(res, 200, { ok: true });
   }
   // a fresh Solana blockhash for the player's wallet to sign the deposit with (public Solana RPCs often refuse browsers)

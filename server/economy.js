@@ -2149,8 +2149,8 @@ export function publicView(state, playerId) {
   return {
     aiLog: (state.aiLog || []).map(({ json, ...x }) => x),
     onchain: { tx: (state.onchain && state.onchain.tx) || 0, aiPlans: state.aiDays || 0 },
-    realSwaps: playerId ? (state.realSwaps || []).filter((x) => x.player === playerId && x.status !== 'CANCELLED').slice(0, 3) : [],
-    realDone: (state.realSwaps || []).filter((x) => x.status === 'SUCCESS').slice(0, 5).map((x) => ({ name: (state.players[x.player] || {}).name || '?', amountIn: x.amountIn, amountOut: x.amountOut, to: x.to, fromSym: x.dir === 'in' ? x.fromSym : 'NEAR', dir: x.dir || 'out', origin: x.origin || [], dest: x.dest || [] })),
+    realSwaps: playerId ? (state.realSwaps || []).filter((x) => x.player === playerId && x.status !== 'CANCELLED').slice(0, 8) : [],
+    realDone: (state.realSwaps || []).filter((x) => x.status === 'SUCCESS').slice(0, 8).map((x) => ({ name: (state.players[x.player] || {}).name || '?', amountIn: x.amountIn, amountOut: x.amountOut, to: x.to, fromSym: x.dir === 'in' ? x.fromSym : 'NEAR', dir: x.dir || 'out', origin: x.origin || [], dest: x.dest || [] })),
     token: TOKEN,
     rev: state.rev || 0,
     day: state.day,

@@ -76,6 +76,26 @@ export async function nearSend(depositAddress, amount) {
   return out && out.transaction ? out.transaction.hash : null; // a wallet that goes to another page returns nothing here
 }
 
+// several deposits in ONE transaction (one approval): register each address, wrap the total once, send each part.
+// Gas is kept small per action so up to 5 parts fit in one transaction (the limit is 300 TGas).
+export async function nearSendMany(parts) {
+  if (!Array.isArray(parts) || !parts.length || parts.length > 5) throw new Error('1 to 5 parts');
+  const s = await near();
+  const me = await nearAccount();
+  if (!me) throw new Error('connect a NEAR wallet first');
+  const units = parts.map((p) => BigInt(toUnits(p.amount, 24)));
+  const total = units.reduce((a, b) => a + b, 0n);
+  const fc = (methodName, args, deposit, gas) => ({ type: 'FunctionCall', params: { methodName, args, gas, deposit } });
+  const G10 = '10000000000000', G15 = '15000000000000';
+  const actions = [fc('storage_deposit', { account_id: me, registration_only: true }, STORAGE, G10)];
+  for (const p of parts) actions.push(fc('storage_deposit', { account_id: p.depositAddress, registration_only: true }, STORAGE, G10));
+  actions.push(fc('near_deposit', {}, total.toString(), G10));
+  parts.forEach((p, i) => actions.push(fc('ft_transfer', { receiver_id: p.depositAddress, amount: units[i].toString(), memo: 'Emberwick split ' + (i + 1) }, '1', G15)));
+  const w = await s.wallet();
+  const out = await w.signAndSendTransaction({ signerId: me, receiverId: WRAP, actions });
+  return out && out.transaction ? out.transaction.hash : null;
+}
+
 // ---------- Solana (Phantom or any wallet that injects window.solana) ----------
 const sol = () => (window.phantom && window.phantom.solana) || window.solana || null;
 export const hasSolana = () => !!sol();
