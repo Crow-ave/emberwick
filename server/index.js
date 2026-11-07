@@ -221,6 +221,10 @@ const REAL_TO = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SO
 // the other way: pay from another chain and get wNEAR on NEAR (limits in that token)
 const REAL_FROM = { 'USDC-SOL': ['USDC', 'sol', 0.5, 15], SOL: ['SOL', 'sol', 0.003, 0.1], 'USDC-BASE': ['USDC', 'base', 0.5, 15] };
 const REAL_MAX_NEAR = 5, REAL_MIN_NEAR = 0.1;
+const SOL_RPC = process.env.EMBERWICK_SOLRPC || 'https://api.mainnet-beta.solana.com';
+// 1Click gives amounts with up to 24 decimals; keep a readable number (6 decimals under 1, 4 above)
+const shortAmt = (v) => { const n = Number(v); return Number.isFinite(n) ? Number(n.toFixed(n >= 100 ? 2 : n >= 1 ? 4 : 6)) : v; };
+const shortUsd = (v) => { const n = Number(v); return Number.isFinite(n) ? Number(n.toFixed(2)) : v; };
 const nearAcct = (a) => /^(([a-z\d]+[-_])*[a-z\d]+\.)+near$/.test(a) || /^[0-9a-f]{64}$/.test(a);
 const recipientOk = (chain, a) => chain === 'near' ? nearAcct(a) : chain === 'sol' ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) : chain === 'base' ? /^0x[0-9a-fA-F]{40}$/.test(a) : false;
 const realAsk = new Map(); // player -> times of recent real quotes
@@ -251,7 +255,7 @@ async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null
     }) });
     const qq = q.quote || {};
     if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
-    const swap = { id: qq.depositAddress, player: pid, to: toKey, chain: def[1], amountIn: amount, amountOut: qq.amountOutFormatted || qq.amountOut, usdOut: qq.amountOutUsd, usdIn: qq.amountInUsd,
+    const swap = { id: qq.depositAddress, player: pid, to: toKey, chain: def[1], amountIn: amount, amountOut: shortAmt(qq.amountOutFormatted || qq.amountOut), usdOut: shortUsd(qq.amountOutUsd), usdIn: shortUsd(qq.amountInUsd),
       depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
     state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
     save();
@@ -283,7 +287,7 @@ async function realQuoteIn(pid, fromKey, amount, refundTo, recipient) {
     }) });
     const qq = q.quote || {};
     if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
-    const swap = { id: qq.depositAddress, player: pid, dir: 'in', from: fromKey, fromSym: def[0], fromChain: def[1], to: 'wNEAR', chain: 'near', amountIn: amount, amountOut: qq.amountOutFormatted || qq.amountOut, usdOut: qq.amountOutUsd, usdIn: qq.amountInUsd,
+    const swap = { id: qq.depositAddress, player: pid, dir: 'in', from: fromKey, fromSym: def[0], fromChain: def[1], to: 'NEAR', chain: 'near', amountIn: amount, amountOut: shortAmt(qq.amountOutFormatted || qq.amountOut), usdOut: shortUsd(qq.amountOutUsd), usdIn: shortUsd(qq.amountInUsd),
       depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
     state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
     save();
@@ -300,12 +304,12 @@ async function realStatus(addr) {
     const links = (list) => (list || []).map((x) => typeof x === 'string' ? { hash: x } : { hash: x.hash, url: x.explorerUrl }).filter((x) => x.hash);
     swap.status = st.status || swap.status;
     swap.origin = links(d.originChainTxHashes); swap.dest = links(d.destinationChainTxHashes);
-    if (d.amountOutFormatted) swap.amountOut = d.amountOutFormatted;
+    if (d.amountOutFormatted) swap.amountOut = shortAmt(d.amountOutFormatted);
     if (swap.status === 'SUCCESS' && !swap.logged) {
       swap.logged = true;
       const p = state.players[swap.player], who = p ? p.name : 'A villager';
       const tx = (swap.dest[0] || swap.origin[0] || {}).hash || '';
-      const fromTxt = swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain})` : `${swap.amountIn} NEAR`, toTxt = swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
+      const fromTxt = swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain === 'base' ? 'Base' : 'Solana'})` : `${swap.amountIn} NEAR`, toTxt = swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
       addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${fromTxt} -> ${toTxt}.`, 'good', 'log.realSwap2', { name: who, a: fromTxt, b: toTxt });
       // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
       transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${fromTxt} -> ${toTxt}, tx ${tx.slice(0, 64)}` });
@@ -495,14 +499,24 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const swap = (state.realSwaps || []).find((x) => x.depositAddress === body.depositAddress && x.player === body.player);
     if (!swap) return sendJson(res, 400, { ok: false, error: 'unknown swap' });
-    if (swap.status !== 'PENDING_DEPOSIT') return sendJson(res, 400, { ok: false, error: 'money is already on the way', code: 'real.cantCancel' });
+    if (swap.status !== 'PENDING_DEPOSIT' || swap.sentTx) return sendJson(res, 400, { ok: false, error: 'money is already on the way', code: 'real.cantCancel' });
     swap.status = 'CANCELLED'; swap.cancelledAt = Date.now(); save();
     return sendJson(res, 200, { ok: true });
+  }
+  // a fresh Solana blockhash for the player's wallet to sign the deposit with (public Solana RPCs often refuse browsers)
+  if (url.pathname === '/api/sol/blockhash') {
+    try {
+      const r = await getJson(SOL_RPC, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash', params: [{ commitment: 'finalized' }] }) });
+      const bh = r && r.result && r.result.value && r.result.value.blockhash;
+      if (!bh) throw new Error('no blockhash');
+      return sendJson(res, 200, { ok: true, blockhash: bh });
+    } catch (e) { return sendJson(res, 502, { ok: false, error: String(e.message || e).slice(0, 120) }); }
   }
   if (req.method === 'POST' && url.pathname === '/api/intents/real/submit') {
     const body = await readBody(req);
     const swap = (state.realSwaps || []).find((x) => x.depositAddress === body.depositAddress);
     if (!swap || !/^[A-Za-z0-9]{20,100}$/.test(String(body.txHash || ''))) return sendJson(res, 400, { ok: false, error: 'check the transaction hash' });
+    swap.sentTx = String(body.txHash); save(); // the player sent it: no cancelling from here on
     try { await getJson(`${ONECLICK}/deposit/submit`, { method: 'POST', body: JSON.stringify({ depositAddress: swap.depositAddress, txHash: String(body.txHash) }) }); return sendJson(res, 200, { ok: true }); }
     catch (e) { return sendJson(res, 400, { ok: false, error: String(e.message || e).slice(0, 160) }); }
   }

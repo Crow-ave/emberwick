@@ -895,12 +895,16 @@ async function openMoney(acct) {
 }
 
 // ---------- a REAL NEAR Intents swap on mainnet (small amounts, the player's own wallet) ----------
+// a readable amount: 6 decimals under 1, 4 above (1Click can give 24)
+const amt = (v) => { const n = Number(v); return Number.isFinite(n) && v !== null && v !== '' ? String(Number(n.toFixed(n >= 100 ? 2 : n >= 1 ? 4 : 6))) : v; };
 const REAL_STEPS = ['PENDING_DEPOSIT', 'KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'];
 const NEAR_MAIN = 'https://nearblocks.io';
 const REAL_SRC = { 'USDC-SOL': ['USDC', 'sol', 0.5, 15, 0.5], SOL: ['SOL', 'sol', 0.003, 0.1, 0.005], 'USDC-BASE': ['USDC', 'base', 0.5, 15, 0.5] };
 const REAL_DST = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SOL', 'sol'], 'USDC-BASE': ['USDC', 'base'] };
+// the player's current real swap (a finished one they put away with "New swap" stays away)
+const curSwap = () => (view.realSwaps || []).filter((x) => !(ui.realDismissed || []).includes(x.depositAddress))[0];
 function realSwapBox() {
-  const me = view.player, sw = (view.realSwaps || [])[0];
+  const me = view.player, sw = curSwap();
   let h = `<p class="sub2">⚡ ${t('real.title')}</p><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p>`;
   if (!me) return h + `<p class="muted">${t('toast.join')}</p>`;
   const f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
@@ -912,18 +916,18 @@ function realSwapBox() {
   const src = dir === 'in' ? REAL_SRC[shown ? sw.from : f.from] || REAL_SRC['USDC-SOL'] : null;
   const dst = dir === 'out' ? REAL_DST[shown ? sw.to : f.to] || REAL_DST.USDC : null;
   const left = dir === 'out' ? { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount } : { sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount };
-  const right = dir === 'out' ? { sym: dst[0], chain: dst[1], amount: shown ? sw.amountOut : null } : { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountOut : null };
+  const right = dir === 'out' ? { sym: dst[0], chain: dst[1], amount: shown ? amt(sw.amountOut) : null } : { sym: 'NEAR', chain: 'near', amount: shown ? amt(sw.amountOut) : null };
   if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) h += aiSwapBox();
   h += bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
   if (!shown) h += swapCard(f, dir);
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
     const inDir = sw.dir === 'in', srcName = sw.fromChain === 'base' ? 'Base' : 'Solana';
-    h += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: sw.amountOut }) : t('real.quote', { a: sw.amountIn, b: sw.amountOut, to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${sw.usdOut})` : ''}</p>`;
-    if (sw.status === 'PENDING_DEPOSIT') h += `<p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
+    h += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
+    if (sw.status === 'PENDING_DEPOSIT') h += walletSendBox(sw) + `<p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
       (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
       `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div>` +
-      (ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
+      (sw.sentTx ? '' : ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
         : `<button class="linkbtn realcancel-btn" data-realcancel="ask">✕ ${t('real.cancel')}</button>`);
     h += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (bad) h += `<p class="closed small">${t('real.s.' + sw.status)}</p>`;
@@ -934,7 +938,7 @@ function realSwapBox() {
     if (sw.status === 'SUCCESS' || bad) h += `<button data-realnew="1">${t('real.again')}</button>`;
   }
   const done = view.realDone || [];
-  if (done.length) h += `<p class="sub2">${t('real.doneTitle')}</p><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(x.amountOut))} ${x.to}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul>`;
+  if (done.length) h += `<p class="sub2">${t('real.doneTitle')}</p><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul>`;
   return h;
 }
 // a swap card like an exchange: "you send" on top, "you get" below, a ⇄ button between them
@@ -947,15 +951,15 @@ function tokChip(kind, key, sym, chain, on) {
 function swapCard(f, dir) {
   const out = dir === 'out';
   const src = out ? ['wNEAR', 'near', 0.1, 5, 0.3] : REAL_SRC[f.from] || REAL_SRC['USDC-SOL'];
-  const dst = out ? REAL_DST[f.to] || REAL_DST.USDC : ['wNEAR', 'near'];
+  const dst = out ? REAL_DST[f.to] || REAL_DST.USDC : ['NEAR', 'near'];
   const amt = f.amount >= src[2] && f.amount <= src[3] ? f.amount : src[4];
   const need = ((ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.missing) || []);
   const sw0 = savedWallets(), refundV = f.refundTo || sw0[src[1]] || '', recipV = f.recipient || (dst[1] !== src[1] ? sw0[dst[1]] || '' : '');
   const sendChips = out ? tokChip(null, 'wNEAR', 'wNEAR', 'near', true)
     : Object.entries(REAL_SRC).map(([k, v]) => tokChip('from', k, v[0], v[1], f.from === k)).join('');
   const getChips = out ? Object.entries(REAL_DST).map(([k, v]) => tokChip('to', k, v[0], v[1], f.to === k)).join('')
-    : tokChip(null, 'wNEAR', 'wNEAR', 'near', true);
-  return `<div class="swapcard">` +
+    : tokChip(null, 'NEAR', 'NEAR', 'near', true);
+  return walletRow(src[1], dst[1]) + `<div class="swapcard">` +
     `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div><div class="tokrow">${sendChips}</div>` +
     `<div class="sc-amt"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${amt}"><b>${esc(src[0])}</b></div>` +
     `<div class="sc-hint">${t('real.range', { min: src[2], max: src[3], sym: src[0] })}</div>` +
@@ -1018,7 +1022,7 @@ function aiSwapBox() {
   if (!a.text && !a.reply) h += `<div class="aiswap-ex">${[ex, t('aiswap.example2'), t('aiswap.example3')].map((x) => `<button type="button" class="linkbtn" data-aiswapex="${esc(x)}">“${esc(x)}”</button>`).join('')}</div>`;
   const r = a.reply;
   if (r) {
-    const f = r.form, src = f.dir === 'in' ? REAL_SRC[f.from] : ['wNEAR', 'near'], dst = f.dir === 'in' ? ['wNEAR', 'near'] : REAL_DST[f.to];
+    const f = r.form, src = f.dir === 'in' ? REAL_SRC[f.from] : ['wNEAR', 'near'], dst = f.dir === 'in' ? ['NEAR', 'near'] : REAL_DST[f.to];
     h += `<div class="aiswap-reply"><p><b>${t('aiswap.understood')}</b> ${f.amount} ${esc(src[0])} (${CH_NAME[src[1]]}) → ${esc(dst[0])} (${CH_NAME[dst[1]]})</p>`;
     if (r.say) h += `<p class="aiswap-say">“${esc(r.say)}”</p>`;
     const shortA = (x) => x ? (x.length > 22 ? x.slice(0, 8) + '…' + x.slice(-6) : x) : '—';
@@ -1042,6 +1046,88 @@ async function aiSwapNow() {
   if (r.swap) { rememberWallets(ui.real); view.realSwaps = [r.swap, ...(view.realSwaps || [])]; pollReal(r.swap.depositAddress); play('coin'); }
   render();
 }
+// ---------- the player's own wallets (loaded only when used) ----------
+// connecting only fills the address; every transfer is approved by the player in their wallet
+let WL = null;
+async function walletLib() {
+  if (!WL) {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/vendor/wallets.css'; document.head.appendChild(l);
+    WL = await import('/vendor/wallets.js');
+    try { localStorage.setItem('ew.walletUsed', '1'); } catch {}
+  }
+  return WL;
+}
+const WALLET_NAME = { near: 'Meteor / MyNearWallet', sol: 'Phantom', base: 'MetaMask' };
+const shortAddr = (x) => (x && x.length > 22 ? x.slice(0, 6) + '…' + x.slice(-5) : x || '');
+function walletRow(srcChain, dstChain) {
+  const chains = [...new Set([srcChain, dstChain])];
+  const w = ui.wallet || {};
+  return `<div class="walletrow"><span class="wr-title">👛 ${t('wallet.title')}</span>${chains.map((c) => w[c]
+    ? `<span class="wr-on" title="${esc(w[c])}">✓ ${esc(CH_NAME[c])}: <b>${esc(shortAddr(w[c]))}</b>${c === 'near' ? ` <button type="button" class="linkbtn" data-walletoff="near">${t('wallet.off')}</button>` : ''}</span>`
+    : `<button type="button" class="wr-btn" data-wallet="${c}">🔗 ${t('wallet.connect', { chain: CH_NAME[c], w: WALLET_NAME[c] })}</button>`).join('')}<div class="sc-hint">${t('wallet.hint')}</div></div>`;
+}
+function walletSendBox(sw) {
+  if (sw.status !== 'PENDING_DEPOSIT') return '';
+  const chain = sw.dir === 'in' ? sw.fromChain : 'near', sym = sw.dir === 'in' ? sw.fromSym : 'NEAR', w = (ui.wallet || {})[chain];
+  if (sw.sentTx) return `<p class="ok small">✓ ${t('wallet.sentTx', { h: esc(shortAddr(sw.sentTx)) })}</p>`;
+  if (!w) return `<div class="walletsend"><button class="primary" data-wallet="${chain}">🔗 ${t('wallet.needConnect', { w: WALLET_NAME[chain] })}</button></div>`;
+  const differs = chain === 'near' && sw.refundTo && sw.refundTo !== w;
+  return `<div class="walletsend"><button class="primary big" data-walletsend="1" ${ui.walletBusy ? 'disabled' : ''}>${ui.walletBusy ? t('wallet.sending') : '👛 ' + t('wallet.send')}</button>` +
+    `<p class="small">${chain === 'near' ? t('wallet.sendNear', { a: sw.amountIn }) : t('wallet.sendOther', { a: sw.amountIn, sym })}</p>` +
+    (differs ? `<p class="closed small">${t('wallet.differs', { a: esc(w), b: esc(sw.refundTo) })}</p>` : '') +
+    `<p class="muted small">${t('wallet.orManual')}</p></div>`;
+}
+async function connectWallet(chain) {
+  try {
+    const L = await walletLib();
+    const a = chain === 'near' ? await L.nearConnect() : chain === 'sol' ? await L.solConnect() : await L.evmConnect();
+    if (!a) return;
+    ui.wallet = { ...(ui.wallet || {}), [chain]: a };
+    readRealForm();
+    const f = ui.real, src = f.dir === 'in' ? (REAL_SRC[f.from] || [])[1] : 'near', dst = f.dir === 'in' ? 'near' : (REAL_DST[f.to] || [])[1];
+    if (chain === src) f.refundTo = a;
+    if (chain === dst && (dst !== src || !f.recipient)) f.recipient = a;
+    rememberWallets(f);
+    toast(t('wallet.connected', { a: shortAddr(a) }), 'win');
+  } catch (e) { toast(t('wallet.fail', { why: esc(String((e && e.message) || e).slice(0, 100)) }), 'bad'); }
+  render();
+}
+async function walletSend() {
+  const sw = curSwap();
+  if (!sw || sw.status !== 'PENDING_DEPOSIT' || ui.walletBusy) return;
+  const chain = sw.dir === 'in' ? sw.fromChain : 'near';
+  ui.walletBusy = true; render();
+  try {
+    const L = await walletLib();
+    let hash;
+    if (chain === 'near') hash = await L.nearSend(sw.depositAddress, String(sw.amountIn));
+    else if (chain === 'sol') {
+      const bh = await (await fetch('/api/sol/blockhash')).json().catch(() => ({}));
+      if (!bh.ok) throw new Error(t('wallet.noBlockhash'));
+      hash = await L.solSend(sw.depositAddress, sw.fromSym, String(sw.amountIn), bh.blockhash);
+    } else hash = await L.evmSendUsdc(sw.depositAddress, String(sw.amountIn));
+    if (hash) { sw.sentTx = hash; post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: hash }); }
+    play('coin'); toast(t('wallet.sent'), 'win');
+    pollReal(sw.depositAddress);
+  } catch (e) { toast(t('wallet.sendFail', { why: esc(String((e && e.message) || e).slice(0, 100)) }), 'bad'); }
+  ui.walletBusy = false; render();
+}
+// back from a wallet that opens its own page (MyNearWallet): it returns with the transaction hash in the address
+const nearReturnHash = (() => { try { const q = new URLSearchParams(location.search), h = q.get('transactionHashes'); if (h || q.get('errorCode')) history.replaceState(null, '', location.pathname); return h ? h.split(',').pop() : null; } catch { return null; } })();
+function afterNearReturn() {
+  if (!nearReturnHash || ui.nearReturnDone || !view || !view.realSwaps) return;
+  const sw = view.realSwaps.find((x) => x.status === 'PENDING_DEPOSIT' && (x.dir || 'out') === 'out');
+  if (!sw) return;
+  ui.nearReturnDone = true; sw.sentTx = nearReturnHash;
+  post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: nearReturnHash });
+  toast(t('wallet.sent'), 'win'); pollReal(sw.depositAddress);
+}
+// a NEAR wallet connected before stays connected: check quietly, only if one was used in this browser
+(function restoreWallet() {
+  let used = false; try { used = localStorage.getItem('ew.walletUsed') === '1'; } catch {}
+  if (!used && !nearReturnHash) return;
+  walletLib().then((L) => L.nearAccount()).then((a) => { if (a) { ui.wallet = { ...(ui.wallet || {}), near: a }; render(); } }).catch(() => {});
+})();
 function readRealForm() {
   const g = (id) => { const el = $(id); return el ? el.value : ''; };
   const prev = ui.real || {};
@@ -1061,7 +1147,7 @@ async function realQuoteNow() {
 // give up a swap that is still waiting for the deposit, and go back to an empty card with the same choices
 async function cancelReal() {
   ui.realCancelAsk = false;
-  const sw = (view.realSwaps || [])[0];
+  const sw = curSwap();
   if (!sw) return;
   const r = await post('/api/intents/real/cancel', { player: playerId, depositAddress: sw.depositAddress });
   if (!r || !r.ok) { toast(t((r && r.code) || 'real.cantCancel'), 'bad'); return; }
@@ -1979,6 +2065,7 @@ function renderMapNow() {
   } else renderMap($('map'), world, view, ui);
 }
 function render() {
+  afterNearReturn();
   // when night falls and you are not in bed yet, the guide asks where you will sleep
   if (view && view.player && view.night && !ui.wasNight && !view.player.sleepPlace) {
     toast(t('night.toast'), 'bad');
@@ -2372,6 +2459,10 @@ document.body.addEventListener('click', (e) => {
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
   const rc = e.target.closest('[data-realcancel]');
   if (rc) { const v = rc.dataset.realcancel; if (v === 'ask') ui.realCancelAsk = true; else if (v === 'no') ui.realCancelAsk = false; else cancelReal(); render(); return; }
+  const wc = e.target.closest('[data-wallet]');
+  if (wc) { connectWallet(wc.dataset.wallet); return; }
+  if (e.target.closest('[data-walletsend]')) { walletSend(); return; }
+  if (e.target.closest('[data-walletoff]')) { walletLib().then((L) => L.nearDisconnect()).catch(() => {}); ui.wallet = { ...(ui.wallet || {}), near: null }; render(); return; }
   if (e.target.closest('[data-aiswap]')) { aiSwapNow(); return; }
   const axe = e.target.closest('[data-aiswapex]');
   if (axe) { ui.aiSwap = { text: axe.dataset.aiswapex }; render(); const i = $('ai-swap'); if (i) i.focus(); return; }
@@ -2383,8 +2474,8 @@ document.body.addEventListener('click', (e) => {
   const em = e.target.closest('[data-exmode]');
   if (em) { ui.exMode = em.dataset.exmode; const sw0 = (view.realSwaps || [])[0]; if (ui.exMode === 'real' && sw0 && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw0.status)) pollReal(sw0.depositAddress); render(); return; }
   if (e.target.closest('[data-realquote]')) { realQuoteNow(); return; }
-  if (e.target.closest('[data-realnew]')) { view.realSwaps = []; ui.aiSwap = null; render(); return; }
-  if (e.target.closest('[data-realsubmit]')) { const sw = (view.realSwaps || [])[0], tx = ($('real-tx') || {}).value || ''; if (sw && tx.trim()) post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: tx.trim() }).then((r) => toast(r.ok ? t('real.submitted') : errText(r), r.ok ? 'win' : 'bad')); return; }
+  if (e.target.closest('[data-realnew]')) { ui.realDismissed = [...(ui.realDismissed || []), ...(view.realSwaps || []).map((x) => x.depositAddress)]; ui.aiSwap = null; render(); return; }
+  if (e.target.closest('[data-realsubmit]')) { const sw = curSwap(), tx = ($('real-tx') || {}).value || ''; if (sw && tx.trim()) post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: tx.trim() }).then((r) => toast(r.ok ? t('real.submitted') : errText(r), r.ok ? 'win' : 'bad')); return; }
   const cp = e.target.closest('[data-copy]');
   if (cp) { try { navigator.clipboard.writeText(cp.dataset.copy); toast(t('real.copied'), 'win'); } catch {} return; }
   const mo = e.target.closest('[data-money]');
