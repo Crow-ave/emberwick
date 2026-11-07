@@ -966,3 +966,11 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 @keyframes seal-shake{0%,100%{transform:none}25%{transform:translate(-4px,2px)}50%{transform:translate(3px,-2px)}75%{transform:translate(-2px,1px)}}
 @keyframes seal-pop{from{transform:scale(.6);opacity:0}}
 @keyframes seal-fall{to{transform:translateY(calc(100vh + 80px)) rotate(540deg)}}
+
+.seal-bag{font-size:13px;background:#f3ecdf;border-radius:10px;padding:6px 10px;margin:0 0 10px}
+.sealwall{border:1px solid #e3c9a8;background:linear-gradient(#fff7ec,#fbefdd);border-radius:12px;padding:10px 12px;margin:8px 0 12px}
+.sw-head{display:flex;gap:10px;align-items:center;margin-bottom:4px}
+.sw-wax{flex:none;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 38% 35%,#e2513a,#8e1f12);box-shadow:0 2px 4px rgba(80,10,0,.35),inset 0 0 0 3px rgba(246,185,168,.35)}
+.sw-list{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px}
+.sw-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#b8321f;margin-right:5px;vertical-align:-1px}
+.ichip.sealchip{background:#fbe3dc;border-color:#e2a594}.ichip.sealchip::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:#b8321f;margin-right:4px}

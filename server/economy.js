@@ -91,6 +91,21 @@ export function transfer(state, from, to, amount, note = null) {
   return true;
 }
 
+// the market fee: 2%, and 0.1 point lower for every village seal on the council wall (at least 1%)
+export const SEAL_CUT = 0.001, SEAL_MAX = 10;
+export const marketFee = (state) => Math.round(Math.max(MARKET.fee - SEAL_CUT * SEAL_MAX, MARKET.fee - SEAL_CUT * Math.min(SEAL_MAX, state.sealCount || 0)) * 1000) / 1000;
+// a real swap gives its player one village seal (a split gives one for all its parts)
+export function giveSeal(state, playerId, key) {
+  const p = state.players[playerId];
+  if (!p) return false;
+  p.sealsFrom = p.sealsFrom || [];
+  if (p.sealsFrom.includes(key)) return false;
+  p.sealsFrom = [...p.sealsFrom, key].slice(-60);
+  p.inv = p.inv || {};
+  p.inv.seal = (p.inv.seal || 0) + 1;
+  return true;
+}
+
 // the money history of one account (a player, a craftsman, the treasury, a fund), newest first
 export function moneyHistory(state, acct, limit = 60) {
   const out = [];
@@ -315,7 +330,7 @@ function villageBuysDeeds(state) {
     .sort((a, b) => a.x.sale.price / a.fair - b.x.sale.price / b.fair);
   const o = offers[0];
   if (!o) return;
-  const { id, x } = o, seller = state.players[x.owner], price = x.sale.price, fee = r2(price * MARKET.fee);
+  const { id, x } = o, seller = state.players[x.owner], price = x.sale.price, fee = r2(price * marketFee(state));
   if (!transfer(state, 'treasury', 'player:' + x.owner, price, { memo: `Emberwick: the village buys deed ${id} from ${seller ? seller.name : '?'} for a newcomer family` })) return;
   transfer(state, 'player:' + x.owner, 'treasury', fee, { why: 'exchange fee (deed sale)' });
   if (seller) {
@@ -1809,6 +1824,16 @@ function contractAction(state, p, action) {
   if (m) return m;
   if (action.type === 'propose') return propose(state, acct, action.kind, action);
   if (action.type === 'vote') return vote(state, acct, action.id, action.yes);
+  if (action.type === 'pinSeal') {
+    if (!(p.inv && p.inv.seal >= 1)) return { ok: false, error: 'You have no village seal.', code: 'err.noSeal' };
+    p.inv.seal -= 1; if (!p.inv.seal) delete p.inv.seal;
+    const before = marketFee(state);
+    state.sealCount = (state.sealCount || 0) + 1;
+    state.sealWall = [{ name: p.name, pid: p.id, day: state.day, at: Date.now() }, ...(state.sealWall || [])].slice(0, 60);
+    const fee = marketFee(state);
+    addLog(state, `${p.name} hung a village seal on the council wall. Market fee: ${Math.round(fee * 1000) / 10}%.`, 'good', 'log.sealPinned', { name: p.name, fee: Math.round(fee * 1000) / 10 });
+    return { ok: true, fee, before };
+  }
   if (action.type === 'takeJob' || action.type === 'apply') {
     // applications are collected; the craftsman interviews everyone at the next interview round
     // (several times a day while the shop is open, first thing in the morning after a night)
@@ -1929,7 +1954,7 @@ function recordTrade(state, t) {
 function fillOrder(state, buyerAcct, buyerHolder, order, qty, buyerName) {
   qty = Math.min(qty, order.qty);
   if (qty < 1) return { ok: false, error: 'Nothing left in that order.', code: 'err.orderGone' };
-  const total = r2(order.price * qty), fee = r2(total * MARKET.fee);
+  const total = r2(order.price * qty), fee = r2(total * marketFee(state));
   const seller = state.players[order.seller];
   if (!transfer(state, buyerAcct, 'player:' + order.seller, total, { memo: `Emberwick exchange: ${qty} ${order.good} from ${seller ? seller.name : '?'} to ${buyerName}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
   transfer(state, 'player:' + order.seller, 'treasury', fee, { why: 'exchange fee' });
@@ -1992,7 +2017,7 @@ function marketAction(state, p, action) {
     if (p.plot) return { ok: false, error: 'You already own a plot.', code: 'err.havePlot' };
     const def = plotDef(action.plot), need = def && def.district ? DISTRICTS[def.district].minLevel : 0;
     if (playerLevel(p) < need) return { ok: false, error: `You need level ${need} to buy here.`, code: 'err.needLevel', need };
-    const seller = state.players[plot.owner], price = plot.sale.price, fee = r2(price * MARKET.fee);
+    const seller = state.players[plot.owner], price = plot.sale.price, fee = r2(price * marketFee(state));
     if (!transfer(state, acct, 'player:' + plot.owner, price, { memo: `Emberwick exchange: deed ${action.plot} from ${seller ? seller.name : '?'} to ${p.name}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
     transfer(state, 'player:' + plot.owner, 'treasury', fee, { why: 'exchange fee (deed sale)' });
     if (seller) { seller.plot = null; if (seller.sleep && seller.sleep.place === action.plot) seller.sleep = null; }
@@ -2169,7 +2194,7 @@ export function publicView(state, playerId) {
     ff: state.ff ? { running: !!state.ff.running, done: state.ff.done || 0, total: state.ff.total, startDay: state.ff.startDay, by: state.ff.by } : null,
     week: state.ffResult || null,
     market: state.market ? {
-      fee: MARKET.fee, goods: MARKET.goods, maxOrders: MARKET.maxOrders, days: MARKET.days,
+      fee: marketFee(state), goods: MARKET.goods, maxOrders: MARKET.maxOrders, days: MARKET.days,
       orders: state.market.orders.map((o) => ({ ...o, sellerName: (state.players[o.seller] || {}).name || '?', mine: o.seller === playerId, left: MARKET.days - (state.day - o.day) })),
       trades: state.market.trades.map((x) => ({ ...x, buyer: x.buyer && state.npcs[x.buyer] ? { $npc: x.buyer } : x.buyer })),
     } : null,
@@ -2182,6 +2207,7 @@ export function publicView(state, playerId) {
     bots: Object.values(state.bots).map((b) => ({ id: b.id, name: b.name, path: b.path })),
     jobOffers: Object.values(state.jobOffers || {}),
     council: councilView(state, playerId),
+    sealWall: { count: state.sealCount || 0, list: (state.sealWall || []).slice(0, 12).map((x) => ({ name: x.name, day: x.day })), fee: marketFee(state), base: MARKET.fee, cut: SEAL_CUT, max: SEAL_MAX },
     land: LAND,
     districts: { open: state.districts || [], defs: DISTRICTS, next: nextDistrict(state), free: freePlots(state) },
     plots: Object.fromEntries(Object.entries(state.plots || {}).map(([id, x]) => {

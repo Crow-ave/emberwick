@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -45,6 +45,7 @@ let state;
 try {
   state = JSON.parse(fs.readFileSync(SAVE, 'utf8'));
   ensureContracts(state); // bring older saves up to date (new shops, plots, council)
+  for (const x of state.realSwaps || []) if (x.status === 'SUCCESS' && giveSeal(state, x.player, x.batch || x.depositAddress)) x.sealGiven = true; // real swaps made before seals existed
   if (state.ff) state.ff.running = false; // a fast-forward cut off by a restart just stops
   console.log(`Loaded saved village (day ${state.day}).`);
 } catch {
@@ -501,7 +502,8 @@ async function realStatus(addr) {
       addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${fromTxt} -> ${toTxt}.`, 'good', 'log.realSwap2', { name: who, a: fromTxt, b: toTxt });
       // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
       transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${fromTxt} -> ${toTxt}, tx ${tx.slice(0, 64)}` });
-      swap.bookRef = state.ledgerSeq; // the village book entry: its testnet transaction shows up in bridge.txOf
+      swap.bookRef = state.ledgerSeq;
+      if (giveSeal(state, swap.player, swap.batch || swap.depositAddress)) swap.sealGiven = true; // the village book entry: its testnet transaction shows up in bridge.txOf
       // the first real swap of a player earns the Bridge Master badge
       if (p && !p.bridgeMaster) { p.bridgeMaster = Date.now(); swap.firstBadge = true; addLog(state, `${who} is now a Bridge Master: a first real cross-chain swap.`, 'good', 'log.bridgeMaster', { name: who }); }
       broadcast();

@@ -34,6 +34,7 @@ export const GOODS = {
   coat:    { name: 'Winter coat', kind: 'clothing' },
   bed:     { name: 'Bed',       kind: 'furniture' }, // a home you built needs one before you can sleep there // keeps you warm in winter; wears out after a few winter days
   meal:    { name: 'Meal',      kind: 'service' },
+  seal:    { name: 'Village seal', kind: 'keepsake' }, // from a real cross-chain swap; hung on the council wall it lowers the market fee for everyone
 };
 
 // Places the player can gather raw goods from.

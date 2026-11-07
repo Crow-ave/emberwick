@@ -664,7 +664,7 @@ function panelExchange() {
   const me = view.player, mk = view.market;
   const tab = ui.exTab || 'change';
   if (tab === 'change' && !ui.exPrices && !ui.exPricesLoading) { ui.exPricesLoading = true; loadExPrices(); }
-  let h = `<h2>${t('b.exchange')}</h2><p class="muted small">${t('ex.intro', { fee: Math.round(mk.fee * 100) })}</p>`;
+  let h = `<h2>${t('b.exchange')}</h2><p class="muted small">${t('ex.intro', { fee: pct(mk.fee) })}</p>`;
   const COL = '<!--col-->';
   h += `<div class="tabs">${['change', 'goods', 'deeds'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
   if (tab === 'goods') {
@@ -1664,6 +1664,7 @@ function showSeal(g) {
     <h2 id="seal-title">${t('seal.title')}</h2>
     <p class="seal-route">${esc(r.text)}</p>
     <p class="seal-sub">${t('seal.via')}${took ? ' · ' + took : ''}</p>
+    ${g.some((y) => y.sealGiven) ? `<p class="seal-bag">🎒 ${t('seal.bag')}</p>` : ''}
     ${badge ? `<p class="seal-badge">🌉 <b>${t('seal.badge')}</b> · ${t('seal.badgeNote')}</p>` : ''}
     <div class="seal-btns">
       <a class="btnlink primary" href="${proof}" target="_blank" rel="noopener">🔎 ${t('seal.proof')}</a>
@@ -2196,6 +2197,18 @@ function proposalText(x) {
 const voterLabel = (who) => (who.startsWith('npc:') ? npcName(who.slice(4)) : who);
 const byLabel = (x) => (x.by.startsWith('npc:') ? npcName(x.by.slice(4)) : x.by === 'player:' + playerId ? t('near.you') : x.byName);
 
+// the council wall of village seals: every seal lowers the market fee for everyone
+const pct = (f) => String(Math.round(f * 1000) / 10);
+function sealWallBox() {
+  const w = view.sealWall; if (!w) return '';
+  const me = view.player, mine = (me && me.inv && me.inv.seal) || 0;
+  let h = `<div class="sealwall"><div class="sw-head"><span class="sw-wax" aria-hidden="true"></span><div><b>${t('sw.title')}</b><div class="small">${t('sw.fee', { base: pct(w.base), now: pct(w.fee), n: w.count })}</div></div></div>`;
+  h += `<p class="muted small">${t('sw.how', { cut: pct(w.cut), min: pct(w.base - w.cut * w.max), max: w.max })}</p>`;
+  if (mine) h += `<button class="primary" data-act="pinSeal">📜 ${t('sw.pin', { n: mine })}</button>`;
+  else if (me) h += `<p class="small muted">${t('sw.none')}</p>`;
+  if (w.list.length) h += `<ul class="sw-list">${w.list.map((x) => `<li><span class="sw-dot"></span>${esc(x.name)} <span class="muted small">· ${t('sw.day', { d: x.day })}</span></li>`).join('')}</ul>`;
+  return h + `</div>`;
+}
 function panelCouncil() {
   const c = view.council, me = view.player;
   let h = `<h2>${t('b.council')}</h2><p class="muted small">${t('council.intro', { tax: Math.round(c.taxRate * 100), t: view.treasury, r: c.reserve })}</p>`;
@@ -2203,6 +2216,7 @@ function panelCouncil() {
     const w = c.myWeight;
     h += `<div class="contract"><b>${t('council.myWeight', { n: w.total })}</b><div class="muted small">${t('council.weightParts', { a: w.wealth, b: w.residency, c: w.contribution })}</div></div>`;
   }
+  h += sealWallBox();
   h += `<p class="sub2">${t('council.open')}</p>`;
   h += c.open.length ? c.open.map((x) => {
     const total = x.yes + x.no || 1;
@@ -2248,7 +2262,8 @@ function councilTx(id) {
 async function councilAct(type, extra) {
   const r = await post('/api/action', { player: playerId, type, ...extra });
   if (r.state && newer(r.state)) { view = r.state; render(); }
-  if (r.ok) toast(type === 'vote' ? t('toast.voted', { n: r.weight }) : t('toast.proposed', { n: r.id }), 'win');
+  if (r.ok && type === 'pinSeal') { play('seal'); toast(t('sw.pinned', { fee: pct(r.fee) }), 'win'); }
+  else if (r.ok) toast(type === 'vote' ? t('toast.voted', { n: r.weight }) : t('toast.proposed', { n: r.id }), 'win');
   else toast(errText(r), 'bad');
 }
 
@@ -2546,9 +2561,9 @@ function renderDock() {
     const tool = world.goods[g] && world.goods[g].kind === 'tool' && TOOL_SHOP[g];
     const left = tool ? me.toolUses - ((me.wear || {})[g] || 0) : null;
     const tip = (v ? t('dock.worth', { p: v }) : '') + (tool ? ' · ' + t('dock.uses', { n: left, max: me.toolUses }) : '');
-    return `<span class="ichip" title="${esc(tip)}"><b>${q}</b> ${goodName(g)}` +
+    return `<span class="ichip${g === 'seal' ? ' sealchip' : ''}" title="${esc(tip)}"><b>${q}</b> ${goodName(g)}` +
       (tool ? `<i class="iwear"><i style="width:${(left / me.toolUses) * 100}%"></i></i>` : '') +
-      (g === 'bread' ? `<button class="eat" data-eat="1">${t('me.eat')}</button>` : '') + `</span>`;
+      (g === 'bread' ? `<button class="eat" data-eat="1">${t('me.eat')}</button>` : '') + (g === 'seal' ? `<button class="eat" data-act="pinSeal" title="${esc(t('seal.bag'))}">${t('sw.pinShort')}</button>` : '') + `</span>`;
   }).join('');
   const bag = `<div class="dcard bagcard"><h4>${t('dock.bag')} <span class="muted">${goodsValue ? '≈ ' + goodsValue.toFixed(0) + ' EMWK' : ''}</span></h4>` +
     (chips ? `<div class="ichips">${chips}</div>` : `<p class="muted small">${t('dock.empty')}</p>`) + `</div>`;
@@ -3107,6 +3122,7 @@ document.body.addEventListener('click', (e) => {
   const btn = e.target.closest('#panel button[data-act], #dock button[data-act], #scene-bar button[data-act], #scene-menu button[data-act], #map-card button[data-act]');
   if (!btn) return;
   const a = btn.dataset.act;
+  if (a === 'pinSeal') { if (!playerId) return toast(t('toast.join'), 'bad'); goAndDo('council', 'pinSeal', () => councilAct('pinSeal', {})); return; }
   if (a === 'vote') { if (!playerId) return toast(t('toast.join'), 'bad'); goAndDo('council', 'vote', () => councilAct('vote', { id: Number(btn.dataset.id), yes: btn.dataset.yes === '1' })); return; }
   if (a === 'postOrder') { exAct('postOrder', { good: $('ex-good').value, qty: Number($('ex-qty').value), price: Number($('ex-price').value) }); return; }
   if (a === 'cancelOrder' || a === 'fillOrder') { exAct(a, { id: Number(btn.dataset.id), qty: 1 }); return; }
