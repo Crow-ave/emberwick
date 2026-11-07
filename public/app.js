@@ -904,19 +904,34 @@ const NEAR_MAIN = 'https://nearblocks.io';
 const REAL_SRC = { 'USDC-SOL': ['USDC', 'sol', 0.5, 15, 0.5], SOL: ['SOL', 'sol', 0.003, 0.1, 0.005], 'USDC-BASE': ['USDC', 'base', 0.5, 15, 0.5] };
 const REAL_DST = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SOL', 'sol'], 'USDC-BASE': ['USDC', 'base'] };
 // the player's current real swap (a finished one they put away with "New swap" stays away)
+try { ui.realDismissed = JSON.parse(localStorage.getItem('ew.dismissed') || '[]'); } catch { ui.realDismissed = []; }
+function dismissSwaps(list) { ui.realDismissed = [...new Set([...(ui.realDismissed || []), ...list])].slice(-60); try { localStorage.setItem('ew.dismissed', JSON.stringify(ui.realDismissed)); } catch {} }
 const curSwap = () => (view.realSwaps || []).filter((x) => !(ui.realDismissed || []).includes(x.depositAddress))[0];
+// the last finished swap, as one short line over the card (the card stays ready for a new one)
+const swapFromSym = (x) => (x.dir === 'out' ? 'wNEAR' : x.fromSym || 'NEAR');
+const swapToLabel = (x) => (x.dir === 'any' ? `${x.toSym} (${netName(x.chain)})` : x.dir === 'in' ? 'NEAR' : DST_LABEL(x.to));
+function lastResult(group) {
+  const x = group[0], ok = group.every((y) => y.status === 'SUCCESS');
+  const what = group.length > 1 ? t('split.head', { n: group.length, total: legSum(group.map((y) => ({ amount: y.amountIn }))) })
+    : `${x.amountIn} ${esc(swapFromSym(x))} → ${esc(String(amt(x.amountOut)))} ${esc(swapToLabel(x))}`;
+  const tx = (x.dest || [])[0];
+  return `<div class="lastres ${ok ? 'ok' : 'bad'}"><span>${ok ? '✓' : '↩'} <b>${t(ok ? 'last.ok' : 'last.bad')}</b> ${what}${tx && tx.url ? ` · <a href="${esc(tx.url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</span><button type="button" class="linkbtn" data-realnew="1" title="${esc(t('last.hide'))}">✕</button></div>`;
+}
 function realSwapBox() {
-  const me = view.player, sw = curSwap();
+  const me = view.player;
+  let sw = curSwap();
   // one short line on top; the long explanation and the warning fold away
   let R = `<details class="realinfo" data-keep="info"${keepOpen('info')}><summary>ⓘ <b>${t('real.infoShort')}</b></summary><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p></details>`;
   if (!me) return R + COL_MARK + `<p class="muted">${t('toast.join')}</p>`;
+  let banner = '';
+  if (sw && swapGroup(sw).every((x) => REAL_END.includes(x.status) || x.status === 'INCOMPLETE_DEPOSIT')) { banner = lastResult(swapGroup(sw)); sw = null; }
   if (sw && sw.batch) return splitView(swapGroup(sw), R);
   let f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
   if (!ui.assets) loadAssets();
   if (ui.assets && !f.any && !f.anyOff) { const conv = oldToAny(f); f = ui.real = conv.any ? { ...f, ...conv } : { ...f, any: true, fromId: WNEAR_ID, toId: (findAsset('USDC', 'near') || ui.assets.find((x) => x.id !== WNEAR_ID) || {}).id }; }
   const anyMode = !!(ui.assets && f.any && A(f.fromId) && A(f.toId));
   const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
-  const shown = active || (sw && sw.status === 'SUCCESS');
+  const shown = !!active;
   const dir = shown ? sw.dir || 'out' : f.dir || 'out';
   const moving = !!(sw && ['KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'].includes(sw.status));
   // the picture: what leaves on the left, what arrives on the right; the ⇄ on it turns the swap round
@@ -931,7 +946,7 @@ function realSwapBox() {
   if (!shown) R += splitting ? walletTiles('near', 'near') : walletTiles(left.chain, right.chain);
   R += splitting ? bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: legSum(f.legs) }, { sym: legDst(f.legs[0])[0], chain: legDst(f.legs[0])[1], amount: null }, false, 'real') + `<p class="small muted">${t('split.picture', { n: f.legs.length, c: new Set(f.legs.map((l) => legDst(l)[1])).size })}</p>` : bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
   if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) R += aiSwapBox();
-  let L = '';
+  let L = banner;
   if (!shown) L += anyMode ? (ui.picker ? pickerView(ui.picker.side, ui.picker.step) : swapCardAny(f)) : swapCard(f, dir);
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
@@ -969,12 +984,16 @@ function legOptions(sel) {
   const chains = [...new Set(ui.assets.map((x) => x.chain))].sort((a, b) => order(a) - order(b) || netName(a).localeCompare(netName(b)));
   return chains.map((c) => `<optgroup label="${esc(netName(c))}">${ui.assets.filter((x) => x.chain === c && x.id !== WNEAR_ID).sort((a, b) => a.sym.localeCompare(b.sym)).map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.sym)} (${esc(netName(c))})</option>`).join('')}</optgroup>`).join('');
 }
+function legPick(i, x) {
+  const ch = chainOf(x.chain), col = ch ? ch[1] : '#556';
+  return `<span class="legpick"><button type="button" class="netbtn sm" data-pickopen="leg${i}:chain" style="--c:${col}"><span class="nb-ic">${CHAIN_ICON[x.chain] || esc(netName(x.chain)[0])}</span><b>${esc(netName(x.chain))}</b><span class="tp-caret">▾</span></button><button type="button" class="tokbtn sm" data-pickopen="leg${i}:token"><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(x.sym)}</b><span class="tp-caret">▾</span></button></span>`;
+}
 function legRows(f) {
   const legs = f.legs;
   return legs.map((l, i) => {
     const d = legDst(l), ch = chainOf(d[1]);
     return `<div class="legrow" style="--c:${ch ? ch[1] : '#556'}"><span class="leg-n">${i + 1}</span>` +
-      `<select data-legto="${i}">${legOptions(l.to)}</select>` +
+      (ui.real && ui.real.any && A(l.to) ? legPick(i, A(l.to)) : `<select data-legto="${i}">${legOptions(l.to)}</select>`) +
       `<span class="leg-amt"><input data-legamt="${i}" type="number" min="0.1" max="5" step="0.1" value="${l.amount}"> NEAR</span>` +
       `<button type="button" class="linkbtn leg-x" data-legdel="${i}" title="${esc(t('split.remove'))}">✕</button>` +
       `<input class="leg-rec" data-legrec="${i}" placeholder="${esc(addrPh(d[1]))}" value="${esc(l.recipient || '')}"></div>`;
@@ -1088,10 +1107,10 @@ function sidePick(side, x) {
 }
 // choosing, in place of the card: first the network (big buttons), then a token on it (most used first)
 function pickerView(side, step) {
-  const f = ui.real || {}, cur = A(side === 'from' ? f.fromId : f.toId) || {};
+  const f = ui.real || {}, cur = pickCur(side) || {};
   const order = (c) => { const i = POP_CHAINS.indexOf(c); return i < 0 ? 99 : i; };
   const symOrder = (sym) => { const i = POP_SYMS.indexOf(sym); return i < 0 ? 99 : i; };
-  const title = t(side === 'from' ? 'any.pickFrom' : 'any.pickTo');
+  const title = side.startsWith('leg') ? t('any.pickLeg', { n: Number(side.slice(3)) + 1 }) : t(side === 'from' ? 'any.pickFrom' : 'any.pickTo');
   let h = `<div class="pickview"><div class="pv-head"><button type="button" class="linkbtn" data-pickclose="1">← ${t('any.back')}</button><b>${title}</b></div>`;
   if (step === 'chain') {
     const counts = {}; for (const x of ui.assets || []) counts[x.chain] = (counts[x.chain] || 0) + 1;
@@ -1130,29 +1149,45 @@ function swapCardAny(f) {
   const lim = usdLimits(a);
   const amtV = f.amount >= lim.min && f.amount <= lim.max ? f.amount : nice(1 / a.price);
   const need = ((ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.missing) || []);
-  const sw0 = savedWallets(), refundV = f.refundTo || savedFor(sw0, a.chain), recipV = f.recipient || (b.chain !== a.chain ? savedFor(sw0, b.chain) : '');
-  const kA = walletKind(a.chain), using = kA && (ui.wallet || {})[kA] && ui.wallet[kA] === refundV;
+  const kA = walletKind(a.chain), kB = walletKind(b.chain), wA = kA && (ui.wallet || {})[kA], wB = kB && (ui.wallet || {})[kB];
+  const sw0 = savedWallets(), refundV = f.refundTo || wA || savedFor(sw0, a.chain);
+  const recipV = f.recipient || (ui.recipTyped ? '' : wB) || (b.chain !== a.chain ? savedFor(sw0, b.chain) : '');
+  const using = wA && wA === refundV;
   const splitOk = a.id === WNEAR_ID;
   const legs = splitOk && f.legs;
   return `<div class="step-h"><span class="stepn">2</span>${t('real.step2')}</div><div class="swapcard">` +
     `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div>${sidePick('from', a)}` +
     (legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>wNEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>`
-      : `<div class="sc-amt" title="${esc(t('any.range', { min: lim.min, max: lim.max, sym: a.sym }))}"><input id="real-amount" type="number" min="${lim.min}" max="${lim.max}" step="any" value="${amtV}"><b>${esc(a.sym)}</b><span class="sc-range">${lim.min}–${lim.max}</span></div><div class="sc-usd small muted" data-price="${a.price}">≈ $${(amtV * a.price).toFixed(2)}</div>`) +
+      : `<div class="sc-amt" title="${esc(t('any.range', { min: lim.min, max: lim.max, sym: a.sym }))}"><input id="real-amount" type="text" inputmode="decimal" autocomplete="off" value="${amtV}"><b>${esc(a.sym)}</b><span class="sc-range">${lim.min}–${lim.max}</span></div><div class="sc-usd small muted" data-price="${a.price}">≈ $${(amtV * a.price).toFixed(2)}</div>`) +
     (using ? `<div class="sc-lab sc-using" title="${esc(refundV)}">✓ ${t('wallet.usingThis', { a: esc(shortAddr(refundV)) })}</div><input type="hidden" id="real-refund" value="${esc(refundV)}">`
       : `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('any.fromWallet', { chain: esc(netName(a.chain)) })} ⓘ</label><input id="real-refund" class="${need.length && !refundV ? 'need' : ''}" placeholder="${esc(addrPh(a.chain))}" value="${esc(refundV)}">`) +
-    `</div><button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
+    tokenProof(a) + `</div><button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
     (legs ? `<div class="sc-side"><div class="sc-head">${t('split.receivers')}</div>${legRows(f)}</div>`
       : `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div>${sidePick('to', b)}` +
-        `<label class="sc-lab" title="${esc(t('any.toHint', { sym: b.sym, chain: netName(b.chain) }))}">${t('any.toWallet', { chain: esc(netName(b.chain)) })} ⓘ</label><input id="real-recip" class="${need.length && !recipV ? 'need' : ''}" placeholder="${esc(addrPh(b.chain))}" value="${esc(recipV)}"></div>` +
+        `<label class="sc-lab" title="${esc(t('any.toHint', { sym: b.sym, chain: netName(b.chain) }))}">${t('any.toWallet', { chain: esc(netName(b.chain)) })} ⓘ</label><div class="recip-row"><input id="real-recip" class="${need.length && !recipV ? 'need' : ''}" placeholder="${esc(addrPh(b.chain))}" value="${esc(recipV)}">${recipV ? `<button type="button" class="linkbtn small" data-recipclear="1">${t('any.otherAddr')}</button>` : ''}</div>` +
+        `<div class="sc-hint">${wB && recipV === wB ? '✓ ' + t('any.toOwn') : recipV ? '⚠️ ' + t('any.toOther') : ''}</div>${tokenProof(b)}</div>` +
         (splitOk ? `<button type="button" class="linkbtn split-btn" data-legadd="1">＋ ${t('split.start')}</button>` : '')) +
     `</div><button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}><span class="stepn">3</span> ${ui.realBusy ? t('ai.thinking') : legs ? t('split.getQuotes', { n: f.legs.length }) : t('real.getQuote')}</button>`;
 }
+const TOKEN_PAGE = { near: 'https://nearblocks.io/token/', sol: 'https://solscan.io/token/', base: 'https://basescan.org/token/', eth: 'https://etherscan.io/token/', arb: 'https://arbiscan.io/token/', op: 'https://optimistic.etherscan.io/token/', pol: 'https://polygonscan.com/token/', bsc: 'https://bscscan.com/token/', avax: 'https://snowtrace.io/token/', gnosis: 'https://gnosisscan.io/token/', tron: 'https://tronscan.org/#/token20/' };
+function tokenProof(x) {
+  if (!x) return '';
+  if (!x.contract) return `<div class="tproof">🪙 ${t('any.native', { chain: esc(netName(x.chain)) })}</div>`;
+  const page = TOKEN_PAGE[x.chain], short = x.contract.length > 18 ? x.contract.slice(0, 8) + '…' + x.contract.slice(-6) : x.contract;
+  return `<div class="tproof" title="${esc(x.contract)}">🔎 ${t('any.contract')}: <code>${esc(short)}</code>${page ? ` <a href="${page}${encodeURIComponent(x.contract)}" target="_blank" rel="noopener">${t('any.verify')} ↗</a>` : ''}</div>`;
+}
 const addrPh = (c) => (c === 'near' ? 'yourname.near' : c === 'sol' ? 'Solana address (e.g. 7xKX…)' : isEvm(c) ? '0x…' : c === 'btc' ? 'bc1…' : c === 'tron' ? 'T…' : t('any.addrOf', { chain: netName(c) }));
 // choose a token for one side; picking the other side's token swaps the two
+const pickCur = (side) => { const f = ui.real || {}; if (side.startsWith('leg')) { const l = (f.legs || [])[Number(side.slice(3))]; return l ? A(l.to) : null; } return A(side === 'from' ? f.fromId : f.toId); };
 function pickAsset(side, id) {
   readRealForm();
   const f = ui.real, x = A(id);
   if (!x) return;
+  if (side.startsWith('leg')) {
+    const l = (f.legs || [])[Number(side.slice(3))];
+    if (l) { const before = A(l.to); l.to = id; if (before && before.chain !== x.chain && !(isEvm(before.chain) && isEvm(x.chain))) l.recipient = ''; }
+    ui.picker = null; ui.pickQ = ''; render(); return;
+  }
   const other = side === 'from' ? 'toId' : 'fromId', mine = side === 'from' ? 'fromId' : 'toId';
   const before = A(f[mine]);
   if (f[other] === id) { f[other] = f[mine]; [f.refundTo, f.recipient] = [f.recipient, f.refundTo]; }
@@ -1429,7 +1464,7 @@ function afterNearReturn() {
 function readRealForm() {
   const g = (id) => { const el = $(id); return el ? el.value : ''; };
   const prev = ui.real || {};
-  ui.real = { dir: prev.dir || 'out', to: g('real-to') || prev.to || 'USDC', from: g('real-from') || prev.from || 'USDC-SOL', amount: Number(g('real-amount')) || prev.amount || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim(), legs: prev.legs || null, any: prev.any, anyOff: prev.anyOff, fromId: prev.fromId, toId: prev.toId };
+  ui.real = { dir: prev.dir || 'out', to: g('real-to') || prev.to || 'USDC', from: g('real-from') || prev.from || 'USDC-SOL', amount: Number(String(g('real-amount')).replace(',', '.')) || prev.amount || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim(), legs: prev.legs || null, any: prev.any, anyOff: prev.anyOff, fromId: prev.fromId, toId: prev.toId };
   // the rows of a split, as typed right now
   if (ui.real.legs && document.querySelector('[data-legto]')) {
     ui.real.legs = ui.real.legs.map((l, i) => {
@@ -2824,8 +2859,9 @@ document.body.addEventListener('click', (e) => {
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
   const rc = e.target.closest('[data-realcancel]');
   if (rc) { const v = rc.dataset.realcancel; if (v === 'ask') ui.realCancelAsk = true; else if (v === 'no') ui.realCancelAsk = false; else cancelReal(); render(); return; }
+  if (e.target.closest('[data-recipclear]')) { readRealForm(); ui.real.recipient = ''; ui.recipTyped = true; render(); setTimeout(() => { const i = $('real-recip'); if (i) i.focus(); }, 30); return; }
   const po = e.target.closest('[data-pickopen]');
-  if (po) { readRealForm(); const [side, step] = po.dataset.pickopen.split(':'); const cur = A(side === 'from' ? ui.real.fromId : ui.real.toId); ui.picker = { side, step: step || 'chain' }; ui.pickQ = ''; ui.pickChain = cur ? cur.chain : ''; render(); return; }
+  if (po) { readRealForm(); const [side, step] = po.dataset.pickopen.split(':'); const cur = pickCur(side); ui.picker = { side, step: step || 'chain' }; ui.pickQ = ''; ui.pickChain = cur ? cur.chain : ''; render(); return; }
   const pcs = e.target.closest('[data-pickchainset]');
   if (pcs) { const [side, c] = pcs.dataset.pickchainset.split('|'); ui.pickChain = c; ui.pickQ = ''; ui.picker = { side, step: 'token' }; render(); return; }
   if (e.target.closest('[data-pickclose]')) { ui.picker = null; ui.pickQ = ''; render(); return; }
@@ -2854,7 +2890,7 @@ document.body.addEventListener('click', (e) => {
   const em = e.target.closest('[data-exmode]');
   if (em) { ui.exMode = em.dataset.exmode; if (ui.exMode === 'real') pollCurrent(); render(); return; }
   if (e.target.closest('[data-realquote]')) { realQuoteNow(); return; }
-  if (e.target.closest('[data-realnew]')) { ui.realDismissed = [...(ui.realDismissed || []), ...(view.realSwaps || []).map((x) => x.depositAddress)]; ui.aiSwap = null; render(); return; }
+  if (e.target.closest('[data-realnew]')) { dismissSwaps((view.realSwaps || []).filter((x) => REAL_END.includes(x.status) || x.status === 'INCOMPLETE_DEPOSIT').map((x) => x.depositAddress)); ui.aiSwap = null; render(); return; }
   if (e.target.closest('[data-realsubmit]')) { const sw = curSwap(), tx = ($('real-tx') || {}).value || ''; if (sw && tx.trim()) post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: tx.trim() }).then((r) => toast(r.ok ? t('real.submitted') : errText(r), r.ok ? 'win' : 'bad')); return; }
   const cp = e.target.closest('[data-copy]');
   if (cp) { try { navigator.clipboard.writeText(cp.dataset.copy); toast(t('real.copied'), 'win'); } catch {} return; }
@@ -3150,7 +3186,7 @@ function showLogTab(tab) {
   if (tab === 'chat') { ui.chatUnread = 0; renderChat(); }
 }
 // keep what was typed in the real-swap form across redraws; a new destination changes the address field
-document.addEventListener('input', (e) => { if (e.target.id === 'pick-search') { ui.pickQ = e.target.value; const q = ui.pickQ.trim().toLowerCase(); let n = 0; document.querySelectorAll('.pk-item, .pv-token').forEach((b) => { const on = !q || b.dataset.q.includes(q); b.hidden = !on; if (on) n++; }); document.querySelectorAll('.pk-none').forEach((el) => { el.hidden = n > 0; }); return; } if (e.target.id === 'real-amount') { const u = document.querySelector('.sc-usd'); if (u) u.textContent = '≈ $' + ((Number(e.target.value) || 0) * Number(u.dataset.price || 0)).toFixed(2); } if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); if (e.target.dataset && (e.target.dataset.legamt !== undefined || e.target.dataset.legrec !== undefined)) { readRealForm(); const n = legSum(ui.real.legs || []); document.querySelectorAll('.leg-total').forEach((el) => { el.textContent = t('split.total', { n }); }); document.querySelectorAll('.split-sum').forEach((el) => { el.textContent = n; }); } });
+document.addEventListener('input', (e) => { if (e.target.id === 'pick-search') { ui.pickQ = e.target.value; const q = ui.pickQ.trim().toLowerCase(); let n = 0; document.querySelectorAll('.pk-item, .pv-token').forEach((b) => { const on = !q || b.dataset.q.includes(q); b.hidden = !on; if (on) n++; }); document.querySelectorAll('.pk-none').forEach((el) => { el.hidden = n > 0; }); return; } if (e.target.id === 'real-amount') { const u = document.querySelector('.sc-usd'); if (u) u.textContent = '≈ $' + ((Number(String(e.target.value).replace(',', '.')) || 0) * Number(u.dataset.price || 0)).toFixed(2); } if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); if (e.target.dataset && (e.target.dataset.legamt !== undefined || e.target.dataset.legrec !== undefined)) { readRealForm(); const n = legSum(ui.real.legs || []); document.querySelectorAll('.leg-total').forEach((el) => { el.textContent = t('split.total', { n }); }); document.querySelectorAll('.split-sum').forEach((el) => { el.textContent = n; }); } });
 document.addEventListener('change', (e) => { if (e.target.dataset && e.target.dataset.legto !== undefined) { const i = Number(e.target.dataset.legto), before = ((ui.real.legs || [])[i] || {}).to; readRealForm(); const l = ui.real.legs[i]; if (legDst({ to: before })[1] !== legDst(l)[1]) l.recipient = ''; render(); return; } if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; render(); } if (e.target.id === 'real-from') { readRealForm(); const s0 = REAL_SRC[ui.real.from]; ui.real.refundTo = ''; ui.real.amount = s0 ? s0[4] : 0.5; render(); } });
 
 document.addEventListener('submit', async (e) => {

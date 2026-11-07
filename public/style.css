@@ -895,3 +895,22 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .pv-token b { font-size: 13px; }
 .pv-token:hover, .pv-token.on { border-color: #e0742b; background: #fff3e6; }
 .pv-token[hidden] { display: none; }
+
+/* last swap line, own-wallet hints, token check, receiver pickers */
+.lastres { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; border-radius: 10px; padding: 6px 10px; margin: 0 0 6px; }
+.lastres.ok { background: #e9f6ec; border: 1px solid #b9dfc3; color: #22562d; }
+.lastres.bad { background: #fff1ef; border: 1px solid #f0b8b1; color: #8a2a20; }
+.recip-row { display: flex; gap: 6px; align-items: center; } .recip-row input { flex: 1; min-width: 0; }
+.tproof { font-size: 11px; color: #7a6b58; margin-top: 2px; } .tproof code { font-size: 10.5px; }
+.legpick { grid-column: 2 / 4; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.netbtn.sm, .tokbtn.sm { padding: 4px 6px; border-radius: 8px; gap: 4px; }
+.netbtn.sm b, .tokbtn.sm b { font-size: 12px; }
+.netbtn.sm .nb-ic, .tokbtn.sm .tc-coin { width: 18px; height: 18px; font-size: 10px; }
+.legrow:has(.legpick) { grid-template-columns: 20px 1fr 1fr 18px; }
+.legrow:has(.legpick) .leg-amt { grid-column: 2 / 3; }
+.legrow:has(.legpick) .leg-rec { grid-column: 3 / 5; }
+.legrow:has(.legpick) .leg-n { grid-row: 1; grid-column: 1; }
+.legrow:has(.legpick) .legpick { grid-row: 1; grid-column: 2 / 4; }
+.legrow:has(.legpick) .leg-x { grid-row: 1; grid-column: 4; }
+.legrow:has(.legpick) .leg-amt { grid-row: 2; grid-column: 1 / 3; padding-left: 24px; }
+.legrow:has(.legpick) .leg-rec { grid-row: 2; grid-column: 3 / 5; }
