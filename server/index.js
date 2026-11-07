@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, moneyHistory, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -116,7 +116,7 @@ const BOOT = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const view = (pid) => ({ ...publicView(state, pid), chain: chainView(), boot: BOOT, ai: aiPublic() });
 
 // ---------- NEAR Intents (1Click API) for the change desk ----------
-const ONECLICK = 'https://1click.chaindefuser.com/v0';
+const ONECLICK = process.env.EMBERWICK_ONECLICK || 'https://1click.chaindefuser.com/v0'; // overridable only for offline tests
 const SHOW = [['NEAR', 'near'], ['USDC', 'near'], ['BTC', 'btc'], ['ETH', 'eth'], ['SOL', 'sol']];
 let tokenCache = { at: 0, list: null, all: null }, quoteCache = new Map();
 // what a player could pay with from another chain (universal checkout preview)
@@ -210,6 +210,73 @@ async function intentsPayQuote(fromKey, emwk) {
     quoteCache.set(key, { at: Date.now(), res });
     return res;
   } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160) }; }
+}
+
+// ---------- a REAL NEAR Intents swap on mainnet (small amounts) ----------
+// NEAR Intents has no testnet, so this one runs on NEAR mainnet with the player's own wallet: the game asks
+// 1Click for a real quote (dry: false), shows the deposit address, and follows the swap to the end. The game
+// never holds a key or sends funds; the player sends wNEAR from their own wallet. If anything goes wrong,
+// 1Click refunds to the player's refund account.
+const REAL_TO = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SOL', 'sol'], 'USDC-BASE': ['USDC', 'base'] };
+const REAL_MAX_NEAR = 5, REAL_MIN_NEAR = 0.1;
+const nearAcct = (a) => /^(([a-z\d]+[-_])*[a-z\d]+\.)+near$/.test(a) || /^[0-9a-f]{64}$/.test(a);
+const recipientOk = (chain, a) => chain === 'near' ? nearAcct(a) : chain === 'sol' ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) : chain === 'base' ? /^0x[0-9a-fA-F]{40}$/.test(a) : false;
+const realAsk = new Map(); // player -> times of recent real quotes
+async function realQuote(pid, toKey, amount, refundTo, recipient) {
+  const def = REAL_TO[toKey];
+  if (!def) return { ok: false, error: 'Unknown destination.', code: 'real.badTo' };
+  amount = Number(amount);
+  if (!(amount >= REAL_MIN_NEAR && amount <= REAL_MAX_NEAR)) return { ok: false, error: `Between ${REAL_MIN_NEAR} and ${REAL_MAX_NEAR} NEAR.`, code: 'real.badAmount' };
+  refundTo = String(refundTo || '').trim().toLowerCase(); recipient = String(recipient || '').trim();
+  if (def[1] === 'near') recipient = recipient.toLowerCase();
+  if (!nearAcct(refundTo)) return { ok: false, error: 'Refund account must be a NEAR mainnet account (name.near).', code: 'real.badRefund' };
+  if (!recipientOk(def[1], recipient)) return { ok: false, error: 'That address does not fit the destination chain.', code: 'real.badRecipient' };
+  const times = (realAsk.get(pid) || []).filter((x) => Date.now() - x < 3600000);
+  if (times.length >= 5) return { ok: false, error: 'Too many real quotes this hour.', code: 'real.limit' };
+  realAsk.set(pid, [...times, Date.now()]);
+  try {
+    await intentsTokens();
+    const all = tokenCache.all || [];
+    const from = all.find((t) => t.assetId === 'nep141:wrap.near'), to = all.find((t) => t.symbol === def[0] && t.blockchain === def[1]);
+    if (!from || !to) return { ok: false, error: 'NEAR Intents does not list that asset right now.', code: 'real.badTo' };
+    const units = (BigInt(Math.round(amount * 1000)) * 10n ** BigInt(from.decimals)) / 1000n;
+    const q = await getJson(`${ONECLICK}/quote`, { method: 'POST', body: JSON.stringify({
+      dry: false, swapType: 'EXACT_INPUT', slippageTolerance: 100,
+      originAsset: from.assetId, depositType: 'ORIGIN_CHAIN', destinationAsset: to.assetId, amount: units.toString(),
+      refundTo, refundType: 'ORIGIN_CHAIN', recipient, recipientType: 'DESTINATION_CHAIN',
+      deadline: new Date(Date.now() + 30 * 60000).toISOString(),
+    }) });
+    const qq = q.quote || {};
+    if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
+    const swap = { id: qq.depositAddress, player: pid, to: toKey, chain: def[1], amountIn: amount, amountOut: qq.amountOutFormatted || qq.amountOut, usdOut: qq.amountOutUsd, usdIn: qq.amountInUsd,
+      depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
+    state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
+    save();
+    return { ok: true, swap };
+  } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160), code: 'real.noQuote' }; }
+}
+async function realStatus(addr) {
+  const swap = (state.realSwaps || []).find((x) => x.depositAddress === addr);
+  if (!swap) return { ok: false, error: 'unknown swap' };
+  try {
+    const st = await getJson(`${ONECLICK}/status?depositAddress=${encodeURIComponent(addr)}`);
+    const d = st.swapDetails || {};
+    const links = (list) => (list || []).map((x) => typeof x === 'string' ? { hash: x } : { hash: x.hash, url: x.explorerUrl }).filter((x) => x.hash);
+    swap.status = st.status || swap.status;
+    swap.origin = links(d.originChainTxHashes); swap.dest = links(d.destinationChainTxHashes);
+    if (d.amountOutFormatted) swap.amountOut = d.amountOutFormatted;
+    if (swap.status === 'SUCCESS' && !swap.logged) {
+      swap.logged = true;
+      const p = state.players[swap.player], who = p ? p.name : 'A villager';
+      const tx = (swap.dest[0] || swap.origin[0] || {}).hash || '';
+      addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${swap.amountIn} NEAR -> ${swap.amountOut} ${swap.to}.`, 'good', 'log.realSwap', { name: who, a: swap.amountIn, b: swap.amountOut, to: swap.to });
+      // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
+      transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${swap.amountIn} NEAR -> ${swap.amountOut} ${swap.to}, tx ${tx.slice(0, 64)}` });
+      broadcast();
+    }
+    save();
+    return { ok: true, swap };
+  } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160), swap }; }
 }
 
 function save() {
@@ -338,6 +405,25 @@ const server = http.createServer(async (req, res) => {
       : h.startsWith('bot:') ? ((state.bots || {})[h.slice(4)] || {}).name || 'villager' : h;
     const rows = moneyHistory(state, acct, 80).map((e) => ({ ...e, otherName: nameOf(e.other), tx: bridge && bridge.txOf ? bridge.txOf(e.id) : null }));
     return sendJson(res, 200, { ok: true, acct, balance: Math.round((state.balances[acct] || 0) * 100) / 100, rows, chain: !!(bridge && bridge.status === 'ready') });
+  }
+
+  // a real NEAR Intents swap (mainnet): quote with a deposit address, status, and telling 1Click about the deposit
+  if (req.method === 'POST' && url.pathname === '/api/intents/real') {
+    const body = await readBody(req);
+    if (!body.player || !state.players[body.player]) return sendJson(res, 400, { ok: false, error: 'join first' });
+    const r = await realQuote(body.player, body.to, body.amount, body.refundTo, body.recipient);
+    return sendJson(res, r.ok ? 200 : 400, r);
+  }
+  if (url.pathname === '/api/intents/real/status') {
+    const r = await realStatus(String(url.searchParams.get('depositAddress') || ''));
+    return sendJson(res, r.ok ? 200 : 400, r);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/intents/real/submit') {
+    const body = await readBody(req);
+    const swap = (state.realSwaps || []).find((x) => x.depositAddress === body.depositAddress);
+    if (!swap || !/^[A-Za-z0-9]{20,100}$/.test(String(body.txHash || ''))) return sendJson(res, 400, { ok: false, error: 'check the transaction hash' });
+    try { await getJson(`${ONECLICK}/deposit/submit`, { method: 'POST', body: JSON.stringify({ depositAddress: swap.depositAddress, txHash: String(body.txHash) }) }); return sendJson(res, 200, { ok: true }); }
+    catch (e) { return sendJson(res, 400, { ok: false, error: String(e.message || e).slice(0, 160) }); }
   }
 
   // the exact JSON of a morning plan (its SHA-256 is in the memo on NEAR), and the TEE proof

@@ -73,7 +73,7 @@ const eventWatchers = [];
 export function onGameEvent(fn) { eventWatchers.push(fn); }
 const emit = (type, data) => { for (const w of eventWatchers) w(type, data); };
 
-function transfer(state, from, to, amount, note = null) {
+export function transfer(state, from, to, amount, note = null) {
   amount = r2(amount);
   if (amount <= 0) return true;
   if (balance(state, from) + 1e-9 < amount) return false;
@@ -249,7 +249,7 @@ function rng(state) {
   return state.seed / 2147483648;
 }
 
-function addLog(state, text, kind = 'info', key = null, p = {}) {
+export function addLog(state, text, kind = 'info', key = null, p = {}) {
   state.log.unshift({ day: state.day, text, kind, key, p });
   if (state.log.length > 40) state.log.length = 40;
 }
@@ -2149,6 +2149,8 @@ export function publicView(state, playerId) {
   return {
     aiLog: (state.aiLog || []).map(({ json, ...x }) => x),
     onchain: { tx: (state.onchain && state.onchain.tx) || 0, aiPlans: state.aiDays || 0 },
+    realSwaps: playerId ? (state.realSwaps || []).filter((x) => x.player === playerId).slice(0, 3) : [],
+    realDone: (state.realSwaps || []).filter((x) => x.status === 'SUCCESS').slice(0, 5).map((x) => ({ name: (state.players[x.player] || {}).name || '?', amountIn: x.amountIn, amountOut: x.amountOut, to: x.to, origin: x.origin || [], dest: x.dest || [] })),
     token: TOKEN,
     rev: state.rev || 0,
     day: state.day,

@@ -666,7 +666,8 @@ function panelExchange() {
   if (tab === 'change' && !ui.exPrices && !ui.exPricesLoading) { ui.exPricesLoading = true; loadExPrices(); }
   let h = `<h2>${t('b.exchange')}</h2><p class="muted small">${t('ex.intro', { fee: Math.round(mk.fee * 100) })}</p>`;
   const COL = '<!--col-->';
-  h += `<div class="tabs">${['change', 'goods', 'deeds'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
+  h += `<div class="tabs">${['change', 'real', 'goods', 'deeds'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
+  if (tab === 'real') h += realSwapBox();
   if (tab === 'goods') {
     const mine = me ? mk.goods.filter((g) => (me.inv[g] || 0) > 0) : [];
     const shopPrice = (g) => { const n = Object.values(view.npcs).find((x) => x.sells[g] !== undefined); return n ? n.sells[g] : null; };
@@ -888,6 +889,67 @@ async function openMoney(acct) {
       r.rows.map((e) => `<tr><td>${e.day}</td><td>${esc(whyText(e.why, e.dir))}</td><td>${e.dir === 'in' ? '← ' : '→ '}${other(e)}</td><td class="n ${e.dir}">${e.dir === 'in' ? '+' : '−'}${e.amount}</td>${r.chain ? `<td>${near(e)}</td>` : ''}</tr>`).join('') + `</table></div>` : `<p>${t('mh.none')}</p>`);
 }
 
+// ---------- a REAL NEAR Intents swap on mainnet (small amounts, the player's own wallet) ----------
+const REAL_STEPS = ['PENDING_DEPOSIT', 'KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'];
+const NEAR_MAIN = 'https://nearblocks.io';
+function realSwapBox() {
+  const me = view.player, sw = (view.realSwaps || [])[0];
+  let h = `<p class="sub2">🌉 ${t('real.title')}</p><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p>`;
+  if (!me) return h + `<p class="muted">${t('toast.join')}</p>`;
+  const f = ui.real || { to: 'USDC', amount: 0.3, refundTo: '', recipient: '' };
+  const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
+  if (!active) {
+    h += `<div class="realform"><label>${t('real.amount')}</label><input id="real-amount" type="number" min="0.1" max="5" step="0.1" value="${f.amount}"> wNEAR` +
+      `<label>${t('real.to')}</label><select id="real-to">${[['USDC', 'USDC · NEAR'], ['USDC-SOL', 'USDC · Solana'], ['SOL', 'SOL · Solana'], ['USDC-BASE', 'USDC · Base']].map(([k, l]) => `<option value="${k}"${f.to === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` +
+      `<label>${t('real.refund')}</label><input id="real-refund" placeholder="yourname.near" value="${esc(f.refundTo)}">` +
+      `<label>${t(f.to === 'USDC' ? 'real.recipNear' : f.to === 'USDC-BASE' ? 'real.recipBase' : 'real.recipSol')}</label><input id="real-recip" placeholder="${f.to === 'USDC' ? 'yourname.near' : f.to === 'USDC-BASE' ? '0x…' : 'Solana address'}" value="${esc(f.recipient)}">` +
+      `<button class="primary" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
+  }
+  if (sw) {
+    const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
+    h += `<div class="realswap"><p class="small"><b>${t('real.quote', { a: sw.amountIn, b: sw.amountOut, to: sw.to.replace('-', ' · ') })}</b>${sw.usdOut ? ` (≈ $${sw.usdOut})` : ''}</p>`;
+    if (sw.status === 'PENDING_DEPOSIT') h += `<p class="small">${t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
+      (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t('real.how')}</p>` +
+      `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div>`;
+    h += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
+    if (bad) h += `<p class="closed small">${t('real.s.' + sw.status)}</p>`;
+    const lk = (x, base) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : base ? `<a href="${base}${encodeURIComponent(x.hash)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : esc(x.hash.slice(0, 10));
+    if ((sw.origin || []).length) h += `<p class="small">${t('real.originTx')} ${sw.origin.map((x) => lk(x, NEAR_MAIN + '/txns/')).join(' ')}</p>`;
+    if ((sw.dest || []).length) h += `<p class="small">${t('real.destTx')} ${sw.dest.map((x) => lk(x, sw.chain === 'near' ? NEAR_MAIN + '/txns/' : null)).join(' ')}</p>`;
+    h += `<p class="muted small"><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(sw.depositAddress)}" target="_blank" rel="noopener">${t('real.explorer')} ↗</a></p></div>`;
+    if (sw.status === 'SUCCESS' || bad) h += `<button data-realnew="1">${t('real.again')}</button>`;
+  }
+  const done = view.realDone || [];
+  if (done.length) h += `<p class="sub2">${t('real.doneTitle')}</p><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} NEAR → ${esc(String(x.amountOut))} ${x.to}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul>`;
+  return h;
+}
+function readRealForm() {
+  const g = (id) => { const el = $(id); return el ? el.value : ''; };
+  ui.real = { to: g('real-to') || 'USDC', amount: Number(g('real-amount')) || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim() };
+}
+async function realQuoteNow() {
+  readRealForm();
+  ui.realBusy = true; renderPanel();
+  const r = await post('/api/intents/real', { player: playerId, ...ui.real });
+  ui.realBusy = false;
+  if (!r.ok) { toast(t(r.code || 'real.noQuote'), 'bad'); renderPanel(); return; }
+  view.realSwaps = [r.swap, ...(view.realSwaps || [])];
+  pollReal(r.swap.depositAddress);
+  renderPanel();
+}
+let realTimer = null;
+function pollReal(addr) {
+  clearInterval(realTimer);
+  realTimer = setInterval(async () => {
+    const r = await (await fetch('/api/intents/real/status?depositAddress=' + encodeURIComponent(addr))).json().catch(() => null);
+    if (!r || !r.swap) return;
+    const k = (view.realSwaps || []).findIndex((x) => x.depositAddress === addr);
+    if (k >= 0) view.realSwaps[k] = r.swap;
+    if (['SUCCESS', 'REFUNDED', 'FAILED'].includes(r.swap.status)) { clearInterval(realTimer); if (r.swap.status === 'SUCCESS') { play('level'); toast(t('real.success'), 'win'); } }
+    if (ui.selected === 'exchange' || ui.selected === 'go-d3') renderPanel();
+  }, 6000);
+}
+
 // ---------- what NEAR does in Emberwick, visible at a glance ----------
 const NEAR_FEATURES = [
   { k: 'agents', icon: '🤖', tour: 1 },
@@ -913,7 +975,8 @@ function chainStrip() {
 function renderNearbar() {
   const box = $('nearbar');
   let closed = false; try { closed = localStorage.getItem('ew.nearbar') === '0'; } catch {}
-  if (!view || ui.scene) { box.hidden = true; return; }
+  // out of the way while a scene or a card on the map is open
+  if (!view || ui.scene || document.querySelector('.card-wide, #map-card:not([hidden])')) { box.hidden = true; return; }
   const oc = view.onchain || {}, c = view.chain || {};
   const key = JSON.stringify([getLang(), closed, oc.tx, chainOk(), (view.aiLog || []).length]);
   box.hidden = false;
@@ -2143,7 +2206,7 @@ document.body.addEventListener('click', (e) => {
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }
   const tabBtn = e.target.closest('[data-extab]');
-  if (tabBtn) { ui.exTab = tabBtn.dataset.extab; if (ui.exTab === 'change' && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) loadExPrices(); renderPanel(); return; }
+  if (tabBtn) { ui.exTab = tabBtn.dataset.extab; const sw0 = (view.realSwaps || [])[0]; if (ui.exTab === 'real' && sw0 && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw0.status)) pollReal(sw0.depositAddress); if (ui.exTab === 'change' && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) loadExPrices(); renderPanel(); return; }
   if (e.target.closest('#sfx-btn')) { setSfx(!sound.sfx); play('coin'); render(); return; }
   if (e.target.closest('#music-btn')) { setMusic(!sound.music); render(); return; }
   if (e.target.closest('#ff-btn')) {
@@ -2155,6 +2218,11 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  if (e.target.closest('[data-realquote]')) { realQuoteNow(); return; }
+  if (e.target.closest('[data-realnew]')) { view.realSwaps = []; renderPanel(); return; }
+  if (e.target.closest('[data-realsubmit]')) { const sw = (view.realSwaps || [])[0], tx = ($('real-tx') || {}).value || ''; if (sw && tx.trim()) post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: tx.trim() }).then((r) => toast(r.ok ? t('real.submitted') : errText(r), r.ok ? 'win' : 'bad')); return; }
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { try { navigator.clipboard.writeText(cp.dataset.copy); toast(t('real.copied'), 'win'); } catch {} return; }
   const mo = e.target.closest('[data-money]');
   if (mo) { openMoney(mo.dataset.money); return; }
   if (e.target.closest('[data-moneyclose]') || e.target.id === 'money') { $('money').hidden = true; return; }
@@ -2446,6 +2514,10 @@ function showLogTab(tab) {
   $('chat').hidden = tab !== 'chat';
   if (tab === 'chat') { ui.chatUnread = 0; renderChat(); }
 }
+// keep what was typed in the real-swap form across redraws; a new destination changes the address field
+document.addEventListener('input', (e) => { if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); });
+document.addEventListener('change', (e) => { if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; renderPanel(); } });
+
 document.addEventListener('submit', async (e) => {
   if (e.target.classList && e.target.classList.contains('ai-ask')) {
     e.preventDefault();

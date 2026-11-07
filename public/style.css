@@ -691,3 +691,12 @@ table.mh { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.mh th { text-align: left; position: sticky; top: 0; background: #fffaf2; border-bottom: 1px solid #e3d6bf; padding: 4px 6px; }
 table.mh td { border-bottom: 1px solid #f0e6d4; padding: 4px 6px; vertical-align: top; }
 table.mh td.in { color: #2d6a2d; font-weight: 600; } table.mh td.out { color: #a33; font-weight: 600; }
+
+/* real NEAR Intents swap */
+.realform { display: grid; grid-template-columns: 1fr; gap: 4px; margin: 6px 0; }
+.realform label { font-size: 12px; color: #555; margin-top: 4px; }
+.realform input, .realform select { width: 100%; }
+.realswap { border: 1px solid #c9d3f0; background: #f5f7ff; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+.realaddr code { font-size: 11px; word-break: break-all; background: #fff; padding: 2px 4px; border-radius: 4px; }
+.realsteps { margin: 6px 0 4px 18px; padding: 0; font-size: 12.5px; }
+.realsteps li { color: #888; } .realsteps li.done { color: #2d6a2d; } .realsteps li.done::marker { content: '✓ '; } .realsteps li.now { color: #3b4a85; font-weight: 600; }
