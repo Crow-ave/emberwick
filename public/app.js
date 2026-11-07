@@ -1807,13 +1807,22 @@ async function post(url, body) {
   return r.json();
 }
 
+const pendingActs = new Set(); // a one-time action (buying land, building) cannot be sent twice while the server answers
+const ONCE = new Set(['buyPlot', 'buyDeed', 'buildHouse', 'buyBed', 'listDeed', 'unlistDeed', 'leaseHome', 'listHome', 'apply', 'commission', 'deal', 'repay']);
 async function act(type, extra = {}) {
   if (!playerId) return toast(t('toast.join'), 'bad');
+  const onceKey = ONCE.has(type) ? type + ':' + (extra.plot || extra.npc || '') : null;
+  if (onceKey) { if (pendingActs.has(onceKey)) return; pendingActs.add(onceKey); document.body.classList.add('busy-act'); }
+  try { return await actNow(type, extra); } finally { if (onceKey) { pendingActs.delete(onceKey); if (!pendingActs.size) document.body.classList.remove('busy-act'); } }
+}
+async function actNow(type, extra) {
   const body = { player: playerId, type, ...extra };
   if (type === 'sell') setTimeout(() => { if (ui.sellQty) delete ui.sellQty[extra.good]; }, 0);
   if (type === 'sell') body.qty = Math.min(view.player.inv[extra.good] || 0, (ui.sellQty || {})[extra.good] || view.player.inv[extra.good] || 0);
   const r = await post('/api/action', body);
   if (r.state && newer(r.state)) { view = r.state; render(); }
+  // a second click on a slow connection: the land is already yours, so this is no error
+  if (!r.ok && r.code === 'err.havePlot' && (type === 'buyPlot' || type === 'buyDeed') && view.player && view.player.plot === extra.plot) { toast(t('plot.boughtOk', { place: placeName(extra.plot) }), 'win'); return r; }
   if (r.ok && type !== 'visit') { explain(type, extra, r); if (ui.scene) renderScene(); }
   if (r.ok) play(type === 'buildHouse' || type === 'buyBed' ? 'build' : type === 'sleep' || type === 'rest' ? 'sleep' : /sell|buy|meal|rent|lease|Plot|shift/i.test(type) ? 'coin' : '');
   else if (r.code !== 'err.turnedDown') play('bad');

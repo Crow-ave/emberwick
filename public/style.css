@@ -681,3 +681,4 @@ button.ni-item { cursor: pointer; } button.ni-item:hover { border-color: #5b6ee1
 .nb-foot { font-size: 11px; color: #2d6a2d; margin-top: 4px; }
 .nb-open { font-size: 12px; padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #c9d3f0; color: #3b4a85; cursor: pointer; }
 @media (max-width: 700px), (max-height: 520px) { .nearbar { top: 6px; left: 6px; max-width: 70vw; } .nb-row, .nb-foot { display: none; } .nb-head { margin: 0; } }
+body.busy-act [data-act] { cursor: progress; }

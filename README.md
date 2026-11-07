@@ -13,7 +13,7 @@
 | 🌉 **NEAR Intents** | Live 1Click quotes: swap NEAR to USDC/BTC/ETH/SOL, pay for land from another chain, a DAO treasury reserve with a live quote, the NEAR price as an oracle for the village economy | Exchange quarter |
 | ⛓ **On-chain economy** | EMWK (NEP-141, fixed supply 25,000), land deeds as NFTs (NEP-171) that let you build, sleep, rent out and vote, a village DAO; every trade settles on NEAR in batches | [token](https://testnet.nearblocks.io/address/token.emberwick-village.testnet) · [deeds](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet) · [bank](https://testnet.nearblocks.io/address/emberwick-village.testnet) · [treasury](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) |
 
-(Free hosting: the first visit after a quiet spell can take about a minute to wake up, and the online village starts again from day 1 after a restart.)
+(Free hosting: the first visit after a quiet spell can take about a minute to wake up, and the online village starts again from day 1 after a restart. The online demo has its own village bank on testnet, [emberwick-village-2.testnet](https://testnet.nearblocks.io/address/emberwick-village-2.testnet), with its token [emwk.emberwick-village-2.testnet](https://testnet.nearblocks.io/address/emwk.emberwick-village-2.testnet); the links in the table are the first village's.)
 
 The dragon burned Emberwick to ash. Years later, a few craftsmen came back and relit the embers. Newcomers gather wood, wheat and iron ore, sell them to the village's craftsmen, and help the village get ready before the dragon returns.
 
