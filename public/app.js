@@ -1012,7 +1012,22 @@ function feeBox(list) {
     `<tr><td>${t('fee.arrives')}</td><td class="n"><b>${outTxt}</b> <span class="muted">≈ ${money(vout)}</span></td></tr>` +
     `<tr class="fee-cost ${level}"><td>${t(cost < 0 ? 'fee.gain' : 'fee.cost')}</td><td class="n"><b>${money(Math.abs(cost))}</b>${pct != null ? ` (%${Math.abs(pct).toFixed(1)})` : ''}</td></tr></table>` +
     `<p class="small muted">${mk ? t('fee.costNoteMarket') : t('fee.costNoteIntents')}${mk ? ` ${t('fee.intentsSays', { a: money(usdIn), b: money(usdOut) })}` : ''}</p>` +
-    `<p class="small muted">⛽ ${gas}${time ? ` · ⏱ ${t('fee.time', { n: time })}` : ''}</p></div>`;
+    `<p class="small muted">⛽ ${gas}${time ? ` · ⏱ ${t('fee.time', { n: time })}` : ''}</p>` + (list.length === 1 ? altBox(x0, cost) : '') + `</div>`;
+}
+// other ways to do this swap, checked live when the quote was taken (only to compare; the swap uses NEAR Intents)
+function altBox(sw, cost) {
+  const a = sw.alt;
+  if (!a) return '';
+  const o = a.omni || {}, l = a.lifi || {}, inDir = sw.dir === 'in';
+  const omniTxt = o.ok ? `<b>${money(o.usd)}</b> ${t('alt.omniFee')} · <span class="muted">${t(inDir ? 'alt.omniNoteIn' : 'alt.omniNoteOut', { sym: inDir ? sw.fromSym : DST_LABEL(sw.to) })}</span>`
+    : `<span class="muted">${t(o.why === 'same-chain' ? 'alt.sameChain' : o.why === 'token' ? 'alt.omniNoToken' : 'alt.omniFail')}</span>`;
+  const lifiTxt = !l.checked ? `<span class="muted">${t('alt.lifiFail')}</span>` : l.near ? t('alt.lifiYes') : `<span class="muted">${t('alt.lifiNo', { n: l.chains })}</span>`;
+  const sum = `${t('alt.title')}: Omni ${o.ok ? money(o.usd) : '—'} · LI.FI ${l.checked ? (l.near ? '✓' : t('alt.noNear')) : '?'}`;
+  return `<details class="altbox"><summary>🔎 ${sum}</summary><table>` +
+    `<tr><td><b>NEAR Intents</b></td><td><b>${money(cost)}</b> ${t('alt.intentsNote')} ✓</td></tr>` +
+    `<tr><td><b>Omni Bridge</b><br><span class="muted small">${t('alt.omniWho')}</span></td><td>${omniTxt}</td></tr>` +
+    `<tr><td><b>LI.FI / Jumper</b><br><span class="muted small">${t('alt.lifiWho')}</span></td><td>${lifiTxt}</td></tr></table>` +
+    `<p class="muted small">${t('alt.note', { time: new Date(a.at).toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' }) })}</p></details>`;
 }
 const COL_MARK = '<!--col-->';
 // step 1: big, coloured buttons for the wallets this swap needs
@@ -1023,7 +1038,7 @@ function walletTiles(srcChain, dstChain) {
   return `<div class="wtiles"><div class="step-h"><span class="stepn">1</span>${t('wallet.step')}</div><div class="wtiles-row">${chains.map((c) => {
     const ch = chainOf(c), col = ch ? ch[1] : '#556', role = c === srcChain ? t('wallet.roleSend') : t('wallet.roleGet');
     return w[c]
-      ? `<div class="wtile on" style="--c:${col}"><span class="wt-ic">${CHAIN_ICON[c]}</span><span class="wt-tx"><b title="${esc(w[c])}">✓ ${esc(w[c].length > 16 ? w[c].slice(0, 5) + '…' + w[c].slice(-4) : w[c])}</b><span>${esc(CH_NAME[c])} · ${role}</span></span>${c === 'near' ? `<button type="button" class="linkbtn wt-off" data-walletoff="near">${t('wallet.off')}</button>` : ''}</div>`
+      ? `<div class="wtile on" style="--c:${col}"><span class="wt-ic">${CHAIN_ICON[c]}</span><span class="wt-tx"><b title="${esc(w[c])}">✓ ${esc(w[c].length > 16 ? w[c].slice(0, 5) + '…' + w[c].slice(-4) : w[c])}</b><span>${esc(CH_NAME[c])} · ${role}</span></span><span class="wt-acts"><button type="button" class="wt-act" data-walletswap="${c}" title="${esc(t('wallet.swapHint'))}">⇄ ${t('wallet.swap')}</button><button type="button" class="wt-act off" data-walletoff="${c}">⏻ ${t('wallet.off')}</button></span></div>`
       : `<button type="button" class="wtile" style="--c:${col}" data-wallet="${c}"><span class="wt-ic">${CHAIN_ICON[c]}</span><span class="wt-tx"><b>${t('wallet.connectShort', { chain: CH_NAME[c] })}</b><span>${WALLET_SHORT[c]} · ${role}</span></span></button>`;
   }).join('')}</div></div>`;
 }
@@ -1179,6 +1194,21 @@ async function connectWallet(chain) {
     toast(t('wallet.connected', { a: shortAddr(a) }), 'win');
   } catch (e) { toast(t('wallet.fail', { why: esc(String((e && e.message) || e).slice(0, 100)) }), 'bad'); }
   render();
+}
+// disconnect a wallet (and forget its address in the card); with again=true, connect a different one right away
+async function walletOff(chain, again) {
+  const was = (ui.wallet || {})[chain];
+  try { const L = await walletLib(); await (chain === 'near' ? L.nearDisconnect() : chain === 'sol' ? L.solDisconnect() : L.evmDisconnect()); } catch { /* forget it here anyway */ }
+  ui.wallet = { ...(ui.wallet || {}), [chain]: null };
+  readRealForm();
+  if (ui.real.refundTo === was) ui.real.refundTo = '';
+  if (ui.real.recipient === was) ui.real.recipient = '';
+  const w = savedWallets(); if (w[chain] === was) { delete w[chain]; try { localStorage.setItem('ew.wallets', JSON.stringify(w)); } catch {} }
+  if (chain === 'near') { try { localStorage.removeItem('ew.walletUsed'); } catch {} }
+  if (!again) { toast(t('wallet.disconnected'), 'win'); render(); return; }
+  render();
+  if (chain === 'sol' || chain === 'base') toast(t('wallet.pickOther'), 'win');
+  connectWallet(chain);
 }
 async function walletSend() {
   const sw = curSwap();
@@ -2609,7 +2639,10 @@ document.body.addEventListener('click', (e) => {
   const wc = e.target.closest('[data-wallet]');
   if (wc) { connectWallet(wc.dataset.wallet); return; }
   if (e.target.closest('[data-walletsend]')) { walletSend(); return; }
-  if (e.target.closest('[data-walletoff]')) { walletLib().then((L) => L.nearDisconnect()).catch(() => {}); ui.wallet = { ...(ui.wallet || {}), near: null }; render(); return; }
+  const wo = e.target.closest('[data-walletoff]');
+  if (wo) { walletOff(wo.dataset.walletoff); return; }
+  const ws = e.target.closest('[data-walletswap]');
+  if (ws) { walletOff(ws.dataset.walletswap, true); return; }
   if (e.target.closest('[data-aiswap]')) { aiSwapNow(); return; }
   const axe = e.target.closest('[data-aiswapex]');
   if (axe) { ui.aiSwap = { text: axe.dataset.aiswapex }; render(); const i = $('ai-swap'); if (i) i.focus(); return; }

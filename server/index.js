@@ -249,6 +249,45 @@ async function marketCheck(symIn, amountIn, symOut, amountOut) {
   if (!(vin > 0) || !(vout >= 0)) return null;
   return { in: Math.round(vin * 100) / 100, out: Math.round(vout * 100) / 100, cost: Math.round((vin - vout) * 100) / 100, pct: Math.round(((vin - vout) / vin) * 1000) / 10, source: 'CoinGecko' };
 }
+// ---------- other routes, for comparison only (the swap itself always goes through NEAR Intents) ----------
+// Omni Bridge is NEAR's own bridge: it moves the same token to the other chain (no swap), so its fee is shown
+// with that note. LI.FI is the largest bridge aggregator: we check live whether it lists NEAR at all.
+const OMNI = process.env.EMBERWICK_OMNI || 'https://mainnet.api.bridge.nearone.org';
+const LIFI = process.env.EMBERWICK_LIFI || 'https://li.quest';
+const OMNI_TOKEN = { NEAR: 'near:wrap.near', 'USDC-SOL': 'sol:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'USDC-BASE': 'base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' };
+let lifiCache = { at: 0, v: null };
+async function lifiHasNear() {
+  if (lifiCache.v && Date.now() - lifiCache.at < 3600000) return lifiCache.v;
+  try {
+    const j = await getJson(`${LIFI}/v1/chains?chainTypes=EVM,SVM,UTXO,MVM`);
+    const chains = (j && j.chains) || [];
+    const near = chains.some((c) => /^near$/i.test(String(c.key || '')) || /^near( protocol)?$/i.test(String(c.name || '')));
+    lifiCache = { at: Date.now(), v: { checked: true, chains: chains.length, near } };
+  } catch { lifiCache = { at: Date.now() - 3300000, v: { checked: false } }; }
+  return lifiCache.v;
+}
+async function omniFee(tokenKey, units, senderOmni, recipientOmni) {
+  const token = OMNI_TOKEN[tokenKey];
+  if (!token) return { ok: false, why: 'token' };
+  try {
+    const q = new URLSearchParams({ sender: senderOmni, recipient: recipientOmni, token, amount: units });
+    const j = await getJson(`${OMNI}/api/v3/transfer-fee?${q}`);
+    if (!j || typeof j.usd_fee !== 'number') return { ok: false, why: 'answer' };
+    return { ok: true, usd: Math.round(j.usd_fee * 100) / 100 };
+  } catch (e) { return { ok: false, why: String(e.message || e).slice(0, 80) }; }
+}
+// what the other ways would look like for this swap
+async function otherRoutes(dir, srcKey, dstChain, amount, decimals, refundTo, recipient) {
+  const omniChain = { near: 'near', sol: 'sol', base: 'base' };
+  const units = (BigInt(Math.round(Number(amount) * 1e6)) * 10n ** BigInt(decimals)) / 1000000n;
+  const [lifi, omni] = await Promise.all([
+    lifiHasNear(),
+    dir === 'out' && dstChain === 'near' ? Promise.resolve({ ok: false, why: 'same-chain' })
+      : dir === 'out' ? omniFee('NEAR', units.toString(), `near:${refundTo}`, `${omniChain[dstChain]}:${recipient}`)
+        : omniFee(srcKey, units.toString(), `${omniChain[REAL_FROM[srcKey][1]]}:${refundTo}`, `near:${recipient}`),
+  ]);
+  return { at: Date.now(), lifi, omni };
+}
 async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null, opts = {}) {
   if (fromKey) return realQuoteIn(pid, fromKey, amount, refundTo, recipient);
   const def = REAL_TO[toKey];
@@ -280,7 +319,7 @@ async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null
     if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
     const swap = { id: qq.depositAddress, player: pid, to: toKey, chain: def[1], amountIn: amount, amountOut: shortAmt(qq.amountOutFormatted || qq.amountOut), usdOut: shortUsd(qq.amountOutUsd), usdIn: shortUsd(qq.amountInUsd),
       depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
-    swap.mkt = await marketCheck('NEAR', amount, def[0], swap.amountOut);
+    [swap.mkt, swap.alt] = await Promise.all([marketCheck('NEAR', amount, def[0], swap.amountOut), opts.noLimit ? null : otherRoutes('out', 'NEAR', def[1], amount, 24, refundTo, recipient)]);
     state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
     save();
     return { ok: true, swap };
@@ -313,7 +352,7 @@ async function realQuoteIn(pid, fromKey, amount, refundTo, recipient) {
     if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
     const swap = { id: qq.depositAddress, player: pid, dir: 'in', from: fromKey, fromSym: def[0], fromChain: def[1], to: 'NEAR', chain: 'near', amountIn: amount, amountOut: shortAmt(qq.amountOutFormatted || qq.amountOut), usdOut: shortUsd(qq.amountOutUsd), usdIn: shortUsd(qq.amountInUsd),
       depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
-    swap.mkt = await marketCheck(def[0], amount, 'NEAR', swap.amountOut);
+    [swap.mkt, swap.alt] = await Promise.all([marketCheck(def[0], amount, 'NEAR', swap.amountOut), otherRoutes('in', fromKey, 'near', amount, from.decimals, refundTo, recipient)]);
     state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
     save();
     return { ok: true, swap };

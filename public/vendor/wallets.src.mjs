@@ -105,6 +105,8 @@ export async function solConnect() {
   const r = await p.connect();
   return (r && r.publicKey ? r.publicKey : p.publicKey).toString();
 }
+// forget this site in the wallet, so the next connect can pick another account
+export async function solDisconnect() { const p = sol(); try { if (p && p.disconnect) await p.disconnect(); } catch { /* already gone */ } }
 // the game's server gives a fresh blockhash (browsers are often blocked by public Solana RPCs)
 export async function solSend(depositAddress, sym, amount, blockhash) {
   const p = sol();
@@ -132,6 +134,8 @@ export async function evmConnect() {
   const [a] = await e.request({ method: 'eth_requestAccounts' });
   return a;
 }
+// MetaMask can drop this site's permission, so the next connect shows the account list again
+export async function evmDisconnect() { const e = eth(); try { if (e) await e.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); } catch { /* older wallets: just forget it here */ } }
 async function onBase(e) {
   try { await e.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN }] }); }
   catch (err) {

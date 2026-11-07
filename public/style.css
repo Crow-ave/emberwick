@@ -839,3 +839,15 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .fee-cost.good b { color: #2f7a3a; } .fee-cost.mid b { color: #b8730e; } .fee-cost.high b { color: #b3261e; }
 .feebox p { margin: 3px 0 0; }
 .feebox td.n { white-space: nowrap; padding-left: 6px; }
+
+/* other routes and wallet buttons */
+.altbox { margin-top: 5px; font-size: 12px; }
+.altbox summary { cursor: pointer; color: #2c3e73; font-weight: 700; }
+.altbox table { width: 100%; margin-top: 4px; border-collapse: collapse; }
+.altbox td { vertical-align: top; padding: 3px 4px; border-top: 1px solid #efe3cc; font-size: 12px; }
+.altbox td:first-child { width: 34%; }
+.wtile.on { flex-wrap: wrap; }
+.wt-acts { display: flex; gap: 4px; margin-left: auto; }
+.wt-act { border: 1px solid #c9b79c; background: #fff; border-radius: 999px; font-size: 11px; padding: 2px 8px; cursor: pointer; color: #5a4632; }
+.wt-act:hover { background: #fff3e6; }
+.wt-act.off { color: #b3261e; border-color: #e6b3ad; }
