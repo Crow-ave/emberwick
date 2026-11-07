@@ -924,7 +924,7 @@ function doneItem(x) {
   const key = 'done-' + (x.depositAddress || '').slice(0, 16);
   const lk = (h, base) => h.url ? `<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.hash.slice(0, 12))}… ↗</a>` : base ? `<a href="${base}${encodeURIComponent(h.hash)}" target="_blank" rel="noopener">${esc(h.hash.slice(0, 12))}… ↗</a>` : esc(h.hash.slice(0, 12));
   const when = x.at ? new Date(x.at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-  let h = `<details class="doneitem" data-keep="${esc(key)}"${keepOpen(key)}><summary><span class="ok">✓</span> <b>${esc(x.name)}</b> · ${x.amountIn} ${esc(from)} → ${esc(String(amt(x.amountOut)))} ${esc(to)}${when ? ` <span class="muted small">· ${when}</span>` : ''}</summary><div class="donelinks small">`;
+  let h = `<details class="doneitem" data-keep="${esc(key)}"${keepOpen(key)}><summary><span class="ok">✓</span> <b>${esc(x.name)}</b>${x.batch ? ` <span class="muted small">(${t('split.part', { n: x.leg || '?' })})</span>` : ''} · ${x.amountIn} ${esc(from)} → ${esc(String(amt(x.amountOut)))} ${esc(to)}${when ? ` <span class="muted small">· ${when}</span>` : ''}</summary><div class="donelinks small">`;
   if (x.usdOut) h += `<p>≈ $${Number(x.usdOut).toFixed(2)}</p>`;
   if (x.sentTx && !(x.origin || []).some((o) => o.hash === x.sentTx)) h += `<p>${t('real.walletTx')} ${lk({ hash: x.sentTx }, txBase(x.fromChain || 'near'))}</p>`;
   if ((x.origin || []).length) h += `<p>${t('real.originTx')} ${x.origin.map((o) => lk(o, txBase(x.fromChain || 'near'))).join(' ')}</p>`;
@@ -932,6 +932,7 @@ function doneItem(x) {
   if (x.depositAddress) h += `<p><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(x.depositAddress)}" target="_blank" rel="noopener">${t('real.explorer')} ↗</a></p>`;
   return h + `</div></details>`;
 }
+const doneBox = () => { const done = view.realDone || []; return done.length ? `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><div class="donelist">${done.map(doneItem).join('')}</div></details>` : ''; };
 function realSwapBox() {
   const me = view.player;
   let sw = curSwap();
@@ -989,8 +990,7 @@ function realSwapBox() {
     L += `<p class="muted small"><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(sw.depositAddress)}" target="_blank" rel="noopener">${t('real.explorer')} ↗</a></p></div>`;
     if (sw.status === 'SUCCESS' || bad) L += `<button class="primary" data-realnew="1">${t('real.again')}</button>`;
   }
-  const done = view.realDone || [];
-  if (done.length) R += `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><div class="donelist">${done.map(doneItem).join('')}</div></details>`;
+  R += doneBox();
   return R + COL_MARK + L;
 }
 // ---------- one NEAR send split to several receivers ----------
@@ -1026,9 +1026,20 @@ function splitView(group, R) {
   const d0 = REAL_DST[group[0].to] || REAL_DST.USDC;
   R += bridgeSvg({ sym: 'NEAR', chain: 'near', amount: total }, { sym: ds(d0[0]), chain: d0[1], amount: null }, moving, 'real');
   R += `<p class="small muted">${t('split.picture', { n: group.length, c: new Set(group.map((x) => x.chain)).size })}</p>`;
-  const lk = (x) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">tx ↗</a>` : '';
-  let L = `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p>${pending && !sent ? `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>` : ''}<ol class="legst">` +
-    group.map((x) => `<li class="st-${x.status}"><span class="leg-n">${x.leg || ''}</span><span class="legst-tx">${x.amountIn} NEAR → <b>${esc(String(amt(x.amountOut)))} ${esc(DST_LABEL(x.to))}</b><br><span class="muted small" title="${esc(x.recipient)}">${esc(shortAddr(x.recipient))}</span> ${(x.dest || []).map(lk).join(' ')}</span><span class="legst-st" title="${esc(t('real.s.' + x.status))}">${SPLIT_ST[x.status] || '·'} ${t('split.st.' + x.status)}</span></li>`).join('') + `</ol>`;
+  R += doneBox();
+  const lk = (h, base) => h.url ? `<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.hash.slice(0, 10))}… ↗</a>` : base ? `<a href="${base}${encodeURIComponent(h.hash)}" target="_blank" rel="noopener">${esc(h.hash.slice(0, 10))}… ↗</a>` : esc(h.hash.slice(0, 10));
+  const proofs = (x) => {
+    let p = '';
+    if ((x.origin || []).length) p += `<span>${t('real.originTx')} ${x.origin.map((h) => lk(h, txBase('near'))).join(' ')}</span>`;
+    if ((x.dest || []).length) p += `<span>${t('real.destTx')} ${x.dest.map((h) => lk(h, txBase(x.chain))).join(' ')}</span>`;
+    else if (x.status === 'SUCCESS') p += `<span class="muted">${t('split.linksWait')}</span>`;
+    if (x.status !== 'PENDING_DEPOSIT' || x.sentTx) p += `<span><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(x.depositAddress)}" target="_blank" rel="noopener">${t('split.intents')} ↗</a></span>`;
+    return p ? `<span class="legproof small">${p}</span>` : '';
+  };
+  const wtx = (group.find((x) => x.sentTx) || {}).sentTx;
+  let L = ended ? `<div class="lastres ${group.every((x) => x.status === 'SUCCESS') ? 'ok' : 'bad'}"><span>${group.every((x) => x.status === 'SUCCESS') ? '✓' : '↩'} <b>${t(group.every((x) => x.status === 'SUCCESS') ? 'split.doneOk' : 'split.doneSome')}</b> <span class="muted">${t('real.doneKeep')}</span></span></div>` : '';
+  L += `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p>${pending && !sent ? `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>` : ''}<ol class="legst">` +
+    group.map((x) => `<li class="st-${x.status}"><span class="leg-n">${x.leg || ''}</span><span class="legst-tx">${x.amountIn} NEAR → <b>${esc(String(amt(x.amountOut)))} ${esc(DST_LABEL(x.to))}</b><br><span class="muted small" title="${esc(x.recipient)}">${esc(shortAddr(x.recipient))}</span>${proofs(x)}</span><span class="legst-st" title="${esc(t('real.s.' + x.status))}">${SPLIT_ST[x.status] || '·'} ${t('split.st.' + x.status)}</span></li>`).join('') + `</ol>`;
   if (pending && !sent) {
     R += feeBox(group);
     const w = (ui.wallet || {}).near;
@@ -1037,7 +1048,8 @@ function splitView(group, R) {
     L += `<details class="realmanual" data-keep="manual"${keepOpen('manual', !w)}><summary>${t('real.manual')}</summary><p class="small">${t('split.manual')}</p><ul class="small">${group.map((x) => `<li>${x.amountIn} wNEAR → <code>${esc(x.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(x.depositAddress)}">${t('real.copy')}</button></li>`).join('')}</ul></details>`;
     L += ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
       : `<button class="linkbtn realcancel-btn" data-realcancel="ask">✕ ${t('split.cancel')}</button>`;
-  } else if (sent && !ended) L += `<p class="ok small">✓ ${t('wallet.sentTx', { h: esc(shortAddr(group.find((x) => x.sentTx).sentTx)) })}</p>`;
+  } else if (sent && !ended) L += `<p class="ok small">✓ ${t('wallet.sentTx', { h: esc(shortAddr(wtx)) })}</p>`;
+  if (wtx) L += `<p class="small">${t('split.walletTx', { n: group.length })} ${lk({ hash: wtx }, txBase('near'))}</p>`;
   L += `</div>`;
   if (ended) L += `<button class="primary" data-realnew="1">${t('real.again')}</button>`;
   return R + COL_MARK + L;
@@ -1584,18 +1596,22 @@ let realTimer = null;
 const REAL_END = ['SUCCESS', 'REFUNDED', 'FAILED'];
 // follow one swap, or every part of a split, until each one has finished
 function pollReal(addr) {
+  pollReal.extra = pollReal.extra || {};
   const list = [].concat(addr);
   clearInterval(realTimer);
   realTimer = setInterval(async () => {
     let open = 0, won = 0;
     for (const a of list) {
       const x0 = (view.realSwaps || []).find((x) => x.depositAddress === a);
-      if (x0 && REAL_END.includes(x0.status)) continue;
+      if (x0 && REAL_END.includes(x0.status) && (x0.status !== 'SUCCESS' || (x0.dest || []).length || (pollReal.extra[a] = (pollReal.extra[a] || 0) + 1) > 6)) continue;
       const r = await (await fetch('/api/intents/real/status?depositAddress=' + encodeURIComponent(a))).json().catch(() => null);
       if (!r || !r.swap) { open++; continue; }
       const k = (view.realSwaps || []).findIndex((x) => x.depositAddress === a);
       if (k >= 0) view.realSwaps[k] = r.swap;
-      if (REAL_END.includes(r.swap.status)) { if (r.swap.status === 'SUCCESS') won++; } else open++;
+      if (REAL_END.includes(r.swap.status)) {
+        if (r.swap.status === 'SUCCESS' && (!x0 || x0.status !== 'SUCCESS')) won++;
+        if (r.swap.status === 'SUCCESS' && !(r.swap.dest || []).length && (pollReal.extra[a] || 0) <= 6) open++; // links not in yet: ask again
+      } else open++;
     }
     if (won) { play('level'); toast(t('real.success'), 'win'); }
     if (!open) clearInterval(realTimer);

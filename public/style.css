@@ -941,3 +941,5 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .doneitem summary{cursor:pointer;font-size:13px;line-height:1.4}
 .doneitem[open]{background:#fffdf8}
 .donelinks{padding:4px 0 2px 18px}.donelinks p{margin:3px 0;word-break:break-all}
+
+.legproof{display:flex;flex-direction:column;gap:1px;margin-top:3px}.legproof a{word-break:break-all}

@@ -486,7 +486,8 @@ async function realStatus(addr) {
     const d = st.swapDetails || {};
     const links = (list) => (list || []).map((x) => typeof x === 'string' ? { hash: x } : { hash: x.hash, url: x.explorerUrl }).filter((x) => x.hash);
     swap.status = st.status || swap.status;
-    swap.origin = links(d.originChainTxHashes); swap.dest = links(d.destinationChainTxHashes);
+    const o = links(d.originChainTxHashes), dd = links(d.destinationChainTxHashes);
+    if (o.length) swap.origin = o; if (dd.length) swap.dest = dd; // never lose links an earlier answer gave
     if (d.amountOutFormatted) swap.amountOut = shortAmt(d.amountOutFormatted);
     if (swap.status === 'SUCCESS' && !swap.logged) {
       swap.logged = true;
@@ -496,7 +497,7 @@ async function realStatus(addr) {
       const cn = (c) => CHAIN_NAME[c] || String(c || '').toUpperCase();
       const dsym = (x) => (x === 'wNEAR' ? 'NEAR' : x);
       const fromTxt = swap.dir === 'any' ? `${swap.amountIn} ${dsym(swap.fromSym)} (${cn(swap.fromChain)})` : swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain === 'base' ? 'Base' : 'Solana'})` : `${swap.amountIn} NEAR`;
-      const toTxt = swap.dir === 'any' ? `${swap.amountOut} ${dsym(swap.toSym)} (${cn(swap.chain)})` : swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
+      const toTxt = swap.dir === 'any' ? `${swap.amountOut} ${dsym(swap.toSym)} (${cn(swap.chain)})` : swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${({ USDC: 'USDC (NEAR)', 'USDC-SOL': 'USDC (Solana)', 'USDC-BASE': 'USDC (Base)', SOL: 'SOL (Solana)' })[swap.to] || (String(swap.to).includes(':') ? `${dsym(swap.toSym || swap.to)} (${cn(swap.chain)})` : swap.to)}`;
       addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${fromTxt} -> ${toTxt}.`, 'good', 'log.realSwap2', { name: who, a: fromTxt, b: toTxt });
       // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
       transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${fromTxt} -> ${toTxt}, tx ${tx.slice(0, 64)}` });
