@@ -4,6 +4,9 @@
 import { Buffer } from 'buffer';
 globalThis.Buffer = globalThis.Buffer || Buffer;
 import { setupWalletSelector } from '@near-wallet-selector/core';
+import { actionCreators } from '@near-js/transactions';
+// wallet-selector 10 wants near-api-js actions; Meteor and MyNearWallet convert them themselves
+const najCall = (methodName, args, gas, deposit) => actionCreators.functionCall(methodName, args, BigInt(gas), BigInt(deposit));
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
@@ -64,7 +67,7 @@ export async function nearSend(depositAddress, amount) {
   const me = await nearAccount();
   if (!me) throw new Error('connect a NEAR wallet first');
   const units = toUnits(amount, 24);
-  const fc = (methodName, args, deposit) => ({ type: 'FunctionCall', params: { methodName, args, gas: TGAS, deposit } });
+  const fc = (methodName, args, deposit) => najCall(methodName, args, TGAS, deposit);
   const w = await s.wallet();
   const out = await w.signAndSendTransaction({
     signerId: me, receiverId: WRAP,
@@ -87,7 +90,7 @@ export async function nearSendMany(parts) {
   if (!me) throw new Error('connect a NEAR wallet first');
   const units = parts.map((p) => BigInt(toUnits(p.amount, 24)));
   const total = units.reduce((a, b) => a + b, 0n);
-  const fc = (methodName, args, deposit, gas) => ({ type: 'FunctionCall', params: { methodName, args, gas, deposit } });
+  const fc = (methodName, args, deposit, gas) => najCall(methodName, args, gas, deposit);
   const G10 = '10000000000000', G15 = '15000000000000';
   const actions = [fc('storage_deposit', { account_id: me, registration_only: true }, STORAGE, G10)];
   for (const p of parts) actions.push(fc('storage_deposit', { account_id: p.depositAddress, registration_only: true }, STORAGE, G10));
@@ -104,7 +107,7 @@ export async function nearSendFt(contract, depositAddress, amount, decimals) {
   const me = await nearAccount();
   if (!me) throw new Error('connect a NEAR wallet first');
   const units = toUnits(amount, decimals);
-  const fc = (methodName, args, deposit) => ({ type: 'FunctionCall', params: { methodName, args, gas: TGAS, deposit } });
+  const fc = (methodName, args, deposit) => najCall(methodName, args, TGAS, deposit);
   const w = await s.wallet();
   const out = await w.signAndSendTransaction({ signerId: me, receiverId: contract, actions: [
     fc('storage_deposit', { account_id: depositAddress, registration_only: true }, STORAGE),
