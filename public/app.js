@@ -965,7 +965,7 @@ function swapCard(f, dir) {
     `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div><div class="tokrow">${getChips}</div>` +
     `<div class="sc-est">≈ ? <b>${esc(dst[0])}</b> <span class="muted small">${t('real.est')}</span></div>` +
     `<label class="sc-lab">${t('real.toWallet', { chain: CH_NAME[dst[1]] })}</label><input id="real-recip" class="${need.includes('wallet:' + dst[1]) && !recipV ? 'need' : ''}" placeholder="${esc(ADDR_PH[dst[1]])}" value="${esc(recipV)}">` +
-    `<div class="sc-hint">${t('real.toHint', { sym: dst[0], chain: CH_NAME[dst[1]] })}</div></div>` +
+    `<div class="sc-hint">${out ? t('real.toHint', { sym: dst[0], chain: CH_NAME[dst[1]] }) : t('real.toHintNear')}</div></div>` +
     `<button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
 }
 // turn the swap round, keeping the token and the wallets that still fit
