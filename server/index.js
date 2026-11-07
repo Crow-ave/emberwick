@@ -230,8 +230,8 @@ const recipientOk = (chain, a) => chain === 'near' ? nearAcct(a) : chain === 'so
 const realAsk = new Map(); // player -> times of recent real quotes
 // an independent price check: what you send and what arrives, both at market price (CoinGecko), so the
 // player sees the full cost of the swap (fees and spread together), not only what the bridge says
-const MARKET = process.env.EMBERWICK_PRICES || 'https://api.coingecko.com/api/v3/simple/price?ids=near,solana,usd-coin&vs_currencies=usd';
-const GECKO_ID = { NEAR: 'near', wNEAR: 'near', SOL: 'solana', USDC: 'usd-coin' };
+const MARKET = process.env.EMBERWICK_PRICES || 'https://api.coingecko.com/api/v3/simple/price?ids=near,solana,usd-coin,ethereum,bitcoin,tether&vs_currencies=usd';
+const GECKO_ID = { NEAR: 'near', wNEAR: 'near', SOL: 'solana', USDC: 'usd-coin', ETH: 'ethereum', WETH: 'ethereum', BTC: 'bitcoin', WBTC: 'bitcoin', USDT: 'tether' };
 let marketCache = { at: 0, p: null };
 async function marketPrices() {
   if (marketCache.p && Date.now() - marketCache.at < 60000) return marketCache.p;
@@ -287,6 +287,100 @@ async function otherRoutes(dir, srcKey, dstChain, amount, decimals, refundTo, re
         : omniFee(srcKey, units.toString(), `${omniChain[REAL_FROM[srcKey][1]]}:${refundTo}`, `near:${recipient}`),
   ]);
   return { at: Date.now(), lifi, omni };
+}
+// ---------- any token on any chain -> any token on any chain (NEAR Intents settles it on NEAR) ----------
+// The list of what can be swapped comes live from 1Click; limits are in dollars so they fit every token.
+const ANY_MIN_USD = 0.4, ANY_MAX_USD = 20;
+const CHAIN_NAME = { near: 'NEAR', sol: 'Solana', eth: 'Ethereum', base: 'Base', arb: 'Arbitrum', op: 'Optimism', pol: 'Polygon', bsc: 'BNB Chain', avax: 'Avalanche', gnosis: 'Gnosis', bera: 'Berachain', btc: 'Bitcoin', tron: 'Tron', sui: 'Sui', ton: 'TON', doge: 'Dogecoin', xrp: 'XRP', zec: 'Zcash', ltc: 'Litecoin', aptos: 'Aptos', cardano: 'Cardano', stellar: 'Stellar', bch: 'Bitcoin Cash' };
+const EVM_CHAINS = { eth: 1, base: 8453, arb: 42161, op: 10, pol: 137, bsc: 56, avax: 43114, gnosis: 100, bera: 80094 };
+const addrOk = (chain, a) => {
+  a = String(a || '');
+  if (chain === 'near') return nearAcct(a.toLowerCase());
+  if (chain === 'sol') return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
+  if (EVM_CHAINS[chain]) return /^0x[0-9a-fA-F]{40}$/.test(a);
+  if (chain === 'btc') return /^(bc1[a-z0-9]{20,80}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/.test(a);
+  if (chain === 'tron') return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a);
+  if (chain === 'sui' || chain === 'aptos') return /^0x[0-9a-fA-F]{64}$/.test(a);
+  return /^[A-Za-z0-9:._-]{20,120}$/.test(a); // other chains: 1Click checks the exact format
+};
+// the token contract a wallet needs (null = the chain's own coin)
+function contractOf(tk) {
+  if (tk.contractAddress) return tk.contractAddress;
+  if (tk.blockchain === 'near' && /^nep141:/.test(tk.assetId)) return tk.assetId.slice(7);
+  return null;
+}
+async function anyAssets() {
+  await intentsTokens();
+  return (tokenCache.all || []).filter((x) => x && x.assetId && x.symbol && Number(x.price) > 0 && Number.isInteger(x.decimals))
+    .map((x) => ({ id: x.assetId, sym: x.symbol, chain: x.blockchain, decimals: x.decimals, price: Number(x.price), contract: contractOf(x) }));
+}
+async function quoteAny(pid, fromId, toId, amount, refundTo, recipient, opts = {}) {
+  let list;
+  try { list = await anyAssets(); } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 120), code: 'real.noQuote' }; }
+  const from = list.find((x) => x.id === fromId), to = list.find((x) => x.id === toId);
+  if (!from || !to || fromId === toId) return { ok: false, error: 'Choose two different tokens.', code: 'any.badPair' };
+  amount = Number(amount);
+  const usd = amount * from.price;
+  // NEAR keeps its own limits (0.1-5 NEAR); every other token is limited by its dollar value
+  if (from.id === 'nep141:wrap.near') { if (!(amount >= REAL_MIN_NEAR && amount <= REAL_MAX_NEAR)) return { ok: false, error: `Between ${REAL_MIN_NEAR} and ${REAL_MAX_NEAR} NEAR.`, code: 'real.badAmount' }; }
+  else if (!(usd >= ANY_MIN_USD - 1e-9 && usd <= ANY_MAX_USD + 1e-9)) return { ok: false, error: `Between $${ANY_MIN_USD} and $${ANY_MAX_USD} worth.`, code: 'any.badUsd', min: ANY_MIN_USD, max: ANY_MAX_USD };
+  refundTo = String(refundTo || '').trim(); recipient = String(recipient || '').trim();
+  if (from.chain === 'near') refundTo = refundTo.toLowerCase();
+  if (to.chain === 'near') recipient = recipient.toLowerCase();
+  if (!addrOk(from.chain, refundTo)) return { ok: false, error: 'The refund address must be on the chain you send from.', code: 'any.badRefund' };
+  if (!addrOk(to.chain, recipient)) return { ok: false, error: 'That address does not fit the destination chain.', code: 'real.badRecipient' };
+  if (!opts.noLimit) {
+    const times = (realAsk.get(pid) || []).filter((x) => Date.now() - x < 3600000);
+    if (times.length >= 5) return { ok: false, error: 'Too many real quotes this hour.', code: 'real.limit' };
+    realAsk.set(pid, [...times, Date.now()]);
+  }
+  try {
+    const units = (BigInt(Math.round(amount * 1e9)) * 10n ** BigInt(from.decimals)) / 1000000000n;
+    if (units <= 0n) return { ok: false, error: 'Amount too small.', code: 'any.badUsd' };
+    const q = await getJson(`${ONECLICK}/quote`, { method: 'POST', body: JSON.stringify({
+      dry: false, swapType: 'EXACT_INPUT', slippageTolerance: 100,
+      originAsset: from.id, depositType: 'ORIGIN_CHAIN', destinationAsset: to.id, amount: units.toString(),
+      refundTo, refundType: 'ORIGIN_CHAIN', recipient, recipientType: 'DESTINATION_CHAIN',
+      deadline: new Date(Date.now() + 30 * 60000).toISOString(),
+    }) });
+    const qq = q.quote || {};
+    if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
+    const swap = { id: qq.depositAddress, player: pid, dir: 'any', fromId: from.id, toId: to.id, from: from.id, to: to.id,
+      fromSym: from.sym, fromChain: from.chain, fromDecimals: from.decimals, fromContract: from.contract, toSym: to.sym, chain: to.chain,
+      amountIn: amount, amountOut: shortAmt(qq.amountOutFormatted || qq.amountOut), usdOut: shortUsd(qq.amountOutUsd), usdIn: shortUsd(qq.amountInUsd),
+      depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
+    [swap.mkt, swap.alt] = await Promise.all([marketCheck(from.sym, amount, to.sym, swap.amountOut), opts.noLimit ? null : otherRoutesAny(from, to, units, refundTo, recipient)]);
+    state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
+    save();
+    return { ok: true, swap };
+  } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160), code: 'real.noQuote' }; }
+}
+// for routes that do not touch NEAR (e.g. Base -> Solana), LI.FI can quote the same swap: a real side-by-side number
+const LIFI_CHAIN = { ...EVM_CHAINS, sol: 1151111081099710 };
+const NATIVE = { sol: '11111111111111111111111111111111' };
+async function lifiQuote(from, to, units, fromAddress, toAddress) {
+  if (!LIFI_CHAIN[from.chain] || !LIFI_CHAIN[to.chain]) return { ok: false, why: 'chains' };
+  const tok = (x) => x.contract || NATIVE[x.chain] || '0x0000000000000000000000000000000000000000';
+  try {
+    const q = new URLSearchParams({ fromChain: LIFI_CHAIN[from.chain], toChain: LIFI_CHAIN[to.chain], fromToken: tok(from), toToken: tok(to), fromAmount: units.toString(), fromAddress, toAddress });
+    const j = await getJson(`${LIFI}/v1/quote?${q}`);
+    const e = (j && j.estimate) || {};
+    const dec = (j && j.action && j.action.toToken && j.action.toToken.decimals) ?? to.decimals;
+    if (!e.toAmount) return { ok: false, why: 'answer' };
+    const sum = (list) => Math.round((list || []).reduce((a, c) => a + (Number(c.amountUSD) || 0), 0) * 100) / 100;
+    return { ok: true, toAmount: shortAmt(Number(e.toAmount) / 10 ** dec), usdOut: e.toAmountUSD ? shortUsd(e.toAmountUSD) : null, feeUsd: sum(e.feeCosts), gasUsd: sum(e.gasCosts), tool: (j.toolDetails && j.toolDetails.name) || j.tool || 'LI.FI' };
+  } catch (err) { return { ok: false, why: String(err.message || err).slice(0, 80) }; }
+}
+async function otherRoutesAny(from, to, units, refundTo, recipient) {
+  const touchesNear = from.chain === 'near' || to.chain === 'near';
+  const omniChain = { sol: 'sol', base: 'base', eth: 'eth', arb: 'arb' };
+  const [lifi, omni, lq] = await Promise.all([
+    lifiHasNear(),
+    from.id === 'nep141:wrap.near' && omniChain[to.chain] ? omniFee('NEAR', units.toString(), `near:${refundTo}`, `${omniChain[to.chain]}:${recipient}`)
+      : touchesNear ? Promise.resolve({ ok: false, why: to.chain === from.chain ? 'same-chain' : 'token' }) : Promise.resolve({ ok: false, why: 'no-near' }),
+    touchesNear ? Promise.resolve(null) : lifiQuote(from, to, units, refundTo, recipient),
+  ]);
+  return { at: Date.now(), lifi, omni, lifiQuote: lq };
 }
 async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null, opts = {}) {
   if (fromKey) return realQuoteIn(pid, fromKey, amount, refundTo, recipient);
@@ -373,7 +467,9 @@ async function realStatus(addr) {
       swap.logged = true;
       const p = state.players[swap.player], who = p ? p.name : 'A villager';
       const tx = (swap.dest[0] || swap.origin[0] || {}).hash || '';
-      const fromTxt = swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain === 'base' ? 'Base' : 'Solana'})` : `${swap.amountIn} NEAR`, toTxt = swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
+      const cn = (c) => CHAIN_NAME[c] || String(c || '').toUpperCase();
+      const fromTxt = swap.dir === 'any' ? `${swap.amountIn} ${swap.fromSym} (${cn(swap.fromChain)})` : swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain === 'base' ? 'Base' : 'Solana'})` : `${swap.amountIn} NEAR`;
+      const toTxt = swap.dir === 'any' ? `${swap.amountOut} ${swap.toSym} (${cn(swap.chain)})` : swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
       addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${fromTxt} -> ${toTxt}.`, 'good', 'log.realSwap2', { name: who, a: fromTxt, b: toTxt });
       // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
       transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${fromTxt} -> ${toTxt}, tx ${tx.slice(0, 64)}` });
@@ -558,6 +654,17 @@ const server = http.createServer(async (req, res) => {
     const r = await realStatus(String(url.searchParams.get('depositAddress') || ''));
     return sendJson(res, r.ok ? 200 : 400, r);
   }
+  // everything NEAR Intents can swap right now, for the token pickers
+  if (url.pathname === '/api/intents/assets') {
+    try { return sendJson(res, 200, { ok: true, assets: await anyAssets(), min: ANY_MIN_USD, max: ANY_MAX_USD, evm: EVM_CHAINS }); }
+    catch (e) { return sendJson(res, 502, { ok: false, error: String(e.message || e).slice(0, 120) }); }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/intents/real/any') {
+    const body = await readBody(req);
+    if (!body.player || !state.players[body.player]) return sendJson(res, 400, { ok: false, error: 'join first' });
+    const r = await quoteAny(body.player, String(body.from || ''), String(body.to || ''), body.amount, body.refundTo, body.recipient);
+    return sendJson(res, r.ok ? 200 : 400, r);
+  }
   // split one NEAR send into 2-5 parts, each to its own token, chain and receiver; all quotes or none
   if (req.method === 'POST' && url.pathname === '/api/intents/real/multi') {
     const body = await readBody(req);
@@ -572,7 +679,8 @@ const server = http.createServer(async (req, res) => {
     const batch = 'b' + Date.now().toString(36), made = [];
     for (let i = 0; i < legs.length; i++) {
       const l = legs[i];
-      const q = await realQuote(body.player, l.to, l.amount, body.refundTo, l.recipient, null, { noLimit: true });
+      const q = String(l.to || '').includes(':') ? await quoteAny(body.player, 'nep141:wrap.near', String(l.to), l.amount, body.refundTo, l.recipient, { noLimit: true })
+        : await realQuote(body.player, l.to, l.amount, body.refundTo, l.recipient, null, { noLimit: true });
       if (!q.ok) {
         for (const m of made) { m.status = 'CANCELLED'; m.cancelledAt = Date.now(); }
         save();

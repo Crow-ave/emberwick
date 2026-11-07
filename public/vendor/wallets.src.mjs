@@ -96,6 +96,21 @@ export async function nearSendMany(parts) {
   return out && out.transaction ? out.transaction.hash : null;
 }
 
+// any other NEAR token (NEP-141): register the deposit address on that token, then send it
+export async function nearSendFt(contract, depositAddress, amount, decimals) {
+  const s = await near();
+  const me = await nearAccount();
+  if (!me) throw new Error('connect a NEAR wallet first');
+  const units = toUnits(amount, decimals);
+  const fc = (methodName, args, deposit) => ({ type: 'FunctionCall', params: { methodName, args, gas: TGAS, deposit } });
+  const w = await s.wallet();
+  const out = await w.signAndSendTransaction({ signerId: me, receiverId: contract, actions: [
+    fc('storage_deposit', { account_id: depositAddress, registration_only: true }, STORAGE),
+    fc('ft_transfer', { receiver_id: depositAddress, amount: units, memo: 'Emberwick swap' }, '1'),
+  ] });
+  return out && out.transaction ? out.transaction.hash : null;
+}
+
 // ---------- Solana (Phantom or any wallet that injects window.solana) ----------
 const sol = () => (window.phantom && window.phantom.solana) || window.solana || null;
 export const hasSolana = () => !!sol();
@@ -120,6 +135,23 @@ export async function solSend(depositAddress, sym, amount, blockhash) {
     const fromAta = getAssociatedTokenAddressSync(USDC_SOL, from), toAta = getAssociatedTokenAddressSync(USDC_SOL, to, true);
     tx.add(createAssociatedTokenAccountIdempotentInstruction(from, toAta, to, USDC_SOL));
     tx.add(createTransferCheckedInstruction(fromAta, USDC_SOL, toAta, from, BigInt(toUnits(amount, 6)), 6));
+  }
+  const r = await p.signAndSendTransaction(tx);
+  return r && r.signature ? r.signature : String(r || '');
+}
+
+// any Solana token: the chain's own SOL (mint = null) or an SPL token by its mint
+export async function solSendAny(depositAddress, mint, amount, decimals, blockhash) {
+  const p = sol();
+  if (!p) throw new Error('no Solana wallet in this browser');
+  const pk = p.publicKey || (await p.connect()).publicKey;
+  const from = new PublicKey(pk.toString()), to = new PublicKey(depositAddress);
+  const tx = new Transaction({ feePayer: from, recentBlockhash: blockhash });
+  if (!mint) tx.add(SystemProgram.transfer({ fromPubkey: from, toPubkey: to, lamports: BigInt(toUnits(amount, 9)) }));
+  else {
+    const m = new PublicKey(mint), fromAta = getAssociatedTokenAddressSync(m, from), toAta = getAssociatedTokenAddressSync(m, to, true);
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(from, toAta, to, m));
+    tx.add(createTransferCheckedInstruction(fromAta, m, toAta, from, BigInt(toUnits(amount, decimals)), decimals));
   }
   const r = await p.signAndSendTransaction(tx);
   return r && r.signature ? r.signature : String(r || '');
@@ -152,4 +184,38 @@ export async function evmSendUsdc(depositAddress, amount) {
   const pad = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
   const data = '0xa9059cbb' + pad(depositAddress) + pad(BigInt(toUnits(amount, 6)).toString(16)); // transfer(address,uint256)
   return e.request({ method: 'eth_sendTransaction', params: [{ from, to: USDC_BASE, data, value: '0x0' }] });
+}
+
+// any EVM chain: switch the wallet to it (adding it if the wallet does not know it), then send the coin or an ERC-20
+const EVM_META = {
+  1: ['Ethereum', 'ETH', 'https://eth.llamarpc.com', 'https://etherscan.io'],
+  8453: ['Base', 'ETH', 'https://mainnet.base.org', 'https://basescan.org'],
+  42161: ['Arbitrum One', 'ETH', 'https://arb1.arbitrum.io/rpc', 'https://arbiscan.io'],
+  10: ['OP Mainnet', 'ETH', 'https://mainnet.optimism.io', 'https://optimistic.etherscan.io'],
+  137: ['Polygon', 'POL', 'https://polygon-rpc.com', 'https://polygonscan.com'],
+  56: ['BNB Smart Chain', 'BNB', 'https://bsc-dataseed.binance.org', 'https://bscscan.com'],
+  43114: ['Avalanche C-Chain', 'AVAX', 'https://api.avax.network/ext/bc/C/rpc', 'https://snowtrace.io'],
+  100: ['Gnosis', 'xDAI', 'https://rpc.gnosischain.com', 'https://gnosisscan.io'],
+  80094: ['Berachain', 'BERA', 'https://rpc.berachain.com', 'https://berascan.com'],
+};
+async function onChain(e, chainId) {
+  const hex = '0x' + Number(chainId).toString(16);
+  try { await e.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] }); }
+  catch (err) {
+    const m = EVM_META[chainId];
+    if (err && err.code === 4902 && m) await e.request({ method: 'wallet_addEthereumChain', params: [{ chainId: hex, chainName: m[0], nativeCurrency: { name: m[1], symbol: m[1], decimals: 18 }, rpcUrls: [m[2]], blockExplorerUrls: [m[3]] }] });
+    else throw err;
+  }
+}
+export async function evmSendAny(chainId, token, depositAddress, amount, decimals) {
+  const e = eth();
+  if (!e) throw new Error('no EVM wallet in this browser');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(depositAddress)) throw new Error('bad deposit address');
+  const from = await evmConnect();
+  await onChain(e, chainId);
+  const units = BigInt(toUnits(amount, decimals));
+  if (!token) return e.request({ method: 'eth_sendTransaction', params: [{ from, to: depositAddress, value: '0x' + units.toString(16) }] });
+  const pad = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+  const data = '0xa9059cbb' + pad(depositAddress) + pad(units.toString(16));
+  return e.request({ method: 'eth_sendTransaction', params: [{ from, to: token, data, value: '0x0' }] });
 }

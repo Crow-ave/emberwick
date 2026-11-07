@@ -2150,7 +2150,7 @@ export function publicView(state, playerId) {
     aiLog: (state.aiLog || []).map(({ json, ...x }) => x),
     onchain: { tx: (state.onchain && state.onchain.tx) || 0, aiPlans: state.aiDays || 0 },
     realSwaps: playerId ? (state.realSwaps || []).filter((x) => x.player === playerId && x.status !== 'CANCELLED').slice(0, 8) : [],
-    realDone: (state.realSwaps || []).filter((x) => x.status === 'SUCCESS').slice(0, 8).map((x) => ({ name: (state.players[x.player] || {}).name || '?', amountIn: x.amountIn, amountOut: x.amountOut, to: x.to, fromSym: x.dir === 'in' ? x.fromSym : 'NEAR', dir: x.dir || 'out', origin: x.origin || [], dest: x.dest || [] })),
+    realDone: (state.realSwaps || []).filter((x) => x.status === 'SUCCESS').slice(0, 8).map((x) => ({ name: (state.players[x.player] || {}).name || '?', amountIn: x.amountIn, amountOut: x.amountOut, to: x.to, fromSym: x.dir === 'in' || x.dir === 'any' ? x.fromSym : 'NEAR', dir: x.dir || 'out', toSym: x.toSym, chain: x.chain, origin: x.origin || [], dest: x.dest || [] })),
     token: TOKEN,
     rev: state.rev || 0,
     day: state.day,

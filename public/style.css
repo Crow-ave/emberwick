@@ -851,3 +851,22 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .wt-act { border: 1px solid #c9b79c; background: #fff; border-radius: 999px; font-size: 11px; padding: 2px 8px; cursor: pointer; color: #5a4632; }
 .wt-act:hover { background: #fff3e6; }
 .wt-act.off { color: #b3261e; border-color: #e6b3ad; }
+
+/* token pickers for any chain */
+.tokpick { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 3px; border: 1.5px solid #e0742b; border-radius: 999px; background: #fff3e6; cursor: pointer; font: inherit; color: #222; text-transform: none; letter-spacing: 0; }
+.tokpick:hover, .tokpick.on { background: #ffe6cc; }
+.tp-caret { font-size: 11px; color: #b4531c; }
+.pickpanel { border: 1.5px solid #e0742b; border-radius: 10px; background: #fff; padding: 6px; margin: 2px 0 4px; display: grid; gap: 5px; }
+.pk-top { display: flex; gap: 6px; } .pk-top input { flex: 1; padding: 4px 8px; font-size: 12.5px; min-width: 0; }
+.pk-chains { display: flex; flex-wrap: wrap; gap: 3px; }
+.pk-chains button { --c: #556; border: 1px solid color-mix(in srgb, var(--c) 45%, #fff); background: #fff; color: var(--c); border-radius: 999px; font-size: 10.5px; font-weight: 700; padding: 1px 7px; cursor: pointer; }
+.pk-chains button.on { background: var(--c); color: #fff; }
+.pk-chains button[data-pickchain=""] { --c: #7a4a1c; }
+.pk-list { max-height: 190px; overflow: auto; display: grid; gap: 1px; }
+.pk-item { display: grid; grid-template-columns: 24px auto 1fr auto; align-items: center; gap: 6px; text-align: left; border: 0; background: none; padding: 3px 4px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12.5px; }
+.pk-item:hover { background: #fff3e6; }
+.pk-item[hidden] { display: none; }
+.pk-chain { font-size: 11px; font-weight: 700; }
+.pk-price { font-size: 11px; color: #8a7a66; }
+.sc-usd { margin-top: -2px; }
+.wtile.manual { cursor: default; opacity: .85; border-style: dashed; }

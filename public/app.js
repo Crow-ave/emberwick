@@ -911,62 +911,73 @@ function realSwapBox() {
   let R = `<details class="realinfo" data-keep="info"${keepOpen('info')}><summary>ⓘ <b>${t('real.infoShort')}</b></summary><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p></details>`;
   if (!me) return R + COL_MARK + `<p class="muted">${t('toast.join')}</p>`;
   if (sw && sw.batch) return splitView(swapGroup(sw), R);
-  const f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
+  let f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
+  if (!ui.assets) loadAssets();
+  if (ui.assets && !f.any && !f.anyOff) { f = ui.real = { ...f, ...oldToAny(f) }; }
+  const anyMode = !!(ui.assets && f.any && A(f.fromId) && A(f.toId));
   const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
   const shown = active || (sw && sw.status === 'SUCCESS');
   const dir = shown ? sw.dir || 'out' : f.dir || 'out';
   const moving = !!(sw && ['KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'].includes(sw.status));
   // the picture: what leaves on the left, what arrives on the right; the ⇄ on it turns the swap round
-  const src = dir === 'in' ? REAL_SRC[shown ? sw.from : f.from] || REAL_SRC['USDC-SOL'] : null;
-  const dst = dir === 'out' ? REAL_DST[shown ? sw.to : f.to] || REAL_DST.USDC : null;
-  const left = dir === 'out' ? { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount } : { sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount };
-  const right = dir === 'out' ? { sym: dst[0], chain: dst[1], amount: shown ? amt(sw.amountOut) : null } : { sym: 'NEAR', chain: 'near', amount: shown ? amt(sw.amountOut) : null };
+  const src = (dir === 'in' && REAL_SRC[shown ? sw.from : f.from]) || REAL_SRC['USDC-SOL'];
+  const dst = (dir === 'out' && REAL_DST[shown ? sw.to : f.to]) || REAL_DST.USDC;
+  let left = dir === 'out' ? { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount } : { sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount };
+  let right = dir === 'out' ? { sym: dst[0], chain: dst[1], amount: shown ? amt(sw.amountOut) : null } : { sym: 'NEAR', chain: 'near', amount: shown ? amt(sw.amountOut) : null };
+  if (shown && sw.dir === 'any') { left = { sym: sw.fromSym, chain: sw.fromChain, amount: sw.amountIn }; right = { sym: sw.toSym, chain: sw.chain, amount: amt(sw.amountOut) }; }
+  else if (!shown && anyMode) { const a = A(f.fromId), b = A(f.toId); left = { sym: a.sym, chain: a.chain, amount: f.amount }; right = { sym: b.sym, chain: b.chain, amount: null }; }
   // first column: the wallet (step 1), the picture, and the AI that can fill the card; second column: the card itself
-  const splitting = !shown && dir === 'out' && f.legs;
+  const splitting = !shown && (anyMode ? f.fromId === WNEAR_ID : dir === 'out') && f.legs;
   if (!shown) R += splitting ? walletTiles('near', 'near') : walletTiles(left.chain, right.chain);
-  R += splitting ? bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: legSum(f.legs) }, { sym: (REAL_DST[f.legs[0].to] || REAL_DST.USDC)[0], chain: (REAL_DST[f.legs[0].to] || REAL_DST.USDC)[1], amount: null }, false, 'real') + `<p class="small muted">${t('split.picture', { n: f.legs.length, c: new Set(f.legs.map((l) => (REAL_DST[l.to] || [])[1])).size })}</p>` : bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
+  R += splitting ? bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: legSum(f.legs) }, { sym: legDst(f.legs[0])[0], chain: legDst(f.legs[0])[1], amount: null }, false, 'real') + `<p class="small muted">${t('split.picture', { n: f.legs.length, c: new Set(f.legs.map((l) => legDst(l)[1])).size })}</p>` : bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
   if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) R += aiSwapBox();
   let L = '';
-  if (!shown) L += swapCard(f, dir);
+  if (!shown) L += anyMode ? swapCardAny(f) : swapCard(f, dir);
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
-    const inDir = sw.dir === 'in', srcName = sw.fromChain === 'base' ? 'Base' : 'Solana', srcChain = inDir ? sw.fromChain : 'near';
-    L += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
+    const anyS = sw.dir === 'any', inDir = sw.dir === 'in', srcName = anyS ? netName(sw.fromChain) : sw.fromChain === 'base' ? 'Base' : 'Solana', srcChain = anyS || inDir ? sw.fromChain : 'near';
+    L += `<div class="realswap"><p class="small"><b>${anyS ? t('any.quote', { a: sw.amountIn, fs: esc(sw.fromSym), fc: esc(netName(sw.fromChain)), b: amt(sw.amountOut), ts: esc(sw.toSym), tc: esc(netName(sw.chain)) }) : inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
     L += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (sw.status === 'PENDING_DEPOSIT') {
       R += feeBox([sw]);
       L += walletSendBox(sw);
       // sending by hand: open by itself only when no wallet is connected for that chain
-      const manualOpen = !(ui.wallet || {})[srcChain] && !sw.sentTx;
-      L += `<details class="realmanual" data-keep="manual"${keepOpen('manual', manualOpen)}><summary>${t('real.manual')}</summary><p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
-        (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
+      const manualOpen = !(ui.wallet || {})[walletKind(srcChain)] && !sw.sentTx;
+      L += `<details class="realmanual" data-keep="manual"${keepOpen('manual', manualOpen)}><summary>${t('real.manual')}</summary><p class="small">${anyS ? t('any.send', { a: sw.amountIn, sym: esc(sw.fromSym), chain: esc(srcName) }) : inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
+        (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${anyS ? t('any.how', { chain: esc(srcName), sym: esc(sw.fromSym) }) : t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
         `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div></details>`;
       L += sw.sentTx ? '' : ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
         : `<button class="linkbtn realcancel-btn" data-realcancel="ask">✕ ${t('real.cancel')}</button>`;
     }
     if (bad) L += `<p class="closed small">${t('real.s.' + sw.status)}</p>`;
     const lk = (x, base) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : base ? `<a href="${base}${encodeURIComponent(x.hash)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : esc(x.hash.slice(0, 10));
-    if ((sw.origin || []).length) L += `<p class="small">${t('real.originTx')} ${sw.origin.map((x) => lk(x, inDir ? (sw.fromChain === 'sol' ? 'https://solscan.io/tx/' : 'https://basescan.org/tx/') : NEAR_MAIN + '/txns/')).join(' ')}</p>`;
-    if ((sw.dest || []).length) L += `<p class="small">${t('real.destTx')} ${sw.dest.map((x) => lk(x, sw.chain === 'near' ? NEAR_MAIN + '/txns/' : sw.chain === 'sol' ? 'https://solscan.io/tx/' : sw.chain === 'base' ? 'https://basescan.org/tx/' : null)).join(' ')}</p>`;
+    if ((sw.origin || []).length) L += `<p class="small">${t('real.originTx')} ${sw.origin.map((x) => lk(x, txBase(srcChain))).join(' ')}</p>`;
+    if ((sw.dest || []).length) L += `<p class="small">${t('real.destTx')} ${sw.dest.map((x) => lk(x, txBase(sw.chain))).join(' ')}</p>`;
     L += `<p class="muted small"><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(sw.depositAddress)}" target="_blank" rel="noopener">${t('real.explorer')} ↗</a></p></div>`;
     if (sw.status === 'SUCCESS' || bad) L += `<button class="primary" data-realnew="1">${t('real.again')}</button>`;
   }
   const done = view.realDone || [];
-  if (done.length) R += `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul></details>`;
+  if (done.length) R += `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : x.dir === 'any' ? esc(`${x.toSym} (${netName(x.chain)})`) : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul></details>`;
   return R + COL_MARK + L;
 }
 // ---------- one NEAR send split to several receivers ----------
-const DST_LABEL = (k) => (REAL_DST[k] ? `${REAL_DST[k][0]} (${CH_NAME[REAL_DST[k][1]]})` : k);
+const DST_LABEL = (k) => (REAL_DST[k] ? `${REAL_DST[k][0]} (${CH_NAME[REAL_DST[k][1]]})` : A(k) ? `${A(k).sym} (${netName(A(k).chain)})` : String(k || ''));
 const legSum = (legs) => Math.round(legs.reduce((a, l) => a + (Number(l.amount) || 0), 0) * 1000) / 1000;
+function legOptions(sel) {
+  if (!(ui.real && ui.real.any && ui.assets)) return Object.keys(REAL_DST).map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(DST_LABEL(k))}</option>`).join('');
+  const order = (c) => { const i = POP_CHAINS.indexOf(c); return i < 0 ? 99 : i; };
+  const chains = [...new Set(ui.assets.map((x) => x.chain))].sort((a, b) => order(a) - order(b) || netName(a).localeCompare(netName(b)));
+  return chains.map((c) => `<optgroup label="${esc(netName(c))}">${ui.assets.filter((x) => x.chain === c && x.id !== WNEAR_ID).sort((a, b) => a.sym.localeCompare(b.sym)).map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.sym)} (${esc(netName(c))})</option>`).join('')}</optgroup>`).join('');
+}
 function legRows(f) {
   const legs = f.legs;
   return legs.map((l, i) => {
-    const d = REAL_DST[l.to] || REAL_DST.USDC, ch = chainOf(d[1]);
+    const d = legDst(l), ch = chainOf(d[1]);
     return `<div class="legrow" style="--c:${ch ? ch[1] : '#556'}"><span class="leg-n">${i + 1}</span>` +
-      `<select data-legto="${i}">${Object.keys(REAL_DST).map((k) => `<option value="${k}"${k === l.to ? ' selected' : ''}>${esc(DST_LABEL(k))}</option>`).join('')}</select>` +
+      `<select data-legto="${i}">${legOptions(l.to)}</select>` +
       `<span class="leg-amt"><input data-legamt="${i}" type="number" min="0.1" max="5" step="0.1" value="${l.amount}"> NEAR</span>` +
       `<button type="button" class="linkbtn leg-x" data-legdel="${i}" title="${esc(t('split.remove'))}">✕</button>` +
-      `<input class="leg-rec" data-legrec="${i}" placeholder="${esc(ADDR_PH[d[1]])}" value="${esc(l.recipient || '')}"></div>`;
+      `<input class="leg-rec" data-legrec="${i}" placeholder="${esc(addrPh(d[1]))}" value="${esc(l.recipient || '')}"></div>`;
   }).join('') + `<div class="leg-foot">${legs.length < 5 ? `<button type="button" class="linkbtn" data-legadd="1">＋ ${t('split.add')}</button>` : '<span></span>'}<span class="leg-total">${t('split.total', { n: legSum(legs) })}</span></div>`;
 }
 const SPLIT_ST = { PENDING_DEPOSIT: '⏳', KNOWN_DEPOSIT_TX: '👀', PROCESSING: '⚙️', SUCCESS: '✓', REFUNDED: '↩', FAILED: '✕', INCOMPLETE_DEPOSIT: '!' };
@@ -998,14 +1009,14 @@ function splitView(group, R) {
 const money = (v) => (v == null || !Number.isFinite(Number(v)) ? '?' : '$' + Number(v).toFixed(2));
 function feeBox(list) {
   if (!list.length) return '';
-  const x0 = list[0], inDir = x0.dir === 'in', sym = inDir ? x0.fromSym : 'NEAR', chain = inDir ? x0.fromChain : 'near';
+  const x0 = list[0], anyS = x0.dir === 'any', inDir = x0.dir === 'in', sym = anyS || inDir ? x0.fromSym : 'NEAR', chain = anyS || inDir ? x0.fromChain : 'near';
   const add = (k) => list.reduce((a, x) => a + (Number(x[k]) || 0), 0);
   const amountIn = Math.round(add('amountIn') * 1e6) / 1e6, usdIn = add('usdIn'), usdOut = add('usdOut');
   const mk = list.every((x) => x.mkt) ? { in: list.reduce((a, x) => a + x.mkt.in, 0), out: list.reduce((a, x) => a + x.mkt.out, 0) } : null;
   const vin = mk ? mk.in : usdIn, vout = mk ? mk.out : usdOut, cost = vin - vout, pct = vin > 0 ? (cost / vin) * 100 : null;
   const level = pct == null ? '' : pct < 0 ? 'good' : pct < 1 ? 'good' : pct < 3 ? 'mid' : 'high';
-  const outTxt = list.length === 1 ? `${esc(String(amt(x0.amountOut)))} ${esc(inDir ? 'NEAR' : DST_LABEL(x0.to))}` : t('fee.parts', { n: list.length });
-  const gas = t('fee.gas.' + (chain === 'sol' ? 'sol' : chain === 'base' ? 'base' : 'near'));
+  const outTxt = list.length === 1 ? `${esc(String(amt(x0.amountOut)))} ${esc(anyS ? `${x0.toSym} (${netName(x0.chain)})` : inDir ? 'NEAR' : DST_LABEL(x0.to))}` : t('fee.parts', { n: list.length });
+  const gas = chain === 'near' || chain === 'sol' || chain === 'base' ? t('fee.gas.' + chain) : isEvm(chain) ? t('fee.gas.evm', { chain: netName(chain) }) : t('fee.gas.other', { chain: netName(chain) });
   const time = Math.max(...list.map((x) => Number(x.timeEstimate) || 0));
   return `<div class="feebox"><div class="fee-h">🧾 ${t('fee.title')}</div><table>` +
     `<tr><td>${t('fee.send')}</td><td class="n"><b>${amountIn} ${esc(sym)}</b> <span class="muted">≈ ${money(vin)}</span></td></tr>` +
@@ -1020,11 +1031,13 @@ function altBox(sw, cost) {
   if (!a) return '';
   const o = a.omni || {}, l = a.lifi || {}, inDir = sw.dir === 'in';
   const omniTxt = o.ok ? `<b>${money(o.usd)}</b> ${t('alt.omniFee')} · <span class="muted">${t(inDir ? 'alt.omniNoteIn' : 'alt.omniNoteOut', { sym: inDir ? sw.fromSym : DST_LABEL(sw.to) })}</span>`
-    : `<span class="muted">${t(o.why === 'same-chain' ? 'alt.sameChain' : o.why === 'token' ? 'alt.omniNoToken' : 'alt.omniFail')}</span>`;
-  const lifiTxt = !l.checked ? `<span class="muted">${t('alt.lifiFail')}</span>` : l.near ? t('alt.lifiYes') : `<span class="muted">${t('alt.lifiNo', { n: l.chains })}</span>`;
-  const sum = `${t('alt.title')}: Omni ${o.ok ? money(o.usd) : '—'} · LI.FI ${l.checked ? (l.near ? '✓' : t('alt.noNear')) : '?'}`;
+    : `<span class="muted">${t(o.why === 'same-chain' ? 'alt.sameChain' : o.why === 'token' ? 'alt.omniNoToken' : o.why === 'no-near' ? 'alt.omniNoNear' : 'alt.omniFail')}</span>`;
+  const lq = a.lifiQuote, outSym = sw.dir === 'any' ? sw.toSym : inDir ? 'NEAR' : DST_LABEL(sw.to);
+  const lifiTxt = lq ? (lq.ok ? `<b>${esc(String(lq.toAmount))} ${esc(outSym)}</b>${lq.usdOut ? ` ≈ ${money(lq.usdOut)}` : ''} <span class="muted">· ${t('alt.lifiVia', { tool: esc(lq.tool) })}${lq.feeUsd || lq.gasUsd ? ` · ${t('alt.lifiCosts', { f: money(lq.feeUsd), g: money(lq.gasUsd) })}` : ''}</span><br><b>${Number(lq.toAmount) > Number(sw.amountOut) ? t('alt.lifiBetter') : t('alt.intentsBetter')}</b>` : `<span class="muted">${t('alt.lifiNoQuote')}</span>`)
+    : !l.checked ? `<span class="muted">${t('alt.lifiFail')}</span>` : l.near ? t('alt.lifiYes') : `<span class="muted">${t('alt.lifiNo', { n: l.chains })}</span>`;
+  const sum = `${t('alt.title')}: Omni ${o.ok ? money(o.usd) : '—'} · LI.FI ${lq ? (lq.ok ? `${esc(String(lq.toAmount))} ${esc(outSym)}` : '—') : l.checked ? (l.near ? '✓' : t('alt.noNear')) : '?'}`;
   return `<details class="altbox" data-keep="alt"${keepOpen('alt')}><summary>🔎 ${sum}</summary><table>` +
-    `<tr><td><b>NEAR Intents</b></td><td><b>${money(cost)}</b> ${t('alt.intentsNote')} ✓</td></tr>` +
+    `<tr><td><b>NEAR Intents</b></td><td>${lq && lq.ok ? `<b>${esc(String(amt(sw.amountOut)))} ${esc(outSym)}</b> · ` : ''}<b>${money(cost)}</b> ${t('alt.intentsNote')} ✓</td></tr>` +
     `<tr><td><b>Omni Bridge</b><br><span class="muted small">${t('alt.omniWho')}</span></td><td>${omniTxt}</td></tr>` +
     `<tr><td><b>LI.FI / Jumper</b><br><span class="muted small">${t('alt.lifiWho')}</span></td><td>${lifiTxt}</td></tr></table>` +
     `<p class="muted small">${t('alt.note', { time: new Date(a.at).toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' }) })}</p></details>`;
@@ -1034,18 +1047,123 @@ function altBox(sw, cost) {
 ui.open = ui.open || {};
 const keepOpen = (key, byDefault = false) => ((key in ui.open ? ui.open[key] : byDefault) ? ' open' : '');
 document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.tagName === 'DETAILS' && d.dataset.keep && d.isConnected) ui.open[d.dataset.keep] = d.open; }, true);
+// ---------- any token on any chain (the list comes live from NEAR Intents) ----------
+const WNEAR_ID = 'nep141:wrap.near';
+const CHAIN_LABEL = { near: 'NEAR', sol: 'Solana', eth: 'Ethereum', base: 'Base', arb: 'Arbitrum', op: 'Optimism', pol: 'Polygon', bsc: 'BNB Chain', avax: 'Avalanche', gnosis: 'Gnosis', bera: 'Berachain', btc: 'Bitcoin', tron: 'Tron', sui: 'Sui', ton: 'TON', doge: 'Dogecoin', xrp: 'XRP', zec: 'Zcash', ltc: 'Litecoin', aptos: 'Aptos', cardano: 'Cardano', stellar: 'Stellar', bch: 'Bitcoin Cash' };
+const netName = (c) => CHAIN_LABEL[c] || String(c || '').toUpperCase();
+const EVM_IDS = { eth: 1, base: 8453, arb: 42161, op: 10, pol: 137, bsc: 56, avax: 43114, gnosis: 100, bera: 80094 };
+const isEvm = (c) => !!EVM_IDS[c];
+// which wallet in this browser can send from a chain ('base' stands for any EVM wallet such as MetaMask)
+const walletKind = (c) => (c === 'near' ? 'near' : c === 'sol' ? 'sol' : isEvm(c) ? 'base' : null);
+const POP_CHAINS = ['near', 'sol', 'base', 'eth', 'arb', 'op', 'pol', 'bsc', 'avax', 'btc', 'tron'];
+const POP_SYMS = ['USDC', 'USDT', 'NEAR', 'wNEAR', 'ETH', 'SOL', 'BTC', 'ARB', 'OP', 'POL', 'BNB', 'AVAX'];
+const A = (id) => (ui.assets || []).find((x) => x.id === id) || null;
+const findAsset = (sym, chain) => (ui.assets || []).find((x) => x.sym === sym && x.chain === chain) || null;
+const assetLabel = (id) => { const x = A(id); return x ? `${x.sym} (${netName(x.chain)})` : id; };
+const nice = (n) => { n = Number(n); if (!Number.isFinite(n) || n <= 0) return 0; const d = n >= 100 ? 0 : n >= 1 ? 2 : Math.min(8, Math.ceil(-Math.log10(n)) + 2); return Number(n.toFixed(d)); };
+const usdLimits = (x) => (x.id === WNEAR_ID ? { min: 0.1, max: 5 } : { min: nice(((ui.assetLimits || {}).min || 0.4) / x.price), max: nice(((ui.assetLimits || {}).max || 20) / x.price) });
+async function loadAssets() {
+  if (ui.assets || ui.assetsLoading) return;
+  ui.assetsLoading = true;
+  const r = await (await fetch('/api/intents/assets')).json().catch(() => null);
+  ui.assetsLoading = false;
+  if (r && r.ok && r.assets && r.assets.length) { ui.assets = r.assets; ui.assetLimits = { min: r.min, max: r.max }; render(); }
+}
+// the old menu choices, written as asset ids (so the AI and older swaps fit the new card)
+function oldToAny(f) {
+  const w = A(WNEAR_ID) ? WNEAR_ID : null;
+  const pick = (pair) => (pair ? (findAsset(pair[0], pair[1]) || {}).id : null);
+  const fromId = f.dir === 'in' ? pick(REAL_SRC[f.from]) : w;
+  const toId = f.dir === 'in' ? w : pick(REAL_DST[f.to]);
+  return fromId && toId ? { any: true, fromId, toId } : { any: false };
+}
+const savedFor = (w, c) => w[c] || (isEvm(c) ? w.evm || w.base || '' : '');
+const coinBg = (sym) => ASSET_COLOR[sym] || `hsl(${[...String(sym)].reduce((a, ch) => a + ch.charCodeAt(0), 0) * 37 % 360} 45% 45%)`;
+const coinGlyph = (sym) => GLYPH[sym] || esc(String(sym).replace(/^w(?=[A-Z])/, '')[0] || '?');
+function tokPick(side, x) {
+  const ch = chainOf(x.chain);
+  return `<button type="button" class="tokpick${ui.picker === side ? ' on' : ''}" data-pickopen="${side}"><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><span class="tc-txt"><b>${esc(x.sym)}</b><span class="tc-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span></span><span class="tp-caret">▾</span></button>`;
+}
+function pickerPanel(side) {
+  const q = (ui.pickQ || '').trim().toLowerCase(), only = ui.pickChain || '';
+  const present = [...new Set((ui.assets || []).map((x) => x.chain))];
+  const order = (c) => { const i = POP_CHAINS.indexOf(c); return i < 0 ? 99 : i; };
+  const chains = present.sort((a, b) => order(a) - order(b) || netName(a).localeCompare(netName(b)));
+  const symOrder = (s) => { const i = POP_SYMS.indexOf(s); return i < 0 ? 99 : i; };
+  const list = (ui.assets || []).filter((x) => !only || x.chain === only)
+    .sort((a, b) => order(a.chain) - order(b.chain) || symOrder(a.sym) - symOrder(b.sym) || a.sym.localeCompare(b.sym));
+  const key = (x) => `${x.sym} ${netName(x.chain)} ${x.chain}`.toLowerCase();
+  return `<div class="pickpanel"><div class="pk-top"><input id="pick-search" autocomplete="off" placeholder="${esc(t('any.search'))}" value="${esc(ui.pickQ || '')}"><button type="button" class="linkbtn" data-pickclose="1">✕</button></div>` +
+    `<div class="pk-chains"><button type="button" class="${only ? '' : 'on'}" data-pickchain="">${t('any.allChains')}</button>${chains.map((c) => { const ch = chainOf(c); return `<button type="button" class="${only === c ? 'on' : ''}" data-pickchain="${c}" style="--c:${ch ? ch[1] : '#556'}">${esc(netName(c))}</button>`; }).join('')}</div>` +
+    `<div class="pk-list" data-keepscroll="pk-${side}">${list.map((x) => { const ch = chainOf(x.chain); return `<button type="button" class="pk-item" data-pickasset="${side}|${esc(x.id)}" data-q="${esc(key(x))}"${q && !key(x).includes(q) ? ' hidden' : ''}><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(x.sym)}</b><span class="pk-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span><span class="pk-price">$${x.price >= 1 ? x.price.toFixed(2) : x.price.toPrecision(3)}</span></button>`; }).join('')}<p class="muted small pk-none" hidden>${t('any.none')}</p></div></div>`;
+}
+function swapCardAny(f) {
+  const a = A(f.fromId) || A(WNEAR_ID), b = A(f.toId) || (ui.assets || []).find((x) => x.id !== a.id);
+  const lim = usdLimits(a);
+  const amtV = f.amount >= lim.min && f.amount <= lim.max ? f.amount : nice(1 / a.price);
+  const need = ((ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.missing) || []);
+  const sw0 = savedWallets(), refundV = f.refundTo || savedFor(sw0, a.chain), recipV = f.recipient || (b.chain !== a.chain ? savedFor(sw0, b.chain) : '');
+  const kA = walletKind(a.chain), using = kA && (ui.wallet || {})[kA] && ui.wallet[kA] === refundV;
+  const splitOk = a.id === WNEAR_ID;
+  const legs = splitOk && f.legs;
+  return `<div class="step-h"><span class="stepn">2</span>${t('real.step2')}</div><div class="swapcard">` +
+    `<div class="sc-side"><div class="sc-head sc-headrow">${t('real.youSend')} ${tokPick('from', a)}</div>` + (ui.picker === 'from' ? pickerPanel('from') : '') +
+    (legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>wNEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>`
+      : `<div class="sc-amt" title="${esc(t('any.range', { min: lim.min, max: lim.max, sym: a.sym }))}"><input id="real-amount" type="number" min="${lim.min}" max="${lim.max}" step="any" value="${amtV}"><b>${esc(a.sym)}</b><span class="sc-range">${lim.min}–${lim.max}</span></div><div class="sc-usd small muted" data-price="${a.price}">≈ $${(amtV * a.price).toFixed(2)}</div>`) +
+    (using ? `<div class="sc-lab sc-using" title="${esc(refundV)}">✓ ${t('wallet.usingThis', { a: esc(shortAddr(refundV)) })}</div><input type="hidden" id="real-refund" value="${esc(refundV)}">`
+      : `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('any.fromWallet', { chain: esc(netName(a.chain)) })} ⓘ</label><input id="real-refund" class="${need.length && !refundV ? 'need' : ''}" placeholder="${esc(addrPh(a.chain))}" value="${esc(refundV)}">`) +
+    `</div><button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
+    (legs ? `<div class="sc-side"><div class="sc-head">${t('split.receivers')}</div>${legRows(f)}</div>`
+      : `<div class="sc-side"><div class="sc-head sc-headrow">${t('real.youGet')} ${tokPick('to', b)}</div>` + (ui.picker === 'to' ? pickerPanel('to') : '') +
+        `<label class="sc-lab" title="${esc(t('any.toHint', { sym: b.sym, chain: netName(b.chain) }))}">${t('any.toWallet', { chain: esc(netName(b.chain)) })} ⓘ</label><input id="real-recip" class="${need.length && !recipV ? 'need' : ''}" placeholder="${esc(addrPh(b.chain))}" value="${esc(recipV)}"></div>` +
+        (splitOk ? `<button type="button" class="linkbtn split-btn" data-legadd="1">＋ ${t('split.start')}</button>` : '')) +
+    `</div><button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}><span class="stepn">3</span> ${ui.realBusy ? t('ai.thinking') : legs ? t('split.getQuotes', { n: f.legs.length }) : t('real.getQuote')}</button>`;
+}
+const addrPh = (c) => (c === 'near' ? 'yourname.near' : c === 'sol' ? 'Solana address (e.g. 7xKX…)' : isEvm(c) ? '0x…' : c === 'btc' ? 'bc1…' : c === 'tron' ? 'T…' : t('any.addrOf', { chain: netName(c) }));
+// choose a token for one side; picking the other side's token swaps the two
+function pickAsset(side, id) {
+  readRealForm();
+  const f = ui.real, x = A(id);
+  if (!x) return;
+  const other = side === 'from' ? 'toId' : 'fromId', mine = side === 'from' ? 'fromId' : 'toId';
+  const before = A(f[mine]);
+  if (f[other] === id) { f[other] = f[mine]; [f.refundTo, f.recipient] = [f.recipient, f.refundTo]; }
+  f[mine] = id;
+  if (side === 'from' && before) f.amount = nice((Number(f.amount) || 0) * before.price / x.price) || nice(1 / x.price);
+  const same = (c1, c2) => c1 === c2 || (isEvm(c1) && isEvm(c2));
+  if (before && !same(before.chain, x.chain)) { if (side === 'from') f.refundTo = ''; else f.recipient = ''; }
+  if (side === 'from' && x.id !== WNEAR_ID) f.legs = null;
+  ui.picker = null; ui.pickQ = ''; ui.pickChain = '';
+  render();
+}
+function flipAny() {
+  const f = ui.real, a = A(f.fromId), b = A(f.toId);
+  if (!a || !b) return;
+  const usd = (Number(f.amount) || 0) * a.price;
+  ui.real = { ...f, fromId: b.id, toId: a.id, amount: nice(usd / b.price) || nice(1 / b.price), refundTo: f.recipient, recipient: f.refundTo, legs: null };
+  play('pick'); render();
+}
+const TX_BASE = { near: NEAR_MAIN + '/txns/', sol: 'https://solscan.io/tx/', base: 'https://basescan.org/tx/', eth: 'https://etherscan.io/tx/', arb: 'https://arbiscan.io/tx/', op: 'https://optimistic.etherscan.io/tx/', pol: 'https://polygonscan.com/tx/', bsc: 'https://bscscan.com/tx/', avax: 'https://snowtrace.io/tx/', gnosis: 'https://gnosisscan.io/tx/', btc: 'https://mempool.space/tx/', tron: 'https://tronscan.org/#/transaction/' };
+const txBase = (c) => TX_BASE[c] || null;
+// a part of a split: [symbol, chain] whether it uses the old menu or a live asset id
+const legDst = (l) => { const x = A(l.to); return x ? [x.sym, x.chain] : REAL_DST[l.to] || REAL_DST.USDC; };
 const COL_MARK = '<!--col-->';
 // step 1: big, coloured buttons for the wallets this swap needs
-const CHAIN_ICON = { near: 'Ⓝ', sol: '◎', base: 'B' };
-const WALLET_SHORT = { near: 'Meteor', sol: 'Phantom', base: 'MetaMask' };
+const CHAIN_ICON = { near: 'Ⓝ', sol: '◎', base: 'B', eth: 'Ξ', btc: '₿', arb: 'A', op: 'O', pol: 'P', bsc: 'B', avax: 'A', tron: 'T' };
+const WALLET_SHORT = { near: 'Meteor', sol: 'Phantom', base: 'MetaMask', evm: 'MetaMask' };
 function walletTiles(srcChain, dstChain) {
-  const chains = [...new Set([srcChain, dstChain])], w = ui.wallet || {};
-  return `<div class="wtiles"><div class="step-h"><span class="stepn">1</span>${t('wallet.step')}</div><div class="wtiles-row">${chains.map((c) => {
+  const w = ui.wallet || {}, seen = new Set(), tiles = [];
+  for (const c of [srcChain, dstChain]) {
+    const k = walletKind(c), id = k || 'none:' + c;
+    if (seen.has(id)) continue; seen.add(id);
     const ch = chainOf(c), col = ch ? ch[1] : '#556', role = c === srcChain ? t('wallet.roleSend') : t('wallet.roleGet');
-    return w[c]
-      ? `<div class="wtile on" style="--c:${col}"><span class="wt-ic">${CHAIN_ICON[c]}</span><span class="wt-tx"><b title="${esc(w[c])}">✓ ${esc(w[c].length > 16 ? w[c].slice(0, 5) + '…' + w[c].slice(-4) : w[c])}</b><span>${esc(CH_NAME[c])} · ${role}</span></span><span class="wt-acts"><button type="button" class="wt-act" data-walletswap="${c}" title="${esc(t('wallet.swapHint'))}">⇄ ${t('wallet.swap')}</button><button type="button" class="wt-act off" data-walletoff="${c}">⏻ ${t('wallet.off')}</button></span></div>`
-      : `<button type="button" class="wtile" style="--c:${col}" data-wallet="${c}"><span class="wt-ic">${CHAIN_ICON[c]}</span><span class="wt-tx"><b>${t('wallet.connectShort', { chain: CH_NAME[c] })}</b><span>${WALLET_SHORT[c]} · ${role}</span></span></button>`;
-  }).join('')}</div></div>`;
+    const icon = CHAIN_ICON[c] || esc(netName(c)[0]), cname = k === 'base' && isEvm(c) && c !== 'base' ? netName(c) : CH_NAME[c] || netName(c);
+    if (!k) { tiles.push(`<div class="wtile manual" style="--c:${col}"><span class="wt-ic">${icon}</span><span class="wt-tx"><b>${esc(netName(c))}</b><span>${t('wallet.noBrowser')} · ${role}</span></span></div>`); continue; }
+    tiles.push(w[k]
+      ? `<div class="wtile on" style="--c:${col}"><span class="wt-ic">${icon}</span><span class="wt-tx"><b title="${esc(w[k])}">✓ ${esc(w[k].length > 16 ? w[k].slice(0, 5) + '…' + w[k].slice(-4) : w[k])}</b><span>${esc(cname)} · ${role}</span></span><span class="wt-acts"><button type="button" class="wt-act" data-walletswap="${k}" title="${esc(t('wallet.swapHint'))}">⇄ ${t('wallet.swap')}</button><button type="button" class="wt-act off" data-walletoff="${k}">⏻ ${t('wallet.off')}</button></span></div>`
+      : `<button type="button" class="wtile" style="--c:${col}" data-wallet="${k}"><span class="wt-ic">${icon}</span><span class="wt-tx"><b>${t('wallet.connectShort', { chain: esc(cname) })}</b><span>${WALLET_SHORT[k]} · ${role}</span></span></button>`);
+  }
+  return `<div class="wtiles"><div class="step-h"><span class="stepn">1</span>${t('wallet.step')}</div><div class="wtiles-row">${tiles.join('')}</div></div>`;
 }
 // a swap card like an exchange: "you send" on top, "you get" below, a ⇄ button between them
 const CH_NAME = { near: 'NEAR', sol: 'Solana', base: 'Base' };
@@ -1082,6 +1200,7 @@ function swapCard(f, dir) {
 // turn the swap round, keeping the token and the wallets that still fit
 function flipReal() {
   readRealForm();
+  if (ui.real.any && A(ui.real.fromId) && A(ui.real.toId)) { flipAny(); return; }
   if (ui.real.legs) { const l = ui.real.legs[0]; ui.real.to = l.to; ui.real.amount = l.amount; ui.real.recipient = l.recipient; ui.real.legs = null; }
   const f = ui.real;
   if (f.dir === 'out') {
@@ -1110,6 +1229,13 @@ function pickReal(spec) {
 function savedWallets() { try { return JSON.parse(localStorage.getItem('ew.wallets') || '{}') || {}; } catch { return {}; } }
 function rememberWallets(f) {
   const w = savedWallets();
+  if (f.any && A(f.fromId) && A(f.toId)) {
+    const sc = A(f.fromId).chain, dc = A(f.toId).chain;
+    if (f.refundTo) { w[sc] = f.refundTo; if (isEvm(sc)) w.evm = f.refundTo; }
+    if (f.recipient && dc !== sc) { w[dc] = f.recipient; if (isEvm(dc)) w.evm = f.recipient; }
+    try { localStorage.setItem('ew.wallets', JSON.stringify(w)); } catch {}
+    return;
+  }
   const src = f.dir === 'in' ? (REAL_SRC[f.from] || [])[1] : 'near', dst = f.dir === 'in' ? 'near' : (REAL_DST[f.to] || [])[1];
   if (f.refundTo && src) w[src] = f.refundTo;
   if (f.recipient && dst && !(dst === 'near' && src === 'near')) w[dst] = f.recipient;
@@ -1151,6 +1277,7 @@ async function aiSwapNow() {
   ui.aiSwap = { text, busy: false, reply: r && r.ok ? r : null };
   if (!r || !r.ok) { toast(t('aiswap.fail'), 'bad'); render(); return; }
   ui.real = { ...r.form };
+  if (ui.assets) Object.assign(ui.real, oldToAny(ui.real));
   if (r.swap) { rememberWallets(ui.real); view.realSwaps = [r.swap, ...(view.realSwaps || [])]; pollReal(r.swap.depositAddress); play('coin'); }
   render();
 }
@@ -1176,12 +1303,14 @@ function walletRow(srcChain, dstChain) {
 }
 function walletSendBox(sw) {
   if (sw.status !== 'PENDING_DEPOSIT') return '';
-  const chain = sw.dir === 'in' ? sw.fromChain : 'near', sym = sw.dir === 'in' ? sw.fromSym : 'NEAR', w = (ui.wallet || {})[chain];
+  const chain = sw.dir === 'in' || sw.dir === 'any' ? sw.fromChain : 'near', sym = sw.dir === 'in' || sw.dir === 'any' ? sw.fromSym : 'NEAR', kind = walletKind(chain), w = (ui.wallet || {})[kind];
   if (sw.sentTx) return `<p class="ok small">✓ ${t('wallet.sentTx', { h: esc(shortAddr(sw.sentTx)) })}</p>`;
-  if (!w) return `<div class="walletsend"><button class="primary" data-wallet="${chain}">🔗 ${t('wallet.needConnect', { w: WALLET_NAME[chain] })}</button></div>`;
-  const differs = chain === 'near' && sw.refundTo && sw.refundTo !== w;
+  if (!kind) return `<p class="muted small">${t('wallet.noBrowserSend', { chain: esc(netName(chain)) })}</p>`;
+  if (sw.dir === 'any' && chain === 'sol' && sym !== 'SOL' && !sw.fromContract) return `<p class="muted small">${t('wallet.noBrowserSend', { chain: esc(netName(chain)) })}</p>`;
+  if (!w) return `<div class="walletsend"><button class="primary" data-wallet="${kind}">🔗 ${t('wallet.needConnect', { w: WALLET_NAME[kind] || 'MetaMask' })}</button></div>`;
+  const differs = sw.refundTo && sw.refundTo.toLowerCase() !== String(w).toLowerCase();
   return `<div class="walletsend"><button class="primary big" data-walletsend="1" ${ui.walletBusy ? 'disabled' : ''}>${ui.walletBusy ? t('wallet.sending') : '👛 ' + t('wallet.send')}</button>` +
-    `<p class="small">${chain === 'near' ? t('wallet.sendNear', { a: sw.amountIn }) : t('wallet.sendOther', { a: sw.amountIn, sym })}</p>` +
+    `<p class="small">${chain === 'near' && sym.replace(/^w/, '') === 'NEAR' ? t('wallet.sendNear', { a: sw.amountIn }) : t('wallet.sendOther', { a: sw.amountIn, sym: esc(sym) }) + (isEvm(chain) ? ' ' + t('wallet.evmChain', { chain: esc(netName(chain)) }) : '')}</p>` +
     (differs ? `<p class="closed small">${t('wallet.differs', { a: esc(w), b: esc(sw.refundTo) })}</p>` : '') +
     `<p class="muted small">${t('wallet.orManual')}</p></div>`;
 }
@@ -1192,9 +1321,10 @@ async function connectWallet(chain) {
     if (!a) return;
     ui.wallet = { ...(ui.wallet || {}), [chain]: a };
     readRealForm();
-    const f = ui.real, src = f.dir === 'in' ? (REAL_SRC[f.from] || [])[1] : 'near', dst = f.dir === 'in' ? 'near' : (REAL_DST[f.to] || [])[1];
-    if (chain === src) f.refundTo = a;
-    if (chain === dst && (dst !== src || !f.recipient)) f.recipient = a;
+    const f = ui.real, live = f.any && A(f.fromId) && A(f.toId);
+    const src = live ? A(f.fromId).chain : f.dir === 'in' ? (REAL_SRC[f.from] || [])[1] : 'near', dst = live ? A(f.toId).chain : f.dir === 'in' ? 'near' : (REAL_DST[f.to] || [])[1];
+    if (walletKind(src) === chain) f.refundTo = a;
+    if (walletKind(dst) === chain && (walletKind(dst) !== walletKind(src) || !f.recipient)) f.recipient = a;
     rememberWallets(f);
     toast(t('wallet.connected', { a: shortAddr(a) }), 'win');
   } catch (e) { toast(t('wallet.fail', { why: esc(String((e && e.message) || e).slice(0, 100)) }), 'bad'); }
@@ -1218,7 +1348,7 @@ async function walletOff(chain, again) {
 async function walletSend() {
   const sw = curSwap();
   if (!sw || sw.status !== 'PENDING_DEPOSIT' || ui.walletBusy) return;
-  const chain = sw.dir === 'in' ? sw.fromChain : 'near';
+  const chain = sw.dir === 'in' || sw.dir === 'any' ? sw.fromChain : 'near';
   ui.walletBusy = true; render();
   try {
     const L = await walletLib();
@@ -1230,7 +1360,16 @@ async function walletSend() {
       play('coin'); toast(t('wallet.sent'), 'win'); pollReal(group.map((x) => x.depositAddress));
       ui.walletBusy = false; render(); return;
     }
-    if (chain === 'near') hash = await L.nearSend(sw.depositAddress, String(sw.amountIn));
+    if (sw.dir === 'any') {
+      const native = !sw.fromContract;
+      if (chain === 'near') hash = sw.fromId === WNEAR_ID ? await L.nearSend(sw.depositAddress, String(sw.amountIn)) : await L.nearSendFt(sw.fromContract, sw.depositAddress, String(sw.amountIn), sw.fromDecimals);
+      else if (chain === 'sol') {
+        const bh = await (await fetch('/api/sol/blockhash')).json().catch(() => ({}));
+        if (!bh.ok) throw new Error(t('wallet.noBlockhash'));
+        hash = await L.solSendAny(sw.depositAddress, native ? null : sw.fromContract, String(sw.amountIn), sw.fromDecimals, bh.blockhash);
+      } else if (isEvm(chain)) hash = await L.evmSendAny(EVM_IDS[chain], native ? null : sw.fromContract, sw.depositAddress, String(sw.amountIn), sw.fromDecimals);
+      else throw new Error(t('wallet.noBrowserSend', { chain: netName(chain) }));
+    } else if (chain === 'near') hash = await L.nearSend(sw.depositAddress, String(sw.amountIn));
     else if (chain === 'sol') {
       const bh = await (await fetch('/api/sol/blockhash')).json().catch(() => ({}));
       if (!bh.ok) throw new Error(t('wallet.noBlockhash'));
@@ -1262,7 +1401,7 @@ function afterNearReturn() {
 function readRealForm() {
   const g = (id) => { const el = $(id); return el ? el.value : ''; };
   const prev = ui.real || {};
-  ui.real = { dir: prev.dir || 'out', to: g('real-to') || prev.to || 'USDC', from: g('real-from') || prev.from || 'USDC-SOL', amount: Number(g('real-amount')) || prev.amount || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim(), legs: prev.legs || null };
+  ui.real = { dir: prev.dir || 'out', to: g('real-to') || prev.to || 'USDC', from: g('real-from') || prev.from || 'USDC-SOL', amount: Number(g('real-amount')) || prev.amount || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim(), legs: prev.legs || null, any: prev.any, anyOff: prev.anyOff, fromId: prev.fromId, toId: prev.toId };
   // the rows of a split, as typed right now
   if (ui.real.legs && document.querySelector('[data-legto]')) {
     ui.real.legs = ui.real.legs.map((l, i) => {
@@ -1277,21 +1416,32 @@ function readRealForm() {
 function legAdd() {
   readRealForm();
   const f = ui.real;
-  if (!f.legs) f.legs = [{ to: f.to, amount: f.amount, recipient: f.recipient }, { to: f.to === 'USDC-SOL' ? 'USDC' : 'USDC-SOL', amount: 0.1, recipient: '' }];
-  else if (f.legs.length < 5) f.legs.push({ to: 'USDC', amount: 0.1, recipient: '' });
+  const live = f.any && ui.assets, usdcSol = live && (findAsset('USDC', 'sol') || {}).id, usdcNear = live && (findAsset('USDC', 'near') || {}).id;
+  if (!f.legs) f.legs = live ? [{ to: f.toId, amount: f.amount, recipient: f.recipient }, { to: f.toId === usdcSol ? usdcNear || f.toId : usdcSol || f.toId, amount: 0.1, recipient: '' }]
+    : [{ to: f.to, amount: f.amount, recipient: f.recipient }, { to: f.to === 'USDC-SOL' ? 'USDC' : 'USDC-SOL', amount: 0.1, recipient: '' }];
+  else if (f.legs.length < 5) f.legs.push({ to: live ? usdcNear || f.toId : 'USDC', amount: 0.1, recipient: '' });
   render();
 }
 function legDel(i) {
   readRealForm();
   const f = ui.real;
   f.legs.splice(i, 1);
-  if (f.legs.length < 2) { const l = f.legs[0] || {}; f.to = l.to || f.to; f.amount = l.amount || f.amount; f.recipient = l.recipient || ''; f.legs = null; }
+  if (f.legs.length < 2) { const l = f.legs[0] || {}; if (f.any && A(l.to)) f.toId = l.to; else f.to = l.to || f.to; f.amount = l.amount || f.amount; f.recipient = l.recipient || ''; f.legs = null; }
   render();
 }
 async function realQuoteNow() {
   readRealForm();
   ui.realBusy = true; render();
-  if (ui.real.dir === 'out' && ui.real.legs) {
+  if (ui.real.any && !ui.real.legs) {
+    const r = await post('/api/intents/real/any', { player: playerId, from: ui.real.fromId, to: ui.real.toId, amount: ui.real.amount, refundTo: ui.real.refundTo, recipient: ui.real.recipient });
+    ui.realBusy = false;
+    if (!r.ok) { toast(t(r.code || 'real.noQuote', { min: r.min, max: r.max }), 'bad'); render(); return; }
+    rememberWallets(ui.real);
+    view.realSwaps = [r.swap, ...(view.realSwaps || [])];
+    pollReal(r.swap.depositAddress);
+    render(); return;
+  }
+  if ((ui.real.dir === 'out' || ui.real.any) && ui.real.legs) {
     const r = await post('/api/intents/real/multi', { player: playerId, refundTo: ui.real.refundTo, legs: ui.real.legs });
     ui.realBusy = false;
     if (!r.ok) { toast((r.leg ? t('split.legFail', { n: r.leg }) + ' ' : '') + t(r.code || 'real.noQuote'), 'bad'); render(); return; }
@@ -1491,7 +1641,13 @@ function renderMapCard(id, top, html) {
   if (!card) return false;
   if (!id || ui.scene) { card.hidden = true; $('view').classList.remove('card-on', 'card-wide'); return false; }
   const typing = card.contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
-  if (!typing) card.innerHTML = closeBtn() + top + html;
+  if (!typing) {
+    // keep where the player had scrolled (the card itself and lists such as the token picker)
+    const at = card.scrollTop, lists = [...card.querySelectorAll('[data-keepscroll]')].map((el) => [el.dataset.keepscroll, el.scrollTop]);
+    card.innerHTML = closeBtn() + top + html;
+    card.scrollTop = at;
+    for (const [k, v] of lists) { const el = card.querySelector(`[data-keepscroll="${k}"]`); if (el) el.scrollTop = v; }
+  }
   card.hidden = false;
   $('view').classList.add('card-on');
   $('view').classList.toggle('card-wide', id === 'exchange');
@@ -1765,7 +1921,7 @@ function boardSection() {
 // ---------- the NEAR Intents bridge picture: where the money goes, step by step ----------
 const ASSET_COLOR = { BTC: '#f2a33a', ETH: '#7b8cde', SOL: '#9b6bf2', USDC: '#3a7bd5', NEAR: '#24302e', wNEAR: '#24302e' };
 // each chain gets its own colour and short name, drawn as the bank of the river and a badge on the coin
-const CHAINS = { near: ['NEAR', '#1f9d76'], sol: ['Solana', '#8a4de8'], solana: ['Solana', '#8a4de8'], base: ['Base', '#1652f0'], eth: ['Ethereum', '#627eea'], ethereum: ['Ethereum', '#627eea'], btc: ['Bitcoin', '#f7931a'], bitcoin: ['Bitcoin', '#f7931a'] };
+const CHAINS = { arb: ['Arbitrum', '#2d8fd5'], op: ['Optimism', '#e5193b'], pol: ['Polygon', '#8247e5'], bsc: ['BNB Chain', '#d9a40b'], avax: ['Avalanche', '#e84142'], tron: ['Tron', '#d1131f'], gnosis: ['Gnosis', '#04795b'], bera: ['Berachain', '#8a5a2b'], sui: ['Sui', '#3d8ee8'], ton: ['TON', '#0098ea'], doge: ['Dogecoin', '#b8962e'], xrp: ['XRP', '#23292f'], zec: ['Zcash', '#c99a10'], ltc: ['Litecoin', '#345d9d'], aptos: ['Aptos', '#1e9c82'], near: ['NEAR', '#1f9d76'], sol: ['Solana', '#8a4de8'], solana: ['Solana', '#8a4de8'], base: ['Base', '#1652f0'], eth: ['Ethereum', '#627eea'], ethereum: ['Ethereum', '#627eea'], btc: ['Bitcoin', '#f7931a'], bitcoin: ['Bitcoin', '#f7931a'] };
 const chainOf = (c) => CHAINS[String(c || '').toLowerCase()] || null;
 // a token is drawn as a shiny coin with its currency sign and ticker; the chain it lives on is a big pill under it
 const GLYPH = { BTC: '₿', ETH: 'Ξ', USDC: '$', SOL: '◎', NEAR: 'Ⓝ', wNEAR: 'Ⓝ' };
@@ -2638,6 +2794,13 @@ document.body.addEventListener('click', (e) => {
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
   const rc = e.target.closest('[data-realcancel]');
   if (rc) { const v = rc.dataset.realcancel; if (v === 'ask') ui.realCancelAsk = true; else if (v === 'no') ui.realCancelAsk = false; else cancelReal(); render(); return; }
+  const po = e.target.closest('[data-pickopen]');
+  if (po) { readRealForm(); ui.picker = ui.picker === po.dataset.pickopen ? null : po.dataset.pickopen; ui.pickQ = ''; ui.pickChain = ''; render(); setTimeout(() => { const i = $('pick-search'); if (i) i.focus(); }, 30); return; }
+  if (e.target.closest('[data-pickclose]')) { ui.picker = null; render(); return; }
+  const pc = e.target.closest('[data-pickchain]');
+  if (pc) { readRealForm(); ui.pickChain = pc.dataset.pickchain; render(); return; }
+  const pa = e.target.closest('[data-pickasset]');
+  if (pa) { const [side, id] = pa.dataset.pickasset.split('|'); pickAsset(side, id); return; }
   if (e.target.closest('[data-legadd]')) { legAdd(); return; }
   const ld = e.target.closest('[data-legdel]');
   if (ld) { legDel(Number(ld.dataset.legdel)); return; }
@@ -2955,8 +3118,8 @@ function showLogTab(tab) {
   if (tab === 'chat') { ui.chatUnread = 0; renderChat(); }
 }
 // keep what was typed in the real-swap form across redraws; a new destination changes the address field
-document.addEventListener('input', (e) => { if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); if (e.target.dataset && (e.target.dataset.legamt !== undefined || e.target.dataset.legrec !== undefined)) { readRealForm(); const n = legSum(ui.real.legs || []); document.querySelectorAll('.leg-total').forEach((el) => { el.textContent = t('split.total', { n }); }); document.querySelectorAll('.split-sum').forEach((el) => { el.textContent = n; }); } });
-document.addEventListener('change', (e) => { if (e.target.dataset && e.target.dataset.legto !== undefined) { const i = Number(e.target.dataset.legto), before = ((ui.real.legs || [])[i] || {}).to; readRealForm(); const l = ui.real.legs[i]; if (REAL_DST[before] && REAL_DST[l.to] && REAL_DST[before][1] !== REAL_DST[l.to][1]) l.recipient = ''; render(); return; } if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; render(); } if (e.target.id === 'real-from') { readRealForm(); const s0 = REAL_SRC[ui.real.from]; ui.real.refundTo = ''; ui.real.amount = s0 ? s0[4] : 0.5; render(); } });
+document.addEventListener('input', (e) => { if (e.target.id === 'pick-search') { ui.pickQ = e.target.value; const q = ui.pickQ.trim().toLowerCase(); let n = 0; document.querySelectorAll('.pk-item').forEach((b) => { const on = !q || b.dataset.q.includes(q); b.hidden = !on; if (on) n++; }); document.querySelectorAll('.pk-none').forEach((el) => { el.hidden = n > 0; }); return; } if (e.target.id === 'real-amount') { const u = document.querySelector('.sc-usd'); if (u) u.textContent = '≈ $' + ((Number(e.target.value) || 0) * Number(u.dataset.price || 0)).toFixed(2); } if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); if (e.target.dataset && (e.target.dataset.legamt !== undefined || e.target.dataset.legrec !== undefined)) { readRealForm(); const n = legSum(ui.real.legs || []); document.querySelectorAll('.leg-total').forEach((el) => { el.textContent = t('split.total', { n }); }); document.querySelectorAll('.split-sum').forEach((el) => { el.textContent = n; }); } });
+document.addEventListener('change', (e) => { if (e.target.dataset && e.target.dataset.legto !== undefined) { const i = Number(e.target.dataset.legto), before = ((ui.real.legs || [])[i] || {}).to; readRealForm(); const l = ui.real.legs[i]; if (legDst({ to: before })[1] !== legDst(l)[1]) l.recipient = ''; render(); return; } if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; render(); } if (e.target.id === 'real-from') { readRealForm(); const s0 = REAL_SRC[ui.real.from]; ui.real.refundTo = ''; ui.real.amount = s0 ? s0[4] : 0.5; render(); } });
 
 document.addEventListener('submit', async (e) => {
   if (e.target.classList && e.target.classList.contains('ai-ask')) {
