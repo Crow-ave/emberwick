@@ -490,6 +490,7 @@ async function realStatus(addr) {
     if (d.amountOutFormatted) swap.amountOut = shortAmt(d.amountOutFormatted);
     if (swap.status === 'SUCCESS' && !swap.logged) {
       swap.logged = true;
+      swap.doneAt = Date.now();
       const p = state.players[swap.player], who = p ? p.name : 'A villager';
       const tx = (swap.dest[0] || swap.origin[0] || {}).hash || '';
       const cn = (c) => CHAIN_NAME[c] || String(c || '').toUpperCase();

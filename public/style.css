@@ -934,3 +934,10 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .syslog{max-height:240px;overflow:auto;font:12px/1.45 ui-monospace,Menlo,monospace;background:#2b2520;color:#eadfcf;border-radius:8px;padding:6px 8px}
 .syslog div{padding:1px 0;word-break:break-word}.syslog .muted{color:#9c8f7e}
 .syslog .bad{color:#ffb39e}.syslog .good{color:#a8e6b4}
+
+/* the village list of real swaps: open one to see its links */
+.donelist{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.doneitem{border:1px solid #eadcc4;border-radius:8px;padding:4px 8px;background:#fff}
+.doneitem summary{cursor:pointer;font-size:13px;line-height:1.4}
+.doneitem[open]{background:#fffdf8}
+.donelinks{padding:4px 0 2px 18px}.donelinks p{margin:3px 0;word-break:break-all}
