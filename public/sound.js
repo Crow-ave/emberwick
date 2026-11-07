@@ -90,6 +90,7 @@ const SOUNDS = {
   bad(t) { tone(t, 220, 0.18, 'triangle', 0.18); tone(t + 0.16, 165, 0.25, 'triangle', 0.18); },
   build(t) { for (let i = 0; i < 4; i++) { tone(t + i * 0.3, 240, 0.08, 'triangle', 0.4, sfxBus, 0.002, 90); noise(t + i * 0.3, 0.06, 'bandpass', 1500, 2, 0.35); } },
   sleep(t) { [523, 440, 392, 330].forEach((f, i) => tone(t + i * 0.35, f, 0.5, 'sine', 0.12, sfxBus, 0.05)); },
+  seal(t) { noise(t, 0.14, 'lowpass', 220, 1, 1.1); tone(t, 75, 0.35, 'sine', 0.55, sfxBus, 0.002, 45); [784, 988, 1319, 1568].forEach((f, i) => { tone(t + 0.3 + i * 0.12, f, 0.7, 'sine', 0.16); tone(t + 0.3 + i * 0.12, f * 2.7, 0.3, 'sine', 0.04); }); },
   level(t) { [523, 659, 784, 1047].forEach((f, i) => tone(t + i * 0.11, f, 0.3, 'triangle', 0.18)); },
 };
 // which sound goes with working at which place

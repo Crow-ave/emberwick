@@ -1613,14 +1613,86 @@ function pollReal(addr) {
         if (r.swap.status === 'SUCCESS' && !(r.swap.dest || []).length && (pollReal.extra[a] || 0) <= 6) open++; // links not in yet: ask again
       } else open++;
     }
-    if (won) { play('level'); toast(t('real.success'), 'win'); }
+    if (won && !maybeSeal()) { play('level'); toast(t('real.success'), 'win'); }
     if (!open) clearInterval(realTimer);
     render();
   }, 6000);
 }
 // the swap (or all parts of the split) shown right now
 const swapGroup = (sw) => (!sw ? [] : sw.batch ? (view.realSwaps || []).filter((x) => x.batch === sw.batch && !(ui.realDismissed || []).includes(x.depositAddress)).sort((a, b) => (a.leg || 0) - (b.leg || 0)) : [sw]);
-function pollCurrent() { const g = swapGroup(curSwap()).filter((x) => !REAL_END.includes(x.status)); if (g.length) pollReal(g.map((x) => x.depositAddress)); }
+// ---------- the village seal: the moment a real swap (or every part of a split) is delivered ----------
+try { ui.sealed = JSON.parse(localStorage.getItem('ew.sealed') || '[]'); } catch { ui.sealed = []; }
+const sealKey = (g) => g[0].batch || g[0].depositAddress;
+function maybeSeal() {
+  const sw = curSwap(); if (!sw) return false;
+  const g = swapGroup(sw);
+  if (!g.length || !g.every((x) => x.status === 'SUCCESS')) return false;
+  const key = sealKey(g);
+  if (ui.sealed.includes(key) || $('seal')) return false;
+  const doneAt = Math.max(...g.map((x) => x.doneAt || 0));
+  if (doneAt && Date.now() - doneAt > 20 * 60000) return false; // an old swap: no party
+  ui.sealed = [...ui.sealed, key].slice(-40); try { localStorage.setItem('ew.sealed', JSON.stringify(ui.sealed)); } catch {}
+  showSeal(g);
+  return true;
+}
+function sealRoute(g) {
+  const x = g[0];
+  if (g.length > 1) return { from: 'NEAR', to: ds(x.toSym || (REAL_DST[x.to] || ['USDC'])[0]), text: t('seal.routeSplit', { a: legSum(g.map((y) => ({ amount: y.amountIn }))), n: g.length, c: new Set(g.map((y) => y.chain)).size }), en: `${legSum(g.map((y) => ({ amount: y.amountIn })))} NEAR split to ${g.length} receivers on ${new Set(g.map((y) => y.chain)).size} chains` };
+  const fromS = swapFromSym(x), fromC = x.dir === 'any' || x.dir === 'in' ? netName(x.fromChain) : 'NEAR';
+  const toS = x.dir === 'any' ? ds(x.toSym) : x.dir === 'in' ? 'NEAR' : (REAL_DST[x.to] || [x.to])[0], toC = netName(x.chain || 'near');
+  const text = `${x.amountIn} ${fromS} (${fromC}) → ${amt(x.amountOut)} ${toS} (${toC})`;
+  return { from: fromS, to: toS, text, en: text };
+}
+function showSeal(g) {
+  const r = sealRoute(g), x = g[0];
+  const sentAt = Math.min(...g.map((y) => y.sentAt || Infinity)), doneAt = Math.max(...g.map((y) => y.doneAt || 0));
+  const secs = Number.isFinite(sentAt) && doneAt > sentAt ? Math.round((doneAt - sentAt) / 1000) : null;
+  const took = secs == null ? '' : secs < 120 ? t('seal.secs', { n: secs }) : t('seal.mins', { n: Math.round(secs / 60) });
+  const proof = `https://explorer.near-intents.org/transactions/${encodeURIComponent(x.depositAddress)}`;
+  const post = `I just made a real cross-chain swap inside Emberwick, a village game on NEAR: ${r.en}${secs != null ? `, delivered in ${secs < 120 ? secs + ' s' : Math.round(secs / 60) + ' min'}` : ''}, settled by NEAR Intents. Proof: ${proof} #NEAR #NEARIntents`;
+  const badge = g.some((y) => y.firstBadge);
+  const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const coins = calm ? '' : Array.from({ length: 28 }, (_, i) => { const sym = i % 2 ? r.to : r.from; return `<span class="seal-coin" style="left:${(i * 37) % 100}%;animation-delay:${((i * 0.13) % 1.6).toFixed(2)}s;animation-duration:${(2.2 + (i % 5) * 0.35).toFixed(2)}s;background:${coinBg(sym)}">${coinGlyph(sym)}</span>`; }).join('');
+  const el = document.createElement('div');
+  el.id = 'seal'; el.className = 'seal-wrap' + (calm ? ' calm' : '');
+  el.innerHTML = `<div class="seal-rain">${coins}</div><div class="seal-card" role="dialog" aria-modal="true" aria-labelledby="seal-title">
+    <svg class="seal-wax" viewBox="0 0 120 120" aria-hidden="true"><defs><radialGradient id="sw-g" cx="40%" cy="35%"><stop offset="0" stop-color="#e2513a"/><stop offset="1" stop-color="#8e1f12"/></radialGradient></defs>
+      <path fill="url(#sw-g)" d="${Array.from({ length: 24 }, (_, i) => { const a = (i / 24) * Math.PI * 2, rr = i % 2 ? 52 : 57; return `${i ? 'L' : 'M'}${(60 + rr * Math.cos(a)).toFixed(1)} ${(60 + rr * Math.sin(a)).toFixed(1)}`; }).join(' ')}Z"/>
+      <circle cx="60" cy="60" r="40" fill="none" stroke="#f6b9a8" stroke-opacity=".55" stroke-width="2.5"/>
+      <path d="M60 33c7 10 15 15 15 27a15 15 0 0 1-30 0c0-7 4-11 7-15 1 6 4 8 6 8-2-7-2-13 2-20z" fill="#ffd27a" stroke="#7a1a0e" stroke-width="1.5"/>
+      <text x="60" y="92" text-anchor="middle" font-size="9" font-weight="700" fill="#ffe3d6" letter-spacing="1.5">EMBERWICK</text></svg>
+    <h2 id="seal-title">${t('seal.title')}</h2>
+    <p class="seal-route">${esc(r.text)}</p>
+    <p class="seal-sub">${t('seal.via')}${took ? ' · ' + took : ''}</p>
+    ${badge ? `<p class="seal-badge">🌉 <b>${t('seal.badge')}</b> · ${t('seal.badgeNote')}</p>` : ''}
+    <div class="seal-btns">
+      <a class="btnlink primary" href="${proof}" target="_blank" rel="noopener">🔎 ${t('seal.proof')}</a>
+      <span class="seal-book" data-sealbook="${esc(x.depositAddress)}">📜 ${t('seal.bookWait')}</span>
+      <a class="btnlink" href="https://x.com/intent/post?text=${encodeURIComponent(post)}" target="_blank" rel="noopener" data-sealpost="${esc(post)}">𝕏 ${t('seal.share')}</a>
+    </div>
+    <p class="seal-foot">${t('seal.foot')}</p>
+    <button type="button" class="primary seal-ok" data-sealclose="1">${t('seal.ok')}</button></div>`;
+  document.body.appendChild(el);
+  play('seal');
+  setTimeout(() => { const b = el.querySelector('.seal-ok'); if (b) b.focus(); }, 900);
+  // the village book entry on NEAR testnet: ask until its transaction is known (about a minute)
+  let tries = 0;
+  const ask = async () => {
+    const box = el.querySelector('[data-sealbook]'); if (!box || !document.body.contains(el)) return;
+    const b = await (await fetch('/api/intents/real/book?depositAddress=' + encodeURIComponent(x.depositAddress))).json().catch(() => null);
+    if (b && b.url) { box.outerHTML = `<a class="btnlink" href="${esc(b.url)}" target="_blank" rel="noopener">📜 ${t('seal.book')}</a>`; return; }
+    if (b && b.state === 'none') { box.remove(); return; }
+    if (++tries < 15) setTimeout(ask, 5000); else box.textContent = '📜 ' + t('seal.bookLater');
+  };
+  setTimeout(ask, 1500);
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-sealclose]') || e.target.id === 'seal') { const el = $('seal'); if (el) el.remove(); return; }
+  const sp = e.target.closest('[data-sealpost]');
+  if (sp) { try { navigator.clipboard.writeText(sp.dataset.sealpost); toast(t('seal.copied'), 'win'); } catch {} }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('seal')) $('seal').remove(); });
+function pollCurrent() { const g = swapGroup(curSwap()).filter((x) => !REAL_END.includes(x.status)); if (g.length) pollReal(g.map((x) => x.depositAddress)); else maybeSeal(); }
 
 // ---------- what NEAR does in Emberwick, visible at a glance ----------
 const NEAR_FEATURES = [

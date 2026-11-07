@@ -943,3 +943,26 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .donelinks{padding:4px 0 2px 18px}.donelinks p{margin:3px 0;word-break:break-all}
 
 .legproof{display:flex;flex-direction:column;gap:1px;margin-top:3px}.legproof a{word-break:break-all}
+
+/* the village seal */
+.seal-wrap{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(40,24,14,.55);animation:seal-fade .25s ease-out}
+.seal-rain{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.seal-coin{position:absolute;top:-40px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font:700 12px/1 system-ui,sans-serif;box-shadow:inset 0 -3px 0 rgba(0,0,0,.22),0 2px 4px rgba(0,0,0,.25);animation:seal-fall linear 2 forwards}
+.seal-card{position:relative;width:min(420px,92vw);background:#fffaf2;border-radius:18px;padding:22px 22px 18px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35);animation:seal-shake .35s ease-out .55s}
+.seal-wax{width:120px;height:120px;margin:-70px auto 4px;display:block;filter:drop-shadow(0 6px 8px rgba(80,10,0,.35));animation:seal-stamp .55s cubic-bezier(.2,1.4,.4,1) both}
+.seal-card h2{margin:4px 0 6px;font-size:21px;color:#5a2a12}
+.seal-route{font-weight:700;font-size:16px;margin:4px 0;color:#2b2520}
+.seal-sub{color:#7a6a55;font-size:13px;margin:2px 0 10px}
+.seal-badge{display:inline-block;background:#fff1c9;border:1px solid #e8c56a;border-radius:20px;padding:4px 12px;font-size:13px;margin:2px 0 10px;animation:seal-pop .4s ease-out 1s both}
+.seal-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:6px 0 10px}
+.seal-btns .btnlink{padding:7px 12px;border-radius:10px;border:1px solid #e3d6bf;background:#fff;text-decoration:none;font-size:13px;color:#3a2a1e}
+.seal-btns .btnlink.primary{background:#e0662d;border-color:#e0662d;color:#fff}
+.seal-book{font-size:12.5px;color:#7a6a55;padding:7px 4px}
+.seal-foot{font-size:11px;color:#9c8f7e;margin:4px 0 10px}
+.seal-ok{min-width:140px}
+.seal-wrap.calm .seal-wax,.seal-wrap.calm .seal-card,.seal-wrap.calm .seal-badge{animation:none}
+@keyframes seal-fade{from{opacity:0}}
+@keyframes seal-stamp{0%{transform:scale(2.6) rotate(-25deg);opacity:0}60%{opacity:1}100%{transform:scale(1) rotate(-8deg)}}
+@keyframes seal-shake{0%,100%{transform:none}25%{transform:translate(-4px,2px)}50%{transform:translate(3px,-2px)}75%{transform:translate(-2px,1px)}}
+@keyframes seal-pop{from{transform:scale(.6);opacity:0}}
+@keyframes seal-fall{to{transform:translateY(calc(100vh + 80px)) rotate(540deg)}}

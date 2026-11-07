@@ -501,6 +501,9 @@ async function realStatus(addr) {
       addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${fromTxt} -> ${toTxt}.`, 'good', 'log.realSwap2', { name: who, a: fromTxt, b: toTxt });
       // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
       transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${fromTxt} -> ${toTxt}, tx ${tx.slice(0, 64)}` });
+      swap.bookRef = state.ledgerSeq; // the village book entry: its testnet transaction shows up in bridge.txOf
+      // the first real swap of a player earns the Bridge Master badge
+      if (p && !p.bridgeMaster) { p.bridgeMaster = Date.now(); swap.firstBadge = true; addLog(state, `${who} is now a Bridge Master: a first real cross-chain swap.`, 'good', 'log.bridgeMaster', { name: who }); }
       broadcast();
     }
     save();
@@ -743,6 +746,13 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true });
   }
   // a fresh Solana blockhash for the player's wallet to sign the deposit with (public Solana RPCs often refuse browsers)
+  // the testnet transaction that wrote a real swap into the village book (it may take a minute)
+  if (url.pathname === '/api/intents/real/book') {
+    const swap = (state.realSwaps || []).find((x) => x.depositAddress === url.searchParams.get('depositAddress'));
+    const h = swap && swap.bookRef && bridge && bridge.txOf ? bridge.txOf(swap.bookRef) : null;
+    const real = h && !['sync', 'internal', 'netted'].includes(h);
+    return sendJson(res, 200, { ok: !!swap, tx: real ? h : null, state: !swap ? 'none' : !swap.bookRef ? 'none' : real ? 'done' : h || 'waiting', url: real && bridge ? `${bridge.view().explorer}/txns/${h}` : null });
+  }
   if (url.pathname === '/api/sol/blockhash') {
     try {
       const r = await getJson(SOL_RPC, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash', params: [{ commitment: 'finalized' }] }) });
@@ -755,7 +765,7 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const swap = (state.realSwaps || []).find((x) => x.depositAddress === body.depositAddress);
     if (!swap || !/^[A-Za-z0-9]{20,100}$/.test(String(body.txHash || ''))) return sendJson(res, 400, { ok: false, error: 'check the transaction hash' });
-    swap.sentTx = String(body.txHash); save(); // the player sent it: no cancelling from here on
+    swap.sentTx = String(body.txHash); swap.sentAt = swap.sentAt || Date.now(); save(); // the player sent it: no cancelling from here on
     try { await getJson(`${ONECLICK}/deposit/submit`, { method: 'POST', body: JSON.stringify({ depositAddress: swap.depositAddress, txHash: String(body.txHash) }) }); return sendJson(res, 200, { ok: true }); }
     catch (e) { return sendJson(res, 400, { ok: false, error: String(e.message || e).slice(0, 160) }); }
   }
