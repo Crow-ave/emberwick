@@ -729,7 +729,7 @@ function panelExchange() {
     else h += `<table>${pr.tokens.map((x) => `<tr><td><b>${esc(x.symbol)}</b> <span class="muted small">${esc(x.chain)}</span></td><td class="n">$${Number(x.price).toLocaleString(undefined, { maximumFractionDigits: x.price < 10 ? 3 : 0 })}</td></tr>`).join('')}</table><p class="muted small">${t('ex.pricesSource')}</p>`;
     h += `<p class="sub2">${t('ex.bridgeTitle')}</p><p class="small">${t('ex.bridgeHelp', { n: me ? Math.floor(me.coins) : 0 })}</p><button class="primary" data-act="open-near">${t('ex.openNear')}</button>`;
     h += `<p class="muted small">${t('ex.changeNote')}</p>`;
-    if (realMode) h = h.slice(0, extraAt) + `<details class="realextra"><summary>${t('real.extra')}</summary>${oracleBox()}${reserveBox(true)}${h.slice(extraAt)}</details>`;
+    if (realMode) h = h.slice(0, extraAt) + `<details class="realextra" data-keep="extra"${keepOpen('extra')}><summary>${t('real.extra')}</summary>${oracleBox()}${reserveBox(true)}${h.slice(extraAt)}</details>`;
   }
   // two columns side by side, so nothing needs scrolling on a normal screen
   const at = h.indexOf('<div class="tabs">'), endTabs = h.indexOf('</div>', at) + 6, body = h.slice(endTabs);
@@ -908,7 +908,7 @@ const curSwap = () => (view.realSwaps || []).filter((x) => !(ui.realDismissed ||
 function realSwapBox() {
   const me = view.player, sw = curSwap();
   // one short line on top; the long explanation and the warning fold away
-  let R = `<details class="realinfo"><summary>ⓘ <b>${t('real.infoShort')}</b></summary><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p></details>`;
+  let R = `<details class="realinfo" data-keep="info"${keepOpen('info')}><summary>ⓘ <b>${t('real.infoShort')}</b></summary><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p></details>`;
   if (!me) return R + COL_MARK + `<p class="muted">${t('toast.join')}</p>`;
   if (sw && sw.batch) return splitView(swapGroup(sw), R);
   const f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
@@ -938,7 +938,7 @@ function realSwapBox() {
       L += walletSendBox(sw);
       // sending by hand: open by itself only when no wallet is connected for that chain
       const manualOpen = !(ui.wallet || {})[srcChain] && !sw.sentTx;
-      L += `<details class="realmanual"${manualOpen ? ' open' : ''}><summary>${t('real.manual')}</summary><p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
+      L += `<details class="realmanual" data-keep="manual"${keepOpen('manual', manualOpen)}><summary>${t('real.manual')}</summary><p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
         (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
         `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div></details>`;
       L += sw.sentTx ? '' : ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
@@ -952,7 +952,7 @@ function realSwapBox() {
     if (sw.status === 'SUCCESS' || bad) L += `<button class="primary" data-realnew="1">${t('real.again')}</button>`;
   }
   const done = view.realDone || [];
-  if (done.length) R += `<details class="realdone"><summary>${t('real.doneTitle')} (${done.length})</summary><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul></details>`;
+  if (done.length) R += `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul></details>`;
   return R + COL_MARK + L;
 }
 // ---------- one NEAR send split to several receivers ----------
@@ -986,7 +986,7 @@ function splitView(group, R) {
     const w = (ui.wallet || {}).near;
     L += w ? `<div class="walletsend"><button class="primary big" data-walletsend="1" ${ui.walletBusy ? 'disabled' : ''}>${ui.walletBusy ? t('wallet.sending') : '👛 ' + t('split.send', { n: group.length })}</button><p class="small">${t('split.sendNote', { total, n: group.length })}</p></div>`
       : `<div class="walletsend"><button class="primary" data-wallet="near">🔗 ${t('wallet.needConnect', { w: WALLET_NAME.near })}</button></div>`;
-    L += `<details class="realmanual"${w ? '' : ' open'}><summary>${t('real.manual')}</summary><p class="small">${t('split.manual')}</p><ul class="small">${group.map((x) => `<li>${x.amountIn} wNEAR → <code>${esc(x.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(x.depositAddress)}">${t('real.copy')}</button></li>`).join('')}</ul></details>`;
+    L += `<details class="realmanual" data-keep="manual"${keepOpen('manual', !w)}><summary>${t('real.manual')}</summary><p class="small">${t('split.manual')}</p><ul class="small">${group.map((x) => `<li>${x.amountIn} wNEAR → <code>${esc(x.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(x.depositAddress)}">${t('real.copy')}</button></li>`).join('')}</ul></details>`;
     L += ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
       : `<button class="linkbtn realcancel-btn" data-realcancel="ask">✕ ${t('split.cancel')}</button>`;
   } else if (sent && !ended) L += `<p class="ok small">✓ ${t('wallet.sentTx', { h: esc(shortAddr(group.find((x) => x.sentTx).sentTx)) })}</p>`;
@@ -1023,12 +1023,17 @@ function altBox(sw, cost) {
     : `<span class="muted">${t(o.why === 'same-chain' ? 'alt.sameChain' : o.why === 'token' ? 'alt.omniNoToken' : 'alt.omniFail')}</span>`;
   const lifiTxt = !l.checked ? `<span class="muted">${t('alt.lifiFail')}</span>` : l.near ? t('alt.lifiYes') : `<span class="muted">${t('alt.lifiNo', { n: l.chains })}</span>`;
   const sum = `${t('alt.title')}: Omni ${o.ok ? money(o.usd) : '—'} · LI.FI ${l.checked ? (l.near ? '✓' : t('alt.noNear')) : '?'}`;
-  return `<details class="altbox"><summary>🔎 ${sum}</summary><table>` +
+  return `<details class="altbox" data-keep="alt"${keepOpen('alt')}><summary>🔎 ${sum}</summary><table>` +
     `<tr><td><b>NEAR Intents</b></td><td><b>${money(cost)}</b> ${t('alt.intentsNote')} ✓</td></tr>` +
     `<tr><td><b>Omni Bridge</b><br><span class="muted small">${t('alt.omniWho')}</span></td><td>${omniTxt}</td></tr>` +
     `<tr><td><b>LI.FI / Jumper</b><br><span class="muted small">${t('alt.lifiWho')}</span></td><td>${lifiTxt}</td></tr></table>` +
     `<p class="muted small">${t('alt.note', { time: new Date(a.at).toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' }) })}</p></details>`;
 }
+// the screen is drawn again every few seconds (live village), so a section the player opened or closed
+// keeps that state: each one remembers it under its own name
+ui.open = ui.open || {};
+const keepOpen = (key, byDefault = false) => ((key in ui.open ? ui.open[key] : byDefault) ? ' open' : '');
+document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.tagName === 'DETAILS' && d.dataset.keep && d.isConnected) ui.open[d.dataset.keep] = d.open; }, true);
 const COL_MARK = '<!--col-->';
 // step 1: big, coloured buttons for the wallets this swap needs
 const CHAIN_ICON = { near: 'Ⓝ', sol: '◎', base: 'B' };
@@ -1980,7 +1985,7 @@ function panelNear() {
       h += `<p class="muted small">${t('near.depositHelp', { bank: esc(c.accounts.bank) })}</p>` +
         `<div class="row"><input id="near-dep" type="number" min="1" step="1" value="5"><button data-act="near-deposit">${t('near.deposit')}</button></div>`;
       if (me.deposited) h += `<p class="muted small">${t('near.deposited', { n: me.deposited })}</p>`;
-      h += `<details class="small"><summary>${t('near.claimTitle')}</summary><p class="muted small">${t('near.claimHelp', { id: esc(me.near) })}</p>` +
+      h += `<details class="small" data-keep="claim"${keepOpen('claim')}><summary>${t('near.claimTitle')}</summary><p class="muted small">${t('near.claimHelp', { id: esc(me.near) })}</p>` +
         `<div class="row"><input id="near-claim" placeholder="Fx3…" autocomplete="off" spellcheck="false"><button data-act="near-claim">${t('near.claim')}</button></div></details>`;
     }
     if (ui.nearBusy) h += `<p class="status">${t(ui.nearBusy)}</p>`;
