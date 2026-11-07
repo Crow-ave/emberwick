@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createState, ensureContracts, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { createState, ensureContracts, moneyHistory, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -326,6 +326,18 @@ const server = http.createServer(async (req, res) => {
     const r = await askCraftsman(card, body.q, String(body.lang || 'en').slice(0, 5), body.player, ctx);
     if (r.ok) r.actions = checkAiActions(state, body.player, card.id, r.actions); // only what the rules allow, as buttons
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
+  }
+
+  // money history of an account: a player sees their own; craftsmen, the treasury and funds are public
+  if (url.pathname === '/api/money') {
+    const pid = url.searchParams.get('player'), acct = String(url.searchParams.get('acct') || '');
+    const publicAcct = /^(npc:[a-z]+|treasury|newcomerFund|adventurerFund|deposits|botFund)$/.test(acct);
+    const own = pid && state.players[pid] && acct === 'player:' + pid;
+    if (!publicAcct && !own) return sendJson(res, 403, { ok: false, error: 'not allowed' });
+    const nameOf = (h) => h.startsWith('npc:') ? (CRAFTSMEN.find((c) => c.id === h.slice(4)) || {}).name || h : h.startsWith('player:') ? (state.players[h.slice(7)] || {}).name || 'player'
+      : h.startsWith('bot:') ? ((state.bots || {})[h.slice(4)] || {}).name || 'villager' : h;
+    const rows = moneyHistory(state, acct, 80).map((e) => ({ ...e, otherName: nameOf(e.other), tx: bridge && bridge.txOf ? bridge.txOf(e.id) : null }));
+    return sendJson(res, 200, { ok: true, acct, balance: Math.round((state.balances[acct] || 0) * 100) / 100, rows, chain: !!(bridge && bridge.status === 'ready') });
   }
 
   // the exact JSON of a morning plan (its SHA-256 is in the memo on NEAR), and the TEE proof

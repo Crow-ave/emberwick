@@ -80,8 +80,26 @@ function transfer(state, from, to, amount, note = null) {
   state.balances[from] = r2(balance(state, from) - amount);
   state.balances[to] = r2(balance(state, to) + amount);
   if (from === 'treasury' || to === 'treasury') noteTreasury(state, from === 'treasury' ? 'out' : 'in', from === 'treasury' ? to : from, amount, note);
+  // the village's money history: every transfer, with why it happened (kept for the last 3000)
+  const why = (note && (note.why || (note.memo && String(note.memo).replace(/^Emberwick( council #\d+)?: /, '')))) || 'transfer';
+  state.ledger = state.ledger || [];
+  state.ledgerSeq = (state.ledgerSeq || 0) + 1;
+  state.ledger.push({ id: state.ledgerSeq, day: state.day, from, to, amount, why: String(why).slice(0, 120) });
+  if (state.ledger.length > 3000) state.ledger.splice(0, state.ledger.length - 3000);
+  note = { ...(note || {}), ref: state.ledgerSeq };
   for (const w of watchers) w(from, to, amount, note);
   return true;
+}
+
+// the money history of one account (a player, a craftsman, the treasury, a fund), newest first
+export function moneyHistory(state, acct, limit = 60) {
+  const out = [];
+  const L = state.ledger || [];
+  for (let k = L.length - 1; k >= 0 && out.length < limit; k--) {
+    const e = L[k];
+    if (e.from === acct || e.to === acct) out.push({ ...e, dir: e.to === acct ? 'in' : 'out', other: e.to === acct ? e.from : e.to });
+  }
+  return out;
 }
 
 // ---------- the treasury's books: what came in, what went out, and to whom ----------
@@ -175,8 +193,8 @@ export function depositIn(state, playerId, amount, hash) {
   if (!(amount > 0)) return { ok: false, error: 'Nothing was deposited.', code: 'err.depositEmpty' };
   state.seenDeposits.push(hash);
   const fromOut = Math.min(amount, balance(state, 'withdrawn'));
-  transfer(state, 'withdrawn', 'player:' + playerId, fromOut);
-  transfer(state, 'newcomerFund', 'player:' + playerId, r2(amount - fromOut));
+  transfer(state, 'withdrawn', 'player:' + playerId, fromOut, { why: 'deposit from your NEAR wallet' });
+  transfer(state, 'newcomerFund', 'player:' + playerId, r2(amount - fromOut), { why: 'deposit from your NEAR wallet' });
   p.withdrawn = r2(Math.max(0, (p.withdrawn || 0) - amount));
   p.deposited = r2((p.deposited || 0) + amount);
   state.rev = (state.rev || 0) + 1;
@@ -193,7 +211,7 @@ export function withdraw(state, playerId, amount) {
   amount = Math.floor(Number(amount) * 100) / 100;
   if (!(amount >= 1)) return { ok: false, error: 'Cash out at least 1 EMWK.', code: 'err.minWithdraw' };
   if (balance(state, 'player:' + playerId) + 1e-9 < amount) return { ok: false, error: 'You do not have that much.', code: 'err.noMoney' };
-  transfer(state, 'player:' + playerId, 'withdrawn', amount);
+  transfer(state, 'player:' + playerId, 'withdrawn', amount, { why: 'cash-out to your NEAR wallet' });
   p.withdrawn = r2((p.withdrawn || 0) + amount);
   state.rev = (state.rev || 0) + 1;
   addLog(state, `${p.name} cashed out ${amount} EMWK to NEAR.`, 'trade', 'log.withdrew', { name: p.name, n: amount });
@@ -299,7 +317,7 @@ function villageBuysDeeds(state) {
   if (!o) return;
   const { id, x } = o, seller = state.players[x.owner], price = x.sale.price, fee = r2(price * MARKET.fee);
   if (!transfer(state, 'treasury', 'player:' + x.owner, price, { memo: `Emberwick: the village buys deed ${id} from ${seller ? seller.name : '?'} for a newcomer family` })) return;
-  transfer(state, 'player:' + x.owner, 'treasury', fee);
+  transfer(state, 'player:' + x.owner, 'treasury', fee, { why: 'exchange fee (deed sale)' });
   if (seller) {
     seller.plot = null;
     if (seller.sleep && seller.sleep.place === id) seller.sleep = null;
@@ -365,8 +383,8 @@ function sellToNpc(state, actor, npcId, good, qty) {
   qty = q.qty;
   const total = q.total, unit = r2(total / qty);
   const tax = r2(total * taxRate(state));
-  transfer(state, npcAcct(npcId), actor.acct, total);
-  transfer(state, actor.acct, 'treasury', tax);
+  transfer(state, npcAcct(npcId), actor.acct, total, { why: `sold ${q.qty} ${good}` });
+  transfer(state, actor.acct, 'treasury', tax, { why: 'market tax' });
   addInv(actor.holder, good, -qty);
   npc.stock[good] = (npc.stock[good] || 0) + qty;
   return { ok: true, unit, total, tax, qty, offered, want: q.want };
@@ -399,8 +417,8 @@ function buyFromNpc(state, actor, npcId, good, qty) {
   const total = unit * qty;
   if (balance(state, actor.acct) < total) return { ok: false, error: 'You do not have enough EMWK.', code: 'err.noMoney' };
   const tax = r2(total * taxRate(state));
-  transfer(state, actor.acct, npcAcct(npcId), total);
-  transfer(state, npcAcct(npcId), 'treasury', tax);
+  transfer(state, actor.acct, npcAcct(npcId), total, { why: `bought ${qty} ${good}` });
+  transfer(state, npcAcct(npcId), 'treasury', tax, { why: 'market tax' });
   npc.stock[good] -= qty;
   addInv(actor.holder, good, qty);
   npc.soldToday = npc.soldToday || {};
@@ -471,7 +489,7 @@ function commission(state, p, actor, npcId, n) {
   if (!pol.ok) return { ok: false, error: pol.reason, code: /closed/.test(pol.reason) ? 'err.closedNight' : /fee/.test(pol.reason) ? 'err.noMoney' : /3 orders/.test(pol.reason) ? 'order.max' : 'order.need' };
   const total = pol.fee * n;
   if (!transfer(state, actor.acct, npcAcct(npcId), total, { memo: `Emberwick: ${p.name} orders ${n * pol.outQty} ${pol.output} (own materials)` })) return { ok: false, error: 'You cannot pay the fee.', code: 'err.noMoney' };
-  transfer(state, npcAcct(npcId), 'treasury', r2(total * taxRate(state)));
+  transfer(state, npcAcct(npcId), 'treasury', r2(total * taxRate(state)), { why: 'market tax' });
   for (const [g, q] of Object.entries(pol.inputs)) addInv(p, g, -q * n);
   addInv(p, pol.output, pol.outQty * n);
   p.orders = p.orders && p.orders.day === state.day ? p.orders : { day: state.day };
@@ -602,7 +620,7 @@ function tradeAt(state, p, actor, npcId, good, side, qty, unit) {
     if ((n.stock[good] || 0) < qty) return { ok: false, error: 'Out of stock.', code: 'err.outOfStock' };
     if (balance(state, actor.acct) < total) return { ok: false, error: 'You do not have enough EMWK.', code: 'err.noMoney' };
     transfer(state, actor.acct, npcAcct(npcId), total, { memo: `Emberwick: ${p.name} haggled ${qty} ${good} at ${unit}` });
-    transfer(state, npcAcct(npcId), 'treasury', tax);
+    transfer(state, npcAcct(npcId), 'treasury', tax, { why: 'market tax' });
     n.stock[good] -= qty;
     addInv(p, good, qty);
     n.soldToday = n.soldToday || {};
@@ -612,7 +630,7 @@ function tradeAt(state, p, actor, npcId, good, side, qty, unit) {
     if (inv(p, good) < qty) return { ok: false, error: 'You do not have enough.', code: 'err.notEnough' };
     if (balance(state, npcAcct(npcId)) - 60 < total) return { ok: false, error: 'The shopkeeper cannot afford that right now.', code: 'err.shopBroke' };
     transfer(state, npcAcct(npcId), actor.acct, total, { memo: `Emberwick: ${p.name} haggled ${qty} ${good} at ${unit}` });
-    transfer(state, actor.acct, 'treasury', tax);
+    transfer(state, actor.acct, 'treasury', tax, { why: 'market tax' });
     addInv(p, good, -qty);
     n.stock[good] = (n.stock[good] || 0) + qty;
     p.stats.sells++; p.stats.sold += qty; p.stats.earned = r2(p.stats.earned + total - tax); p.stats.taxes = r2(p.stats.taxes + tax);
@@ -655,7 +673,7 @@ export function joinPlayer(state, name, pathKey) {
   };
   state.balances['player:' + id] = 0;
   const coins = Math.min(path.coins, balance(state, 'newcomerFund'));
-  transfer(state, 'newcomerFund', 'player:' + id, coins);
+  transfer(state, 'newcomerFund', 'player:' + id, coins, { why: 'starting money' });
   state.rev = (state.rev || 0) + 1;
   addLog(state, `${name} arrived at the gate as a ${path.name.toLowerCase()}.`, 'join', 'log.join', { name, path: pathKey });
   return { ok: true, id };
@@ -871,7 +889,7 @@ function advanceOne(state, p) {
   const q = QUESTS[p.quest || 0];
   if (!q || !questDone(state, p, q)) return null;
   const reward = Math.min(q.reward, balance(state, 'newcomerFund'));
-  transfer(state, 'newcomerFund', 'player:' + p.id, reward);
+  transfer(state, 'newcomerFund', 'player:' + p.id, reward, { why: 'goal reward' });
   p.quest = (p.quest || 0) + 1;
   if (p.quest >= 4 && p.rank === 'Newcomer') { p.rank = 'Settler'; addLog(state, `${p.name} is now a settler of Emberwick.`, 'good', 'log.settler', { name: p.name }); }
   return { id: q.id, title: q.title, reward };
@@ -1024,7 +1042,7 @@ function runMerchants(state) {
     const qty = Math.min(extra, 4);
     // made goods sell at 80% of the shop price; raw goods at the price the shop paid
     const unit = price((npc.sells[good] ?? npc.buys[good]) * (npc.sells[good] !== undefined ? 0.8 : 1) * oracleFactor(state));
-    if (!transfer(state, 'adventurerFund', npcAcct(npcId), unit * qty)) return;
+    if (!transfer(state, 'adventurerFund', npcAcct(npcId), unit * qty, { why: `travelling merchant bought ${qty} ${good}` })) return;
     npc.stock[good] -= qty;
   }
 }
@@ -1036,7 +1054,7 @@ function runInn(state) {
   for (let v = 0; v < visitors; v++) {
     if ((inn.stock.meal || 0) < 1) break;
     const unit = price(inn.sells.meal * oracleFactor(state));
-    if (!transfer(state, 'adventurerFund', npcAcct('inn'), unit)) break;
+    if (!transfer(state, 'adventurerFund', npcAcct('inn'), unit, { why: 'a traveller ate a meal' })) break;
     inn.stock.meal -= 1;
   }
 }
@@ -1212,7 +1230,7 @@ function startNewDay(state) {
   // treasury pays the guard captain when his purse runs low
   const spare = balance(state, 'treasury') - lockedFunds(state);
   if (spare >= RULES.guardSalaryPerDay && balance(state, npcAcct('tower')) < 400) {
-    transfer(state, 'treasury', npcAcct('tower'), RULES.guardSalaryPerDay);
+    transfer(state, 'treasury', npcAcct('tower'), RULES.guardSalaryPerDay, { why: 'guard salary' });
   }
 
   // a craftsman whose purse is almost empty gets a small loan from the treasury, so one
@@ -1235,7 +1253,7 @@ function startNewDay(state) {
   // and the inn buys imported ale from travelling merchants
   for (const def of CRAFTSMEN) {
     const acct = npcAcct(def.id), bal = balance(state, acct);
-    if (bal > RULES.profitTaxAbove) transfer(state, acct, 'treasury', (bal - RULES.profitTaxAbove) * RULES.profitTaxRate);
+    if (bal > RULES.profitTaxAbove) transfer(state, acct, 'treasury', (bal - RULES.profitTaxAbove) * RULES.profitTaxRate, { why: 'profit tax' });
   }
   // council reserves are released when their time is up
   if ((state.reserveHolds || []).length) {
@@ -1264,10 +1282,10 @@ function startNewDay(state) {
   // send part of their extra money to the travellers' fund, which pays the merchants
   for (const def of CRAFTSMEN) {
     const acct = npcAcct(def.id), extra = balance(state, acct) - 500;
-    if (extra > 0) transfer(state, acct, 'adventurerFund', extra * 0.15);
+    if (extra > 0) transfer(state, acct, 'adventurerFund', extra * 0.15, { why: 'trade with travellers' });
   }
   const innBal = balance(state, npcAcct('inn'));
-  if (innBal > 500) transfer(state, npcAcct('inn'), 'adventurerFund', (innBal - 500) * 0.8);
+  if (innBal > 500) transfer(state, npcAcct('inn'), 'adventurerFund', (innBal - 500) * 0.8, { why: 'supplies bought from travellers' });
 
   // random events
   if (ev.drought === 0 && rng(state) < RULES.droughtChance) {
@@ -1368,7 +1386,7 @@ function propose(state, by, kind, args) {
   }
   if (state.council.open.length >= COUNCIL.maxOpen) return { ok: false, error: 'The council is full. Wait for a vote to end.', code: 'err.councilFull' };
   if (state.council.open.some((x) => x.kind === kind && JSON.stringify(x.params) === JSON.stringify(params))) return { ok: false, error: 'That is already being voted on.', code: 'err.sameProposal' };
-  if (by.startsWith('player:') && !transfer(state, by, 'treasury', COUNCIL.fee)) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+  if (by.startsWith('player:') && !transfer(state, by, 'treasury', COUNCIL.fee, { why: 'council proposal fee' })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
   const id = state.council.nextId++;
   const prop = { id, kind, params, by, byName: voterName(state, by), day: state.day, closesTick: state.tick + RULES.ticksPerDay, votes: {}, aiPlan: {} };
   // AI voters decide at different moments during the day
@@ -1437,12 +1455,12 @@ function enact(state, prop) {
   const spare = balance(state, 'treasury') - lockedFunds(state);
   if (prop.kind === 'grant') {
     if (spare < p.amount) return 'poor';
-    transfer(state, 'treasury', npcAcct(p.npc), p.amount);
+    transfer(state, 'treasury', npcAcct(p.npc), p.amount, { why: `council #${prop.id}: grant` });
   } else if (prop.kind === 'tax') {
     state.taxRate = p.rate;
   } else if (prop.kind === 'welcome') {
     if (spare < p.amount) return 'poor';
-    transfer(state, 'treasury', 'newcomerFund', p.amount);
+    transfer(state, 'treasury', 'newcomerFund', p.amount, { why: `council #${prop.id}: newcomer fund` });
   } else if (prop.kind === 'district') {
     const n = p.n;
     if (!n || districtOpen(state, n) || !districtOpen(state, DISTRICTS[n].needs)) return 'poor';
@@ -1470,7 +1488,7 @@ function enact(state, prop) {
   } else if (prop.kind === 'festival') {
     const people = [...Object.keys(state.players).map((id) => 'player:' + id), ...Object.keys(state.bots).map((id) => 'bot:' + id)];
     if (spare < p.amount * people.length) return 'poor';
-    for (const h of people) transfer(state, 'treasury', h, p.amount);
+    for (const h of people) transfer(state, 'treasury', h, p.amount, { why: `council #${prop.id}: payout to villagers` });
   }
   return 'done';
 }
@@ -1606,14 +1624,14 @@ function endJob(state, p, reason) {
     severance = r2(j.wage * JOBS.severanceDays);
     // the employer pays; if they cannot, the village treasury steps in
     const payer = balance(state, npcAcct(j.npc)) >= severance ? npcAcct(j.npc) : 'treasury';
-    transfer(state, payer, 'player:' + p.id, severance);
+    transfer(state, payer, 'player:' + p.id, severance, { why: 'severance pay' });
     p.stats.earned = r2(p.stats.earned + severance);
     addLog(state, `${p.name}'s job ended early. Severance paid: ${severance} EMWK.`, 'warn', 'log.severance', { name: p.name, n: severance, place: { $place: j.npc }, payer: payer === 'treasury' ? 'treasury' : 'npc' });
   } else if (reason === 'quit') {
     // quitting early: the apprentice pays the employer a notice fee, as far as they can
     const fee = r2(Math.min(j.wage * JOBS.noticeShifts, balance(state, 'player:' + p.id)));
     if (fee > 0) {
-      transfer(state, 'player:' + p.id, npcAcct(j.npc), fee);
+      transfer(state, 'player:' + p.id, npcAcct(j.npc), fee, { why: 'notice fee (left the job early)' });
       p.stats.spent = r2(p.stats.spent + fee);
     }
     j.fee = fee;
@@ -1645,9 +1663,9 @@ function settleContracts(state) {
     }
     if (p.home) {
       const h = HOUSES[p.home];
-      if (!transfer(state, 'player:' + p.id, 'treasury', h.rent)) {
+      if (!transfer(state, 'player:' + p.id, 'treasury', h.rent, { why: 'daily rent' })) {
         // cannot pay: the deposit covers the debt and the home is given back
-        transfer(state, 'deposits', 'treasury', h.deposit);
+        transfer(state, 'deposits', 'treasury', h.deposit, { why: 'rent deposit kept (rent not paid)' });
         addLog(state, `${p.name} could not pay the rent and had to move out.`, 'warn', 'log.evicted', { name: p.name, place: { $place: p.home } });
         state.houses[p.home] = { tenant: null, since: null };
         p.home = null;
@@ -1727,7 +1745,7 @@ function contractAction(state, p, action) {
     const def = plotDef(action.plot), need = def.district ? DISTRICTS[def.district].minLevel : 0;
     if (playerLevel(p) < need) return { ok: false, error: `You need level ${need} to buy here.`, code: 'err.needLevel', need, have: playerLevel(p) };
     const cost = plot.resale || plotPrice(action.plot); // a plot the village bought back comes with its house
-    if (!transfer(state, acct, 'treasury', cost)) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
+    if (!transfer(state, acct, 'treasury', cost, { why: `bought land (${action.plot})` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
     p.stats.spent = r2(p.stats.spent + cost);
     const old = plot.deed && plot.deed.minted ? plot.deed : null;
     plot.owner = p.id; plot.since = state.day; plot.resale = null;
@@ -1819,7 +1837,7 @@ function contractAction(state, p, action) {
     if (j.shiftsToday >= JOBS.shiftsPerDay) return { ok: false, error: 'You worked all your shifts today.', code: 'err.shiftDone' };
     if (state.npcs[j.npc].damagedUntil > state.day) return { ok: false, error: 'This shop is closed.', code: 'err.closed' };
     if (p.energy < JOBS.shiftEnergy) return { ok: false, error: 'You are too tired.', code: 'err.tired' };
-    if (!transfer(state, npcAcct(j.npc), acct, j.wage)) {
+    if (!transfer(state, npcAcct(j.npc), acct, j.wage, { why: 'shift wage' })) {
       endJob(state, p, 'broke');
       return { ok: false, error: 'The shopkeeper cannot pay. Your contract ended.', code: 'err.employerBroke' };
     }
@@ -1851,8 +1869,8 @@ function contractAction(state, p, action) {
     if (p.home) return { ok: false, error: 'You already rent a home.', code: 'err.haveHome' };
     if (st.tenant) return { ok: false, error: 'Someone already lives here.', code: 'err.houseTaken' };
     if (balance(state, acct) + 1e-9 < h.deposit + h.rent) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
-    transfer(state, acct, 'deposits', h.deposit);
-    transfer(state, acct, 'treasury', h.rent);
+    transfer(state, acct, 'deposits', h.deposit, { why: 'rent deposit' });
+    transfer(state, acct, 'treasury', h.rent, { why: 'first day of rent' });
     p.stats.spent = r2(p.stats.spent + h.rent);
     p.home = action.house;
     p.restedDay = null;
@@ -1863,7 +1881,7 @@ function contractAction(state, p, action) {
   if (action.type === 'leaveHouse') {
     if (!p.home) return { ok: false, error: 'You do not rent a home.', code: 'err.noHome' };
     const h = HOUSES[p.home];
-    transfer(state, 'deposits', acct, h.deposit);
+    transfer(state, 'deposits', acct, h.deposit, { why: 'rent deposit back' });
     state.houses[p.home] = { tenant: null, since: null };
     p.home = null;
     return { ok: true, deposit: h.deposit };
@@ -1914,7 +1932,7 @@ function fillOrder(state, buyerAcct, buyerHolder, order, qty, buyerName) {
   const total = r2(order.price * qty), fee = r2(total * MARKET.fee);
   const seller = state.players[order.seller];
   if (!transfer(state, buyerAcct, 'player:' + order.seller, total, { memo: `Emberwick exchange: ${qty} ${order.good} from ${seller ? seller.name : '?'} to ${buyerName}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
-  transfer(state, 'player:' + order.seller, 'treasury', fee);
+  transfer(state, 'player:' + order.seller, 'treasury', fee, { why: 'exchange fee' });
   if (buyerHolder) addInv(buyerHolder, order.good, qty);
   order.qty -= qty;
   if (seller) { seller.stats.earned = r2((seller.stats.earned || 0) + total - fee); seller.stats.sold = (seller.stats.sold || 0) + qty; }
@@ -1976,7 +1994,7 @@ function marketAction(state, p, action) {
     if (playerLevel(p) < need) return { ok: false, error: `You need level ${need} to buy here.`, code: 'err.needLevel', need };
     const seller = state.players[plot.owner], price = plot.sale.price, fee = r2(price * MARKET.fee);
     if (!transfer(state, acct, 'player:' + plot.owner, price, { memo: `Emberwick exchange: deed ${action.plot} from ${seller ? seller.name : '?'} to ${p.name}` })) return { ok: false, error: 'You cannot afford that.', code: 'err.notEnough' };
-    transfer(state, 'player:' + plot.owner, 'treasury', fee);
+    transfer(state, 'player:' + plot.owner, 'treasury', fee, { why: 'exchange fee (deed sale)' });
     if (seller) { seller.plot = null; if (seller.sleep && seller.sleep.place === action.plot) seller.sleep = null; }
     if (plot.lease && plot.lease.tenant === p.id) { plot.lease = null; p.lease = null; } // the tenant bought the house
     plot.owner = p.id; plot.sale = null; plot.since = state.day;
@@ -2058,7 +2076,7 @@ function resolveAttack(state) {
     const players = Object.keys(state.players);
     const reward = 5;
     for (const id of players) {
-      if (balance(state, 'treasury') - reward >= lockedFunds(state)) transfer(state, 'treasury', 'player:' + id, reward);
+      if (balance(state, 'treasury') - reward >= lockedFunds(state)) transfer(state, 'treasury', 'player:' + id, reward, { why: 'reward for defending the village' });
     }
     addLog(state, `The dragon attacked and was driven back! Readiness was ${state.readiness}%. Every villager earns ${reward} EMWK.`, 'good', 'log.repelled', { ready: state.readiness, reward });
   } else {

@@ -106,6 +106,8 @@ All pricing rules are in one readable file, **`server/pricing.js`**. Every price
 
 **Newcomer families:** if no player buys, each morning the village treasury buys one deed priced at most 10% over its fair value (land + house + bed) for a family moving in, and sells the plot again at that value. Land always has a buyer at a fair price.
 
+**Money history, open books:** every transfer in the village is kept with why it happened (sale, purchase, market tax, rent, wage, council payout, AI plan record...). Players see their own history (📜 under "My wealth"), and every craftsman's and the treasury's history is public. Each line links to the NEAR transaction that carried it, or says why none was needed (netted in a batch, a balance sync, both sides in the same account).
+
 **Land market:** one list with every deed (NFT) players sell, including your own listing, every free village plot, and recent deed sales, with links to each NFT on NEAR.
 
 ## Watchtowers

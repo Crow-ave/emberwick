@@ -512,7 +512,7 @@ function panelCraftsman(b) {
   const me = view.player;
   const acct = view.chain && view.chain.accounts && view.chain.accounts.npcs ? view.chain.accounts.npcs[b.id] : null;
   let h = `<h2>${esc(npcName(b.id))}</h2><div class="muted">${esc(t('panel.purse', { place: placeName(b.id), n: n.wallet }))}</div>` +
-    `<div class="agentline">🤖 ${t('ni.agentLine')}${acct && chainOk() ? ' · ' + exLink('address/' + acct, esc(acct)) : ''}${view.ai && view.ai.tee ? ' · 🔒 ' + t('ni.teeShort') : ''}</div>`;
+    `<div class="agentline"><button class="linkbtn small" data-money="npc:${b.id}">📜 ${t('mh.npc')}</button></div><div class="agentline">🤖 ${t('ni.agentLine')}${acct && chainOk() ? ' · ' + exLink('address/' + acct, esc(acct)) : ''}${view.ai && view.ai.tee ? ' · 🔒 ' + t('ni.teeShort') : ''}</div>`;
   if (n.closed) h += `<p class="closed">${t('panel.closed')}</p>`;
   else if (n.shut) h += `<p class="closed">${t('err.night')}</p>`;
   if (b.id !== 'tower') {
@@ -643,7 +643,8 @@ function panelDragon() {
 // the treasury's books: balance, what is locked, where money came from and went this week
 function panelTreasury() {
   const k = view.books;
-  if (!k) return `<p>${t('treasury.text', { n: view.treasury })}</p>`;
+  const mh = `<p><button class="linkbtn" data-money="treasury">📜 ${t('mh.treasury')}</button></p>`;
+  if (!k) return mh + `<p>${t('treasury.text', { n: view.treasury })}</p>`;
   const who = (x) => x.who.startsWith('npc:') ? npcName(x.who.slice(4)) : x.who.startsWith('player:') || x.who.startsWith('bot:') ? esc(x.name) : t('books.k.' + ({ newcomerFund: 'newcomers', adventurerFund: 'travellers', deposits: 'deposits' }[x.who] || 'other'));
   const kinds = ['villagers', 'craftsmen', 'guards', 'newcomers', 'travellers', 'deposits', 'other'];
   const row = (dir) => kinds.filter((c) => k.week[dir][c]).map((c) => `<tr><td>${t('books.k.' + c)}</td><td class="n">${Math.round(k.week[dir][c])} EMWK</td></tr>`).join('') || `<tr><td class="muted">${t('books.none')}</td><td></td></tr>`;
@@ -655,7 +656,7 @@ function panelTreasury() {
   h += `<p class="sub2">${t('books.inTitle')}</p><table>${row('in')}</table><p class="sub2">${t('books.outTitle')}</p><table>${row('out')}</table>`;
   h += `<p class="sub2">${t('books.recent')}</p><ul class="decided">${k.recent.slice(0, 8).map((x) => `<li><span class="${x.dir === 'in' ? 'ok' : 'bad'}">${x.dir === 'in' ? '+' : '−'}${x.amount}</span> ${who(x)}${x.memo ? ` <span class="muted small">· ${esc(x.memo)}</span>` : ''} <span class="muted small">(${t('ui.day', { n: x.day })})</span></li>`).join('') || `<li class="muted">${t('books.none')}</li>`}</ul>`;
   if (chainOk()) h += `<p class="small">${exLink('address/' + view.chain.accounts.treasury, t('near.view') + ' · ' + esc(view.chain.accounts.treasury))}</p>`;
-  return h + `<p class="muted small">${t('treasury.note')}</p>`;
+  return h + mh + `<p class="muted small">${t('treasury.note')}</p>`;
 }
 
 // ---------- the exchange: player market, land deeds, and the change desk (NEAR Intents) ----------
@@ -851,6 +852,40 @@ function questTexts(q) {
   if (q.job) return { title: t(`quest.${q.id}.title`), text: t(`quest.${q.id}.jobText`, p) };
   if (q.findJob) return { title: t(`quest.${q.id}.title`), text: t('quest.findJob') };
   return { title: t(`quest.${q.id}.title`), text: t(`quest.${q.id}.text`, p) };
+}
+
+// ---------- money history: every transfer of an account, why it happened, and its NEAR transaction ----------
+const WHY_RX = [
+  [/^sold (\d+(?:\.\d+)?) (\w+)$/, (m) => t('mh.w.sold', { n: m[1], good: goodWord(m[2]) })],
+  [/^bought (\d+(?:\.\d+)?) (\w+)$/, (m) => t('mh.w.bought', { n: m[1], good: goodWord(m[2]) })],
+  [/^travelling merchant bought (\d+) (\w+)$/, (m) => t('mh.w.merchant', { n: m[1], good: goodWord(m[2]) })],
+  [/^bought land \((.+)\)$/, (m) => t('mh.w.land', { place: placeName(m[1]) })],
+  [/^council #(\d+): (.+)$/, (m) => t('mh.w.council', { n: m[1] }) + ' · ' + m[2]],
+];
+const WHY_FIXED = ['market tax', 'daily rent', 'shift wage', 'starting money', 'goal reward', 'guard salary', 'profit tax', 'morning village tax', 'rent deposit', 'rent deposit back', 'first day of rent', 'exchange fee', 'exchange fee (deed sale)', 'severance pay', 'council proposal fee', 'cash-out to your NEAR wallet', 'deposit from your NEAR wallet', 'a traveller ate a meal', 'reward for defending the village', 'trade with travellers', 'supplies bought from travellers', 'notice fee (left the job early)', 'rent deposit kept (rent not paid)', 'transfer'];
+function whyText(w, dir) {
+  // a sale for one side is a purchase for the other
+  if (dir === 'out' && /^sold /.test(w)) w = w.replace(/^sold /, 'bought ');
+  else if (dir === 'in' && /^bought \d/.test(w)) w = w.replace(/^bought /, 'sold ');
+  for (const [rx, f] of WHY_RX) { const m = rx.exec(w); if (m) return f(m); }
+  const k = WHY_FIXED.indexOf(w);
+  return k >= 0 && hasKey('mh.f.' + k) ? t('mh.f.' + k) : w;
+}
+async function openMoney(acct) {
+  const box = $('money-box');
+  box.innerHTML = `<p>${t('ai.thinking')}</p>`;
+  $('money').hidden = false;
+  const r = await (await fetch(`/api/money?acct=${encodeURIComponent(acct)}&player=${encodeURIComponent(playerId || '')}`)).json().catch(() => ({ ok: false }));
+  if (!r.ok) { box.innerHTML = `<p>${t('mh.none')}</p><button class="primary" data-moneyclose="1">${t('tour.done')}</button>`; return; }
+  const name = acct.startsWith('npc:') ? npcName(acct.slice(4)) : acct === 'treasury' ? placeName('treasury') : acct.startsWith('player:') ? t('mh.you') : acct;
+  const other = (e) => e.other.startsWith('npc:') ? npcName(e.other.slice(4)) : e.other === 'treasury' ? placeName('treasury') : e.other.startsWith('player:') || e.other.startsWith('bot:') ? esc(e.otherName) : t('mh.acct.' + e.other);
+  const near = (e) => !r.chain ? '' : e.tx === 'netted' ? `<span class="muted" title="${esc(t('mh.nettedTip'))}">${t('mh.netted')}</span>`
+    : e.tx === 'sync' ? `<span class="muted" title="${esc(t('mh.syncTip'))}">${t('mh.sync')}</span>` : e.tx === 'internal' ? `<span class="muted" title="${esc(t('mh.internalTip'))}">${t('mh.internal')}</span>` : e.tx ? exLink('txns/' + e.tx, t('mh.tx')) : `<span class="muted">${t('mh.pending')}</span>`;
+  const sumIn = r.rows.filter((e) => e.dir === 'in').reduce((a, e) => a + e.amount, 0), sumOut = r.rows.filter((e) => e.dir === 'out').reduce((a, e) => a + e.amount, 0);
+  box.innerHTML = `<div class="mh-head"><h2>📜 ${t('mh.title', { name })}</h2><button class="linkbtn" data-moneyclose="1">✕</button></div>` +
+    `<p class="muted small">${t('mh.lead', { n: r.rows.length, bal: r.balance, inn: Math.round(sumIn), out: Math.round(sumOut) })}${r.chain ? ' ' + t('mh.chainNote') : ''}</p>` +
+    (r.rows.length ? `<div class="mh-wrap"><table class="mh"><tr><th>${t('mh.day')}</th><th>${t('mh.what')}</th><th>${t('mh.who')}</th><th class="n">EMWK</th>${r.chain ? '<th>NEAR</th>' : ''}</tr>` +
+      r.rows.map((e) => `<tr><td>${e.day}</td><td>${esc(whyText(e.why, e.dir))}</td><td>${e.dir === 'in' ? '← ' : '→ '}${other(e)}</td><td class="n ${e.dir}">${e.dir === 'in' ? '+' : '−'}${e.amount}</td>${r.chain ? `<td>${near(e)}</td>` : ''}</tr>`).join('') + `</table></div>` : `<p>${t('mh.none')}</p>`);
 }
 
 // ---------- what NEAR does in Emberwick, visible at a glance ----------
@@ -1649,7 +1684,8 @@ function renderDock() {
   const wealth = `<div class="dcard"><h4>${t('dock.wealth')}</h4><div class="nums">` +
     big('w.coins', coins.toFixed(0)) + big('w.goods', goodsValue.toFixed(0)) + big('w.total', total.toFixed(0)) +
     big('w.profit', `${profit >= 0 ? '+' : ''}${profit.toFixed(0)}`, profit >= 0 ? 'up' : 'down') + `</div>` +
-    `<div class="muted small" title="${esc(t('w.taxes'))}: ${(st.taxes || 0).toFixed(1)} EMWK">${t('w.earned')} ${(st.earned || 0).toFixed(0)} · ${t('w.spent')} ${(st.spent || 0).toFixed(0)}</div></div>`;
+    `<div class="muted small" title="${esc(t('w.taxes'))}: ${(st.taxes || 0).toFixed(1)} EMWK">${t('w.earned')} ${(st.earned || 0).toFixed(0)} · ${t('w.spent')} ${(st.spent || 0).toFixed(0)}</div>` +
+    `<button class="linkbtn small" data-money="player:${playerId}">📜 ${t('mh.mine')}</button></div>`;
   // skills: four slim bars
   const skillRow = (s) => {
     const k = me.skills[s];
@@ -2119,6 +2155,9 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  const mo = e.target.closest('[data-money]');
+  if (mo) { openMoney(mo.dataset.money); return; }
+  if (e.target.closest('[data-moneyclose]') || e.target.id === 'money') { $('money').hidden = true; return; }
   const nb = e.target.closest('[data-nearbar]');
   if (nb) { try { localStorage.setItem('ew.nearbar', nb.dataset.nearbar); } catch {} renderNearbar(); return; }
   if (e.target.closest('[data-tourclose]')) { ui.tour = null; renderTour(); return; }

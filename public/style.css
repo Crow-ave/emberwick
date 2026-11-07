@@ -682,3 +682,12 @@ button.ni-item { cursor: pointer; } button.ni-item:hover { border-color: #5b6ee1
 .nb-open { font-size: 12px; padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #c9d3f0; color: #3b4a85; cursor: pointer; }
 @media (max-width: 700px), (max-height: 520px) { .nearbar { top: 6px; left: 6px; max-width: 70vw; } .nb-row, .nb-foot { display: none; } .nb-head { margin: 0; } }
 body.busy-act [data-act] { cursor: progress; }
+
+/* money history */
+.moneydlg { max-width: 760px; width: calc(100vw - 32px); }
+.mh-head { display: flex; justify-content: space-between; align-items: center; }
+.mh-wrap { max-height: 60vh; overflow: auto; }
+table.mh { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.mh th { text-align: left; position: sticky; top: 0; background: #fffaf2; border-bottom: 1px solid #e3d6bf; padding: 4px 6px; }
+table.mh td { border-bottom: 1px solid #f0e6d4; padding: 4px 6px; vertical-align: top; }
+table.mh td.in { color: #2d6a2d; font-weight: 600; } table.mh td.out { color: #a33; font-weight: 600; }

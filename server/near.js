@@ -155,12 +155,20 @@ export class Bridge {
 
   // --- game hooks ---
   onTransfer(from, to, amount, note = null) {
-    if (this.status !== 'ready') return; // reconcile catches up once the bridge is live
+    if (this.status !== 'ready') { if (note && note.ref) this.noteRef(note.ref, 'sync'); return; } // reconcile catches up once the bridge is live
     const a = this.chainOf(from), b = this.chainOf(to);
-    if (!a || !b || a === b || amount <= 0) return;
+    if (!a || !b || a === b || amount <= 0) { if (note && note.ref) this.noteRef(note.ref, 'internal'); return; }
     const player = from.startsWith('player:') ? from.slice(7) : to.startsWith('player:') ? to.slice(7) : null;
-    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) }, memo: note && note.memo, contract: note && note.contract, council: note && note.council, aiPlan: note && note.aiPlan });
+    this.queue.push({ from: a, to: b, amount: toUnits(amount), label: `${this.names(from)} → ${this.names(to)}`, player, who: { from, to, fromName: this.names(from), toName: this.names(to) }, memo: note && note.memo, contract: note && note.contract, council: note && note.council, aiPlan: note && note.aiPlan, refs: note && note.ref ? [note.ref] : [] });
   }
+
+  // which NEAR transaction carried a game transfer (by its ledger number); 'netted' when it cancelled out
+  noteRef(ref, hash) {
+    this.refHash = this.refHash || new Map();
+    this.refHash.set(ref, hash);
+    if (this.refHash.size > 8000) this.refHash.delete(this.refHash.keys().next().value);
+  }
+  txOf(ref) { return this.refHash ? this.refHash.get(ref) || null : null; }
 
   canWithdraw() { return this.status === 'ready'; }
 
@@ -355,16 +363,16 @@ export class Bridge {
       // a player's own transfers are kept apart, so they can find them on chain
       const [x, y, s] = it.from < it.to ? [it.from, it.to, 1n] : [it.to, it.from, -1n];
       const k = x + '|' + y + '|' + (it.player || '');
-      const p = pair.get(k) || { x, y, amt: 0n, n: 0, labels: new Set(), player: it.player || null, who: it.who };
-      p.amt += s * it.amount; p.n++; p.labels.add(it.label); p.who = it.who;
+      const p = pair.get(k) || { x, y, amt: 0n, n: 0, labels: new Set(), player: it.player || null, who: it.who, refs: [] };
+      p.amt += s * it.amount; p.n++; p.labels.add(it.label); p.who = it.who; p.refs.push(...(it.refs || []));
       pair.set(k, p);
     }
     const out = [];
     for (const p of pair.values()) {
-      if (p.amt === 0n) continue;
+      if (p.amt === 0n) { for (const r of p.refs) this.noteRef(r, 'netted'); continue; }
       const fwd = p.amt > 0n;
       const label = p.labels.size === 1 ? [...p.labels][0] : `${p.n} trades`;
-      out.push({ from: fwd ? p.x : p.y, to: fwd ? p.y : p.x, amount: fwd ? p.amt : -p.amt, label, n: p.n, player: p.player, who: p.labels.size === 1 ? p.who : null });
+      out.push({ from: fwd ? p.x : p.y, to: fwd ? p.y : p.x, amount: fwd ? p.amt : -p.amt, label, n: p.n, player: p.player, who: p.labels.size === 1 ? p.who : null, refs: p.refs });
     }
     return [...out, ...withdrawals];
   }
@@ -384,6 +392,7 @@ export class Bridge {
           entry.hash = await this.adapter.ftTransfers(from, this.tokenId, chunk.map((c) => ({ to: c.to, amount: c.amount, memo: c.memo || c.label })), wallets);
           entry.ok = true;
           this.txCount++;
+          for (const c of chunk) for (const r of c.refs || []) this.noteRef(r, entry.hash);
           for (const c of chunk) { // keep the shown on-chain balances fresh between syncs
             const v = fromUnits(c.amount);
             if (from in this.chainBalances) this.chainBalances[from] = Math.round((this.chainBalances[from] - v) * 100) / 100;
