@@ -1,12 +1,13 @@
 {
   "name": "emberwick",
-  "version": "0.86.0",
+  "version": "0.87.0",
   "description": "A living village economy on NEAR",
   "main": "server/index.js",
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
     "demo": "EMBERWICK_DEMO=1 node server/index.js",
+    "online-bank": "EMBERWICK_KEYS=$HOME/.emberwick/online-keys.json EMBERWICK_SAVE=$HOME/.emberwick/online-state.json EMBERWICK_AI=0 PORT=3001 node server/index.js",
     "test": "node server/selftest.js && node server/neartest.js"
   },
   "dependencies": {

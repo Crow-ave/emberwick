@@ -36,6 +36,7 @@
         <div id="map-card" class="map-card" hidden></div>
       </div>
       <div class="card quest hud" id="quest" hidden></div>
+      <div class="nearbar hud" id="nearbar" hidden></div>
       <div class="banner" id="banner" hidden></div>
       <div class="hint" id="hint" data-i18n="ui.hint"></div>
       <div class="zoom" id="zoom" hidden><button type="button" data-zoom="in" aria-label="+">+</button><button type="button" data-zoom="out" aria-label="−">−</button></div>
@@ -62,6 +63,7 @@
     <form class="dialog" id="join-form" novalidate>
       <h1>Emberwick</h1>
       <p class="story" data-i18n="join.story"></p>
+      <div id="join-near"></div>
       <label for="join-name" data-i18n="join.name">Your name</label>
       <input id="join-name" maxlength="20" placeholder="Rustem" autocomplete="off">
       <div class="error" id="join-error"></div>

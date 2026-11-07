@@ -2,14 +2,18 @@
 
 **A living village economy on NEAR.** Built at NEAR HACKATHON.
 
-**▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** — works on desktop and phone. Open it in two browsers to see two villagers in the same village. (Free hosting: the first visit after a quiet spell can take about a minute to wake up, and the village starts again from day 1 after a restart. The live demo runs with the NEAR bridge off; the on-chain side is shown below and in the video.)
+**▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** (desktop and phone) · press **Judge tour** in the top bar for a two-minute walk through every NEAR part.
 
-**On NEAR testnet (live records):**
-- Token contract (NEP-141): [token.emberwick-village.testnet](https://testnet.nearblocks.io/address/token.emberwick-village.testnet)
-- Land deeds (NFT): [deeds.emberwick-village.testnet](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet)
-- Village bank: [emberwick-village.testnet](https://testnet.nearblocks.io/address/emberwick-village.testnet)
-- Treasury: [treasury.emberwick-village.testnet](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet)
-- An AI craftsman's own account: [tailor.emberwick-village.testnet](https://testnet.nearblocks.io/address/tailor.emberwick-village.testnet)
+> A medieval village where **AI agents with their own NEAR wallets** run the shops, **think privately inside a TEE** (NEAR AI Cloud), and trade in a **real token economy on NEAR**: players haggle with them, take orders and credit, own land as NFTs, vote in a DAO, and the exchange quotes **live cross-chain swaps through NEAR Intents**.
+
+| NEAR part | What it does in Emberwick | See it |
+|---|---|---|
+| 🤖 **AI agents with wallets** | 7 craftsmen, each with its own NEAR account, plan their stock and prices every morning and trade on their own; players talk, haggle, order and ask for credit, and the agents answer with real, rule-checked actions | Talk to any shop · [tailor.emberwick-village.testnet](https://testnet.nearblocks.io/address/tailor.emberwick-village.testnet) |
+| 🔒 **Private, verifiable AI (TEE)** | The agents think with NEAR AI Cloud models running in a TEE; the attestation report is fetched with a fresh nonce, and every morning plan's SHA-256 is recorded on NEAR in a memo | Shop panel → 🔒 and ⛓ lines · `/api/ai/attestation` · `/api/ai/plan` |
+| 🌉 **NEAR Intents** | Live 1Click quotes: swap NEAR to USDC/BTC/ETH/SOL, pay for land from another chain, a DAO treasury reserve with a live quote, the NEAR price as an oracle for the village economy | Exchange quarter |
+| ⛓ **On-chain economy** | EMWK (NEP-141, fixed supply 25,000), land deeds as NFTs (NEP-171) that let you build, sleep, rent out and vote, a village DAO; every trade settles on NEAR in batches | [token](https://testnet.nearblocks.io/address/token.emberwick-village.testnet) · [deeds](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet) · [bank](https://testnet.nearblocks.io/address/emberwick-village.testnet) · [treasury](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) |
+
+(Free hosting: the first visit after a quiet spell can take about a minute to wake up, and the online village starts again from day 1 after a restart.)
 
 The dragon burned Emberwick to ash. Years later, a few craftsmen came back and relit the embers. Newcomers gather wood, wheat and iron ore, sell them to the village's craftsmen, and help the village get ready before the dragon returns.
 
@@ -171,6 +175,8 @@ npm start
 Then open http://localhost:3000. One game day lasts 8 minutes.
 
 To let the craftsmen think with NEAR AI, create an API key at [cloud.near.ai](https://cloud.near.ai) and either set `NEARAI_API_KEY` or save the key in `~/.emberwick/nearai-key.txt` (outside the repo). Optional: `NEARAI_MODEL` picks a model, `NEARAI_DAILY_LIMIT` caps requests per day (default 400), `EMBERWICK_AI=0` turns it off.
+
+To run a second, separate village on a host (like the online demo) with its own NEAR bank: run `npm run online-bank` once on your computer (it sets up a new village bank on testnet with keys in `~/.emberwick/online-keys.json`, and a separate save), then put the contents of that file into the host's secret environment variable `EMBERWICK_KEYS_JSON`. Keys are never committed or printed. Two villages must never share one bank.
 
 ```bash
 npm run demo   # fast mode for recording: one game day lasts 2 minutes

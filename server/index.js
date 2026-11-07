@@ -13,7 +13,7 @@ import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, fetchAttestat
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(root, 'public');
-const SAVE = path.join(root, 'data', 'state.json');
+const SAVE = process.env.EMBERWICK_SAVE || path.join(root, 'data', 'state.json'); // a second village (e.g. for the online demo) can keep its own save
 const PORT = Number(process.env.PORT) || 3000;
 
 let state;
@@ -33,7 +33,13 @@ let bridge = null;
 const KEYS = process.env.EMBERWICK_KEYS || path.join(os.homedir(), '.emberwick', 'near-keys.json');
 async function startNear() {
   if (process.env.EMBERWICK_NEAR === '0') return console.log('NEAR bridge is off (EMBERWICK_NEAR=0).');
-  const store = process.env.EMBERWICK_NEAR === 'fake' ? { load: () => null, save: () => {} } : fileStore(KEYS);
+  // keys come from a file outside the project, or (on a host like Render) from the secret environment
+  // variable EMBERWICK_KEYS_JSON; they are never printed
+  let envKeys = null;
+  if (process.env.EMBERWICK_KEYS_JSON) { try { envKeys = JSON.parse(process.env.EMBERWICK_KEYS_JSON); } catch { console.log('[NEAR] EMBERWICK_KEYS_JSON is not valid JSON: check that the whole file was pasted.'); } }
+  const store = process.env.EMBERWICK_NEAR === 'fake' ? { load: () => null, save: () => {} }
+    : envKeys ? { load: () => envKeys, save: (o) => { if (o.secretKey !== envKeys.secretKey) console.log('[NEAR] warning: the bank key changed; the key in EMBERWICK_KEYS_JSON is no longer used.'); envKeys = o; } }
+    : fileStore(KEYS);
   let adapter;
   try {
     if (process.env.EMBERWICK_NEAR === 'fake') { adapter = (await import('./fakechain.js')).fakeChain({ faucetWorks: true }); adapter.pollMs = 0; adapter.acc.set('emberwick.testnet', { near: 5 }); }
@@ -70,6 +76,9 @@ async function startNear() {
   let lastStatus = '';
   const loop = async () => {
     await bridge.step();
+    // count every transaction this village has sent to NEAR, across restarts
+    state.onchain = state.onchain || { tx: 0 };
+    if (bridge.txCount > (bridge.counted || 0)) { state.onchain.tx += bridge.txCount - (bridge.counted || 0); bridge.counted = bridge.txCount; }
     state.nearBank = bridge.root || null; // the exchange checks that a deed for sale sits with the bank
     if (bridge.status !== lastStatus) {
       lastStatus = bridge.status;

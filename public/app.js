@@ -510,7 +510,9 @@ function tradeBlock(id) {
 function panelCraftsman(b) {
   const n = view.npcs[b.id];
   const me = view.player;
-  let h = `<h2>${esc(npcName(b.id))}</h2><div class="muted">${esc(t('panel.purse', { place: placeName(b.id), n: n.wallet }))}</div>`;
+  const acct = view.chain && view.chain.accounts && view.chain.accounts.npcs ? view.chain.accounts.npcs[b.id] : null;
+  let h = `<h2>${esc(npcName(b.id))}</h2><div class="muted">${esc(t('panel.purse', { place: placeName(b.id), n: n.wallet }))}</div>` +
+    `<div class="agentline">🤖 ${t('ni.agentLine')}${acct && chainOk() ? ' · ' + exLink('address/' + acct, esc(acct)) : ''}${view.ai && view.ai.tee ? ' · 🔒 ' + t('ni.teeShort') : ''}</div>`;
   if (n.closed) h += `<p class="closed">${t('panel.closed')}</p>`;
   else if (n.shut) h += `<p class="closed">${t('err.night')}</p>`;
   if (b.id !== 'tower') {
@@ -851,9 +853,46 @@ function questTexts(q) {
   return { title: t(`quest.${q.id}.title`), text: t(`quest.${q.id}.text`, p) };
 }
 
+// ---------- what NEAR does in Emberwick, visible at a glance ----------
+const NEAR_FEATURES = [
+  { k: 'agents', icon: '🤖', tour: 1 },
+  { k: 'tee', icon: '🔒', tour: 1 },
+  { k: 'intents', icon: '🌉', tour: 5 },
+  { k: 'economy', icon: '⛓', tour: 3 },
+];
+function nearInside(clickable) {
+  return `<div class="nearinside"><div class="ni-title">${t('ni.title')}</div><div class="ni-grid">${NEAR_FEATURES.map((f) =>
+    `<${clickable ? 'button type="button"' : 'div'} class="ni-item" ${clickable ? `data-tour="${f.tour}"` : ''}><span class="ni-icon">${f.icon}</span><b>${t('ni.' + f.k)}</b><span>${t('ni.' + f.k + '.d')}</span></${clickable ? 'button' : 'div'}>`).join('')}</div></div>`;
+}
+// the chain at work: totals and the latest transactions, with links
+function chainStrip() {
+  const c = view.chain || {}, oc = view.onchain || {};
+  const deeds = Object.values(view.plots || {}).filter((x) => x.deed && x.deed.minted).length;
+  if (!chainOk()) return `<p class="small muted chainstrip">${t('ni.offline')}</p>`;
+  const last = (c.feed || []).filter((f) => f.ok && f.hash).slice(0, 3);
+  return `<div class="chainstrip"><div class="small"><b>${t('ni.live')}</b> ${t('ni.counts', { tx: oc.tx || c.txCount || 0, ai: (view.aiLog || []).length ? oc.aiPlans || (view.aiLog || []).length : 0, d: deeds })}</div>` +
+    (last.length ? `<ul class="small">${last.map((f) => `<li>${exLink('txns/' + f.hash, esc(((f.items[0] && (f.items[0].memo || `${f.items[0].label} · ${f.items[0].amount} EMWK`)) || 'tx').replace(/^Emberwick: /, '').slice(0, 70)))}</li>`).join('')}</ul>` : '') + `</div>`;
+}
+
+// a small card on the map: the four NEAR parts (each opens its step of the judge tour) and live counts
+function renderNearbar() {
+  const box = $('nearbar');
+  let closed = false; try { closed = localStorage.getItem('ew.nearbar') === '0'; } catch {}
+  if (!view || ui.scene) { box.hidden = true; return; }
+  const oc = view.onchain || {}, c = view.chain || {};
+  const key = JSON.stringify([getLang(), closed, oc.tx, chainOk(), (view.aiLog || []).length]);
+  box.hidden = false;
+  if (box.dataset.k === key) return;
+  box.dataset.k = key;
+  if (closed) { box.innerHTML = `<button class="nb-open" data-nearbar="1">⛓ ${t('ni.title')}</button>`; return; }
+  box.innerHTML = `<div class="nb-head"><b>⛓ ${t('ni.title')}</b><button class="linkbtn" data-nearbar="0" aria-label="close">✕</button></div>` +
+    `<div class="nb-row">${NEAR_FEATURES.map((f) => `<button type="button" class="nb-item" data-tour="${f.tour}" title="${esc(t('ni.' + f.k + '.d'))}"><span>${f.icon}</span>${t('ni.' + f.k)}</button>`).join('')}</div>` +
+    `<div class="nb-foot">${chainOk() ? t('ni.counts', { tx: oc.tx || c.txCount || 0, ai: oc.aiPlans || 0, d: Object.values(view.plots || {}).filter((x) => x.deed && x.deed.minted).length }) : t('ni.offlineShort')}</div>`;
+}
+
 function panelGuide() {
   const me = view.player;
-  if (!me) return `<h2>${t('guide.title')}</h2><p>${t('guide.join')}</p>`;
+  if (!me) return `<h2>${t('guide.title')}</h2><p>${t('guide.join')}</p>` + nearInside(false);
   const howLink = `<p><button class="linkbtn" data-howto="1">${t('how.btn')}</button></p>`;
   const route = world.routes[me.path];
   const steps = [];
@@ -898,7 +937,7 @@ function panelGuide() {
     steps.push({ text: t('guide.goal', { title: esc(qt.title), text: esc(qt.text) }), go: q.target, label: t('quest.showMe') });
   }
   if (view.events.attackDay) steps.push({ text: t('guide.dragon', { day: view.events.attackDay, today: view.day, ready: view.readiness }), go: 'dragonpeak', label: t('guide.seePeak') });
-  return `<h2>${t('guide.title')}</h2><p class="muted" style="font-size:13px;margin-top:2px">${t('guide.sentence')}</p>` + howLink +
+  return nearInside(true) + chainStrip() + `<h2>${t('guide.title')}</h2><p class="muted" style="font-size:13px;margin-top:2px">${t('guide.sentence')}</p>` + howLink +
     `<ol class="guide">${steps.map((st) => `<li>${st.text}${st.go ? `<br><button class="primary" data-go="${st.go}">${esc(st.label)} →</button>` : ''}${st.eat ? `<br><button class="primary" data-eat="1">${t('guide.eat')}</button>` : ''}</li>`).join('')}</ol>`;
 }
 
@@ -1726,6 +1765,7 @@ function applyStatic() {
   $('lang').innerHTML = Object.entries(LANGS).map(([code, d]) => `<option value="${code}"${code === getLang() ? ' selected' : ''}>${d['lang.name']}</option>`).join('');
   document.documentElement.lang = getLang();
   renderTour();
+  renderNearbar();
 }
 $('lang').addEventListener('change', (e) => {
   setLang(e.target.value);
@@ -2070,6 +2110,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  const nb = e.target.closest('[data-nearbar]');
+  if (nb) { try { localStorage.setItem('ew.nearbar', nb.dataset.nearbar); } catch {} renderNearbar(); return; }
   if (e.target.closest('[data-tourclose]')) { ui.tour = null; renderTour(); return; }
   if (e.target.closest('[data-rename]')) { ui.selected = 'rename'; renderMapNow(); renderPanel(); setTimeout(() => { const i = $('rename-input'); if (i) { i.focus(); i.select(); } }, 50); return; }
   const qs = e.target.closest('[data-qstep], [data-qall]');
@@ -2159,6 +2201,7 @@ document.body.addEventListener('click', (e) => {
 function showJoin() {
   $('paths').innerHTML = Object.entries(world.paths).map(([k, p]) =>
     `<div class="path${k === pathChoice ? ' on' : ''}" data-path="${k}" tabindex="0" role="radio" aria-checked="${k === pathChoice}"><b>${t('path.' + k)}</b>${t('blurb.' + k)}<br><span class="muted">${p.coins} EMWK${Object.keys(p.items).length ? ' + ' + Object.keys(p.items).map(goodName).join(', ') : ''}</span></div>`).join('');
+  $('join-near').innerHTML = nearInside(false);
   $('join').hidden = false;
 }
 $('paths').addEventListener('click', (e) => {

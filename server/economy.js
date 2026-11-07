@@ -2130,6 +2130,7 @@ export function publicView(state, playerId) {
   const p = playerId && state.players[playerId];
   return {
     aiLog: (state.aiLog || []).map(({ json, ...x }) => x),
+    onchain: { tx: (state.onchain && state.onchain.tx) || 0, aiPlans: state.aiDays || 0 },
     token: TOKEN,
     rev: state.rev || 0,
     day: state.day,
