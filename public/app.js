@@ -1314,10 +1314,17 @@ function rememberWallets(f) {
 }
 // wallets to offer the AI: ones used before, overridden by what is typed in the card right now
 function walletsNow() {
-  const w = { ...savedWallets() }, f = ui.real || {};
-  const src = f.dir === 'in' ? (REAL_SRC[f.from] || [])[1] : 'near', dst = f.dir === 'in' ? 'near' : (REAL_DST[f.to] || [])[1];
+  // wallets used before, then the connected wallets, then what the card shows now, each under its own chain
+  const w = { ...savedWallets() }, cw = ui.wallet || {}, f = ui.real || {};
+  if (cw.near) w.near = cw.near;
+  if (cw.sol) w.sol = cw.sol;
+  if (cw.base) { w.base = cw.base; w.evm = cw.base; }
+  let src, dst;
+  if (f.any && A(f.fromId) && A(f.toId)) { src = A(f.fromId).chain; dst = A(f.toId).chain; if (isEvm(src)) src = 'base'; if (isEvm(dst)) dst = 'base'; }
+  else { src = f.dir === 'in' ? (REAL_SRC[f.from] || [])[1] : 'near'; dst = f.dir === 'in' ? 'near' : (REAL_DST[f.to] || [])[1]; }
   if (f.refundTo && src) w[src] = f.refundTo;
-  if (f.recipient && dst && !(dst === 'near' && src === 'near')) w[dst] = f.recipient;
+  if (f.recipient && dst && dst !== src) w[dst] = f.recipient;
+  if (f.recipient && dst && dst === src && !w[dst]) w[dst] = f.recipient;
   return w;
 }
 function aiSwapBox() {
