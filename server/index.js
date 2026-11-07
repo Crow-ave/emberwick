@@ -468,8 +468,9 @@ async function realStatus(addr) {
       const p = state.players[swap.player], who = p ? p.name : 'A villager';
       const tx = (swap.dest[0] || swap.origin[0] || {}).hash || '';
       const cn = (c) => CHAIN_NAME[c] || String(c || '').toUpperCase();
-      const fromTxt = swap.dir === 'any' ? `${swap.amountIn} ${swap.fromSym} (${cn(swap.fromChain)})` : swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain === 'base' ? 'Base' : 'Solana'})` : `${swap.amountIn} NEAR`;
-      const toTxt = swap.dir === 'any' ? `${swap.amountOut} ${swap.toSym} (${cn(swap.chain)})` : swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
+      const dsym = (x) => (x === 'wNEAR' ? 'NEAR' : x);
+      const fromTxt = swap.dir === 'any' ? `${swap.amountIn} ${dsym(swap.fromSym)} (${cn(swap.fromChain)})` : swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain === 'base' ? 'Base' : 'Solana'})` : `${swap.amountIn} NEAR`;
+      const toTxt = swap.dir === 'any' ? `${swap.amountOut} ${dsym(swap.toSym)} (${cn(swap.chain)})` : swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
       addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${fromTxt} -> ${toTxt}.`, 'good', 'log.realSwap2', { name: who, a: fromTxt, b: toTxt });
       // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
       transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${fromTxt} -> ${toTxt}, tx ${tx.slice(0, 64)}` });

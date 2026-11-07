@@ -916,3 +916,8 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .legrow:has(.legpick) .leg-rec { grid-row: 2; grid-column: 3 / 5; }
 .editquote { width: 100%; margin: 2px 0 6px; padding: 7px; border-radius: 10px; border: 1.5px solid #e0742b; background: #fff8ee; color: #b4531c; font-weight: 700; cursor: pointer; font: inherit; font-weight: 700; }
 .editquote:hover { background: #ffecd6; }
+
+.wchoose { margin-top: 6px; background: #fff; border: 1.5px solid #e0742b; border-radius: 10px; padding: 7px 9px; font-size: 13px; }
+.wchoose-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 3px; align-items: center; }
+.wc-btn { border: 1.5px solid #c9b79c; background: #fffaf2; border-radius: 999px; padding: 5px 12px; font-weight: 700; cursor: pointer; font: inherit; font-weight: 700; }
+.wc-btn:hover { border-color: #e0742b; background: #fff3e6; }

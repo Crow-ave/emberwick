@@ -8,6 +8,8 @@ import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
+import { getWallets } from '@wallet-standard/app';
+import bs58 from 'bs58';
 import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, createTransferCheckedInstruction } from '@solana/spl-token';
 
 const WRAP = 'wrap.near';
@@ -111,41 +113,69 @@ export async function nearSendFt(contract, depositAddress, amount, decimals) {
   return out && out.transaction ? out.transaction.hash : null;
 }
 
-// ---------- Solana (Phantom or any wallet that injects window.solana) ----------
-const sol = () => (window.phantom && window.phantom.solana) || window.solana || null;
-export const hasSolana = () => !!sol();
-export async function solConnect() {
-  const p = sol();
+// ---------- Solana: any installed wallet (Wallet Standard: Phantom, Solflare, Backpack, ...) ----------
+const legacySol = () => (window.phantom && window.phantom.solana) || window.solana || null;
+const std = getWallets();
+const solStd = () => std.get().filter((w) => (w.chains || []).some((c) => String(c).startsWith('solana:')) && w.features && w.features['standard:connect'] && w.features['solana:signAndSendTransaction']);
+let solPick = null;
+export function solWallets() {
+  const list = solStd().map((w) => ({ id: 'std:' + w.name, name: w.name }));
+  if (!list.length && legacySol()) list.push({ id: 'legacy', name: legacySol().isPhantom ? 'Phantom' : 'Solana wallet' });
+  return list;
+}
+export const hasSolana = () => solWallets().length > 0;
+export async function solConnect(id) {
+  const list = solWallets();
+  const pick = id || (list[0] && list[0].id);
+  if (!pick) throw new Error('no Solana wallet in this browser');
+  if (pick.startsWith('std:')) {
+    const w = solStd().find((x) => 'std:' + x.name === pick);
+    if (!w) throw new Error('wallet not found');
+    const r = await w.features['standard:connect'].connect();
+    const acc = ((r && r.accounts) || w.accounts || [])[0];
+    if (!acc) throw new Error('no account');
+    solPick = { kind: 'std', wallet: w, account: acc };
+    return id ? { address: acc.address, name: w.name } : acc.address;
+  }
+  const p = legacySol();
   if (!p) throw new Error('no Solana wallet in this browser');
   const r = await p.connect();
-  return (r && r.publicKey ? r.publicKey : p.publicKey).toString();
+  solPick = { kind: 'legacy' };
+  const address = (r && r.publicKey ? r.publicKey : p.publicKey).toString();
+  return id ? { address, name: p.isPhantom ? 'Phantom' : 'Solana wallet' } : address;
 }
-// forget this site in the wallet, so the next connect can pick another account
-export async function solDisconnect() { const p = sol(); try { if (p && p.disconnect) await p.disconnect(); } catch { /* already gone */ } }
-// the game's server gives a fresh blockhash (browsers are often blocked by public Solana RPCs)
-export async function solSend(depositAddress, sym, amount, blockhash) {
-  const p = sol();
-  if (!p) throw new Error('no Solana wallet in this browser');
-  const pk = p.publicKey || (await p.connect()).publicKey;
-  const from = new PublicKey(pk.toString()); // the wallet's own key object, as this library's type
-  const to = new PublicKey(depositAddress);
-  const tx = new Transaction({ feePayer: from, recentBlockhash: blockhash });
-  if (sym === 'SOL') tx.add(SystemProgram.transfer({ fromPubkey: from, toPubkey: to, lamports: BigInt(toUnits(amount, 9)) }));
-  else {
-    const fromAta = getAssociatedTokenAddressSync(USDC_SOL, from), toAta = getAssociatedTokenAddressSync(USDC_SOL, to, true);
-    tx.add(createAssociatedTokenAccountIdempotentInstruction(from, toAta, to, USDC_SOL));
-    tx.add(createTransferCheckedInstruction(fromAta, USDC_SOL, toAta, from, BigInt(toUnits(amount, 6)), 6));
+// forget this site in the wallet, so the next connect can pick another wallet or account
+export async function solDisconnect() {
+  try {
+    if (solPick && solPick.kind === 'std') { const d = solPick.wallet.features['standard:disconnect']; if (d) await d.disconnect(); }
+    else { const p = legacySol(); if (p && p.disconnect) await p.disconnect(); }
+  } catch { /* already gone */ }
+  solPick = null;
+}
+async function solSign(tx) {
+  if (solPick && solPick.kind === 'std') {
+    const bytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+    const [out] = await solPick.wallet.features['solana:signAndSendTransaction'].signAndSendTransaction({ account: solPick.account, transaction: bytes, chain: 'solana:mainnet' });
+    return bs58.encode(out.signature);
   }
+  const p = legacySol();
   const r = await p.signAndSendTransaction(tx);
   return r && r.signature ? r.signature : String(r || '');
 }
-
+function solFrom() {
+  if (solPick && solPick.kind === 'std') return new PublicKey(solPick.account.address);
+  const p = legacySol();
+  if (!p || !p.publicKey) throw new Error('connect a Solana wallet first');
+  return new PublicKey(p.publicKey.toString());
+}
+// the game's server gives a fresh blockhash (browsers are often blocked by public Solana RPCs)
+export async function solSend(depositAddress, sym, amount, blockhash) {
+  return solSendAny(depositAddress, sym === 'SOL' ? null : USDC_SOL.toString(), amount, sym === 'SOL' ? 9 : 6, blockhash);
+}
 // any Solana token: the chain's own SOL (mint = null) or an SPL token by its mint
 export async function solSendAny(depositAddress, mint, amount, decimals, blockhash) {
-  const p = sol();
-  if (!p) throw new Error('no Solana wallet in this browser');
-  const pk = p.publicKey || (await p.connect()).publicKey;
-  const from = new PublicKey(pk.toString()), to = new PublicKey(depositAddress);
+  if (!solPick && !legacySol()) throw new Error('no Solana wallet in this browser');
+  const from = solFrom(), to = new PublicKey(depositAddress);
   const tx = new Transaction({ feePayer: from, recentBlockhash: blockhash });
   if (!mint) tx.add(SystemProgram.transfer({ fromPubkey: from, toPubkey: to, lamports: BigInt(toUnits(amount, 9)) }));
   else {
@@ -153,21 +183,40 @@ export async function solSendAny(depositAddress, mint, amount, decimals, blockha
     tx.add(createAssociatedTokenAccountIdempotentInstruction(from, toAta, to, m));
     tx.add(createTransferCheckedInstruction(fromAta, m, toAta, from, BigInt(toUnits(amount, decimals)), decimals));
   }
-  const r = await p.signAndSendTransaction(tx);
-  return r && r.signature ? r.signature : String(r || '');
+  return solSign(tx);
 }
 
 // ---------- Base (MetaMask, Coinbase Wallet or any window.ethereum) ----------
-const eth = () => window.ethereum || null;
-export const hasEvm = () => !!eth();
-export async function evmConnect() {
+const evmFound = new Map();
+if (typeof window !== 'undefined') {
+  window.addEventListener('eip6963:announceProvider', (e) => { const d = e.detail; if (d && d.info && d.provider) evmFound.set(d.info.uuid, d); });
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+}
+let evmPick = null;
+const injectedName = () => { const e = window.ethereum; return !e ? null : e.isRabby ? 'Rabby' : e.isCoinbaseWallet ? 'Coinbase Wallet' : e.isMetaMask ? 'MetaMask' : 'Browser wallet'; };
+// every EVM wallet installed in this browser (EIP-6963: MetaMask, Rabby, Coinbase Wallet, ...)
+export function evmWallets() {
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+  const list = [...evmFound.values()].map((d) => ({ id: d.info.uuid, name: d.info.name }));
+  if (!list.length && window.ethereum) list.push({ id: 'injected', name: injectedName() });
+  return list;
+}
+const eth = () => (evmPick && evmPick.provider) || window.ethereum || null;
+export const hasEvm = () => evmWallets().length > 0;
+
+export async function evmConnect(id) {
+  if (id) {
+    const d = id === 'injected' ? { provider: window.ethereum, info: { name: injectedName() } } : evmFound.get(id);
+    if (!d || !d.provider) throw new Error('wallet not found');
+    evmPick = { provider: d.provider, name: d.info.name };
+  }
   const e = eth();
-  if (!e) throw new Error('no Base wallet in this browser');
+  if (!e) throw new Error('no EVM wallet in this browser');
   const [a] = await e.request({ method: 'eth_requestAccounts' });
-  return a;
+  return id ? { address: a, name: evmPick.name } : a;
 }
 // MetaMask can drop this site's permission, so the next connect shows the account list again
-export async function evmDisconnect() { const e = eth(); try { if (e) await e.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); } catch { /* older wallets: just forget it here */ } }
+export async function evmDisconnect() { const e = eth(); try { if (e) await e.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); } catch { /* older wallets: just forget it here */ } evmPick = null; }
 async function onBase(e) {
   try { await e.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN }] }); }
   catch (err) {
@@ -179,7 +228,7 @@ export async function evmSendUsdc(depositAddress, amount) {
   const e = eth();
   if (!e) throw new Error('no Base wallet in this browser');
   if (!/^0x[0-9a-fA-F]{40}$/.test(depositAddress)) throw new Error('bad deposit address');
-  const from = await evmConnect();
+  const from = (await e.request({ method: 'eth_requestAccounts' }))[0];
   await onBase(e);
   const pad = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
   const data = '0xa9059cbb' + pad(depositAddress) + pad(BigInt(toUnits(amount, 6)).toString(16)); // transfer(address,uint256)
@@ -211,7 +260,7 @@ export async function evmSendAny(chainId, token, depositAddress, amount, decimal
   const e = eth();
   if (!e) throw new Error('no EVM wallet in this browser');
   if (!/^0x[0-9a-fA-F]{40}$/.test(depositAddress)) throw new Error('bad deposit address');
-  const from = await evmConnect();
+  const from = (await e.request({ method: 'eth_requestAccounts' }))[0];
   await onChain(e, chainId);
   const units = BigInt(toUnits(amount, decimals));
   if (!token) return e.request({ method: 'eth_sendTransaction', params: [{ from, to: depositAddress, value: '0x' + units.toString(16) }] });

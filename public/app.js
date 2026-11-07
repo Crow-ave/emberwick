@@ -908,8 +908,8 @@ try { ui.realDismissed = JSON.parse(localStorage.getItem('ew.dismissed') || '[]'
 function dismissSwaps(list) { ui.realDismissed = [...new Set([...(ui.realDismissed || []), ...list])].slice(-60); try { localStorage.setItem('ew.dismissed', JSON.stringify(ui.realDismissed)); } catch {} }
 const curSwap = () => (view.realSwaps || []).filter((x) => !(ui.realDismissed || []).includes(x.depositAddress))[0];
 // the last finished swap, as one short line over the card (the card stays ready for a new one)
-const swapFromSym = (x) => (x.dir === 'out' ? 'wNEAR' : x.fromSym || 'NEAR');
-const swapToLabel = (x) => (x.dir === 'any' ? `${x.toSym} (${netName(x.chain)})` : x.dir === 'in' ? 'NEAR' : DST_LABEL(x.to));
+const swapFromSym = (x) => (x.dir === 'out' ? 'NEAR' : ds(x.fromSym || 'NEAR'));
+const swapToLabel = (x) => (x.dir === 'any' ? `${ds(x.toSym)} (${netName(x.chain)})` : x.dir === 'in' ? 'NEAR' : DST_LABEL(x.to));
 function lastResult(group) {
   const x = group[0], ok = group.every((y) => y.status === 'SUCCESS');
   const what = group.length > 1 ? t('split.head', { n: group.length, total: legSum(group.map((y) => ({ amount: y.amountIn }))) })
@@ -937,21 +937,21 @@ function realSwapBox() {
   // the picture: what leaves on the left, what arrives on the right; the ⇄ on it turns the swap round
   const src = (dir === 'in' && REAL_SRC[shown ? sw.from : f.from]) || REAL_SRC['USDC-SOL'];
   const dst = (dir === 'out' && REAL_DST[shown ? sw.to : f.to]) || REAL_DST.USDC;
-  let left = dir === 'out' ? { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount } : { sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount };
+  let left = dir === 'out' ? { sym: 'NEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount } : { sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount };
   let right = dir === 'out' ? { sym: dst[0], chain: dst[1], amount: shown ? amt(sw.amountOut) : null } : { sym: 'NEAR', chain: 'near', amount: shown ? amt(sw.amountOut) : null };
-  if (shown && sw.dir === 'any') { left = { sym: sw.fromSym, chain: sw.fromChain, amount: sw.amountIn }; right = { sym: sw.toSym, chain: sw.chain, amount: amt(sw.amountOut) }; }
-  else if (!shown && anyMode) { const a = A(f.fromId), b = A(f.toId); left = { sym: a.sym, chain: a.chain, amount: f.amount }; right = { sym: b.sym, chain: b.chain, amount: null }; }
+  if (shown && sw.dir === 'any') { left = { sym: ds(sw.fromSym), chain: sw.fromChain, amount: sw.amountIn }; right = { sym: ds(sw.toSym), chain: sw.chain, amount: amt(sw.amountOut) }; }
+  else if (!shown && anyMode) { const a = A(f.fromId), b = A(f.toId); left = { sym: ds(a.sym), chain: a.chain, amount: f.amount }; right = { sym: ds(b.sym), chain: b.chain, amount: null }; }
   // first column: the wallet (step 1), the picture, and the AI that can fill the card; second column: the card itself
   const splitting = !shown && (anyMode ? f.fromId === WNEAR_ID : dir === 'out') && f.legs;
   if (!shown) R += splitting ? walletTiles('near', 'near') : walletTiles(left.chain, right.chain);
-  R += splitting ? bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: legSum(f.legs) }, { sym: legDst(f.legs[0])[0], chain: legDst(f.legs[0])[1], amount: null }, false, 'real') + `<p class="small muted">${t('split.picture', { n: f.legs.length, c: new Set(f.legs.map((l) => legDst(l)[1])).size })}</p>` : bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
+  R += splitting ? bridgeSvg({ sym: 'NEAR', chain: 'near', amount: legSum(f.legs) }, { sym: ds(legDst(f.legs[0])[0]), chain: legDst(f.legs[0])[1], amount: null }, false, 'real') + `<p class="small muted">${t('split.picture', { n: f.legs.length, c: new Set(f.legs.map((l) => legDst(l)[1])).size })}</p>` : bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
   if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) R += aiSwapBox();
   let L = banner;
   if (!shown) L += anyMode ? (ui.picker ? pickerView(ui.picker.side, ui.picker.step) : swapCardAny(f)) : swapCard(f, dir);
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
     const anyS = sw.dir === 'any', inDir = sw.dir === 'in', srcName = anyS ? netName(sw.fromChain) : sw.fromChain === 'base' ? 'Base' : 'Solana', srcChain = anyS || inDir ? sw.fromChain : 'near';
-    L += `<div class="realswap"><p class="small"><b>${anyS ? t('any.quote', { a: sw.amountIn, fs: esc(sw.fromSym), fc: esc(netName(sw.fromChain)), b: amt(sw.amountOut), ts: esc(sw.toSym), tc: esc(netName(sw.chain)) }) : inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
+    L += `<div class="realswap"><p class="small"><b>${anyS ? t('any.quote', { a: sw.amountIn, fs: esc(ds(sw.fromSym)), fc: esc(netName(sw.fromChain)), b: amt(sw.amountOut), ts: esc(ds(sw.toSym)), tc: esc(netName(sw.chain)) }) : inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
     if (sw.status === 'PENDING_DEPOSIT' && !sw.sentTx) L += `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>`;
     L += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (sw.status === 'PENDING_DEPOSIT') {
@@ -973,11 +973,11 @@ function realSwapBox() {
     if (sw.status === 'SUCCESS' || bad) L += `<button class="primary" data-realnew="1">${t('real.again')}</button>`;
   }
   const done = view.realDone || [];
-  if (done.length) R += `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : x.dir === 'any' ? esc(`${x.toSym} (${netName(x.chain)})`) : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul></details>`;
+  if (done.length) R += `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(ds(x.fromSym || 'NEAR'))} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : x.dir === 'any' ? esc(`${ds(x.toSym)} (${netName(x.chain)})`) : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul></details>`;
   return R + COL_MARK + L;
 }
 // ---------- one NEAR send split to several receivers ----------
-const DST_LABEL = (k) => (REAL_DST[k] ? `${REAL_DST[k][0]} (${CH_NAME[REAL_DST[k][1]]})` : A(k) ? `${A(k).sym} (${netName(A(k).chain)})` : String(k || ''));
+const DST_LABEL = (k) => (REAL_DST[k] ? `${REAL_DST[k][0]} (${CH_NAME[REAL_DST[k][1]]})` : A(k) ? `${ds(A(k).sym)} (${netName(A(k).chain)})` : String(k || ''));
 const legSum = (legs) => Math.round(legs.reduce((a, l) => a + (Number(l.amount) || 0), 0) * 1000) / 1000;
 function legOptions(sel) {
   if (!(ui.real && ui.real.any && ui.assets)) return Object.keys(REAL_DST).map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(DST_LABEL(k))}</option>`).join('');
@@ -1007,11 +1007,11 @@ function splitView(group, R) {
   const ended = group.every((x) => REAL_END.includes(x.status) || x.status === 'INCOMPLETE_DEPOSIT');
   const moving = group.some((x) => ['KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'].includes(x.status));
   const d0 = REAL_DST[group[0].to] || REAL_DST.USDC;
-  R += bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: total }, { sym: d0[0], chain: d0[1], amount: null }, moving, 'real');
+  R += bridgeSvg({ sym: 'NEAR', chain: 'near', amount: total }, { sym: ds(d0[0]), chain: d0[1], amount: null }, moving, 'real');
   R += `<p class="small muted">${t('split.picture', { n: group.length, c: new Set(group.map((x) => x.chain)).size })}</p>`;
   const lk = (x) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">tx ↗</a>` : '';
   let L = `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p>${pending && !sent ? `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>` : ''}<ol class="legst">` +
-    group.map((x) => `<li class="st-${x.status}"><span class="leg-n">${x.leg || ''}</span><span class="legst-tx">${x.amountIn} wNEAR → <b>${esc(String(amt(x.amountOut)))} ${esc(DST_LABEL(x.to))}</b><br><span class="muted small" title="${esc(x.recipient)}">${esc(shortAddr(x.recipient))}</span> ${(x.dest || []).map(lk).join(' ')}</span><span class="legst-st" title="${esc(t('real.s.' + x.status))}">${SPLIT_ST[x.status] || '·'} ${t('split.st.' + x.status)}</span></li>`).join('') + `</ol>`;
+    group.map((x) => `<li class="st-${x.status}"><span class="leg-n">${x.leg || ''}</span><span class="legst-tx">${x.amountIn} NEAR → <b>${esc(String(amt(x.amountOut)))} ${esc(DST_LABEL(x.to))}</b><br><span class="muted small" title="${esc(x.recipient)}">${esc(shortAddr(x.recipient))}</span> ${(x.dest || []).map(lk).join(' ')}</span><span class="legst-st" title="${esc(t('real.s.' + x.status))}">${SPLIT_ST[x.status] || '·'} ${t('split.st.' + x.status)}</span></li>`).join('') + `</ol>`;
   if (pending && !sent) {
     R += feeBox(group);
     const w = (ui.wallet || {}).near;
@@ -1029,13 +1029,13 @@ function splitView(group, R) {
 const money = (v) => (v == null || !Number.isFinite(Number(v)) ? '?' : '$' + Number(v).toFixed(2));
 function feeBox(list) {
   if (!list.length) return '';
-  const x0 = list[0], anyS = x0.dir === 'any', inDir = x0.dir === 'in', sym = anyS || inDir ? x0.fromSym : 'NEAR', chain = anyS || inDir ? x0.fromChain : 'near';
+  const x0 = list[0], anyS = x0.dir === 'any', inDir = x0.dir === 'in', sym = anyS || inDir ? ds(x0.fromSym) : 'NEAR', chain = anyS || inDir ? x0.fromChain : 'near';
   const add = (k) => list.reduce((a, x) => a + (Number(x[k]) || 0), 0);
   const amountIn = Math.round(add('amountIn') * 1e6) / 1e6, usdIn = add('usdIn'), usdOut = add('usdOut');
   const mk = list.every((x) => x.mkt) ? { in: list.reduce((a, x) => a + x.mkt.in, 0), out: list.reduce((a, x) => a + x.mkt.out, 0) } : null;
   const vin = mk ? mk.in : usdIn, vout = mk ? mk.out : usdOut, cost = vin - vout, pct = vin > 0 ? (cost / vin) * 100 : null;
   const level = pct == null ? '' : pct < 0 ? 'good' : pct < 1 ? 'good' : pct < 3 ? 'mid' : 'high';
-  const outTxt = list.length === 1 ? `${esc(String(amt(x0.amountOut)))} ${esc(anyS ? `${x0.toSym} (${netName(x0.chain)})` : inDir ? 'NEAR' : DST_LABEL(x0.to))}` : t('fee.parts', { n: list.length });
+  const outTxt = list.length === 1 ? `${esc(String(amt(x0.amountOut)))} ${esc(anyS ? `${ds(x0.toSym)} (${netName(x0.chain)})` : inDir ? 'NEAR' : DST_LABEL(x0.to))}` : t('fee.parts', { n: list.length });
   const gas = chain === 'near' || chain === 'sol' || chain === 'base' ? t('fee.gas.' + chain) : isEvm(chain) ? t('fee.gas.evm', { chain: netName(chain) }) : t('fee.gas.other', { chain: netName(chain) });
   const time = Math.max(...list.map((x) => Number(x.timeEstimate) || 0));
   return `<div class="feebox"><div class="fee-h">🧾 ${t('fee.title')}</div><table>` +
@@ -1052,7 +1052,7 @@ function altBox(sw, cost) {
   const o = a.omni || {}, l = a.lifi || {}, inDir = sw.dir === 'in';
   const omniTxt = o.ok ? `<b>${money(o.usd)}</b> ${t('alt.omniFee')} · <span class="muted">${t(inDir ? 'alt.omniNoteIn' : 'alt.omniNoteOut', { sym: inDir ? sw.fromSym : DST_LABEL(sw.to) })}</span>`
     : `<span class="muted">${t(o.why === 'same-chain' ? 'alt.sameChain' : o.why === 'token' ? 'alt.omniNoToken' : o.why === 'no-near' ? 'alt.omniNoNear' : 'alt.omniFail')}</span>`;
-  const lq = a.lifiQuote, outSym = sw.dir === 'any' ? sw.toSym : inDir ? 'NEAR' : DST_LABEL(sw.to);
+  const lq = a.lifiQuote, outSym = sw.dir === 'any' ? ds(sw.toSym) : inDir ? 'NEAR' : DST_LABEL(sw.to);
   const lifiTxt = lq ? (lq.ok ? `<b>${esc(String(lq.toAmount))} ${esc(outSym)}</b>${lq.usdOut ? ` ≈ ${money(lq.usdOut)}` : ''} <span class="muted">· ${t('alt.lifiVia', { tool: esc(lq.tool) })}${lq.feeUsd || lq.gasUsd ? ` · ${t('alt.lifiCosts', { f: money(lq.feeUsd), g: money(lq.gasUsd) })}` : ''}</span><br><b>${Number(lq.toAmount) > Number(sw.amountOut) ? t('alt.lifiBetter') : t('alt.intentsBetter')}</b>` : `<span class="muted">${t('alt.lifiNoQuote')}</span>`)
     : !l.checked ? `<span class="muted">${t('alt.lifiFail')}</span>` : l.near ? t('alt.lifiYes') : `<span class="muted">${t('alt.lifiNo', { n: l.chains })}</span>`;
   const sum = `${t('alt.title')}: Omni ${o.ok ? money(o.usd) : '—'} · LI.FI ${lq ? (lq.ok ? `${esc(String(lq.toAmount))} ${esc(outSym)}` : '—') : l.checked ? (l.near ? '✓' : t('alt.noNear')) : '?'}`;
@@ -1069,6 +1069,7 @@ const keepOpen = (key, byDefault = false) => ((key in ui.open ? ui.open[key] : b
 document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.tagName === 'DETAILS' && d.dataset.keep && d.isConnected) ui.open[d.dataset.keep] = d.open; }, true);
 // ---------- any token on any chain (the list comes live from NEAR Intents) ----------
 const WNEAR_ID = 'nep141:wrap.near';
+const ds = (sym) => (sym === 'wNEAR' ? 'NEAR' : sym);
 const CHAIN_LABEL = { near: 'NEAR', sol: 'Solana', eth: 'Ethereum', base: 'Base', arb: 'Arbitrum', op: 'Optimism', pol: 'Polygon', bsc: 'BNB Chain', avax: 'Avalanche', gnosis: 'Gnosis', bera: 'Berachain', btc: 'Bitcoin', tron: 'Tron', sui: 'Sui', ton: 'TON', doge: 'Dogecoin', xrp: 'XRP', zec: 'Zcash', ltc: 'Litecoin', aptos: 'Aptos', cardano: 'Cardano', stellar: 'Stellar', bch: 'Bitcoin Cash' };
 const netName = (c) => CHAIN_LABEL[c] || String(c || '').toUpperCase();
 const EVM_IDS = { eth: 1, base: 8453, arb: 42161, op: 10, pol: 137, bsc: 56, avax: 43114, gnosis: 100, bera: 80094 };
@@ -1079,7 +1080,7 @@ const POP_CHAINS = ['near', 'sol', 'base', 'eth', 'arb', 'op', 'pol', 'bsc', 'av
 const POP_SYMS = ['USDC', 'USDT', 'NEAR', 'wNEAR', 'ETH', 'SOL', 'BTC', 'ARB', 'OP', 'POL', 'BNB', 'AVAX'];
 const A = (id) => (ui.assets || []).find((x) => x.id === id) || null;
 const findAsset = (sym, chain) => (ui.assets || []).find((x) => x.sym === sym && x.chain === chain) || null;
-const assetLabel = (id) => { const x = A(id); return x ? `${x.sym} (${netName(x.chain)})` : id; };
+const assetLabel = (id) => { const x = A(id); return x ? `${ds(x.sym)} (${netName(x.chain)})` : id; };
 const nice = (n) => { n = Number(n); if (!Number.isFinite(n) || n <= 0) return 0; const d = n >= 100 ? 0 : n >= 1 ? 2 : Math.min(8, Math.ceil(-Math.log10(n)) + 2); return Number(n.toFixed(d)); };
 const usdLimits = (x) => (x.id === WNEAR_ID ? { min: 0.1, max: 5 } : { min: nice(((ui.assetLimits || {}).min || 0.4) / x.price), max: nice(((ui.assetLimits || {}).max || 20) / x.price) });
 async function loadAssets() {
@@ -1104,7 +1105,7 @@ const coinGlyph = (sym) => GLYPH[sym] || esc(String(sym).replace(/^w(?=[A-Z])/, 
 function sidePick(side, x) {
   const ch = chainOf(x.chain), col = ch ? ch[1] : '#556';
   return `<div class="netrow"><button type="button" class="netbtn" data-pickopen="${side}:chain" style="--c:${col}"><span class="nb-lab">${t('any.network')}</span><span class="nb-ic">${CHAIN_ICON[x.chain] || esc(netName(x.chain)[0])}</span><b>${esc(netName(x.chain))}</b><span class="tp-caret">▾</span></button>` +
-    `<button type="button" class="tokbtn" data-pickopen="${side}:token"><span class="nb-lab">${t('any.token')}</span><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(x.sym)}</b><span class="tp-caret">▾</span></button></div>`;
+    `<button type="button" class="tokbtn" data-pickopen="${side}:token"><span class="nb-lab">${t('any.token')}</span><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(ds(x.sym))}</b><span class="tp-caret">▾</span></button></div>`;
 }
 // choosing, in place of the card: first the network (big buttons), then a token on it (most used first)
 function pickerView(side, step) {
@@ -1124,13 +1125,13 @@ function pickerView(side, step) {
     const q = (ui.pickQ || '').trim().toLowerCase();
     h += `<div class="step-h"><span class="stepn">b</span>${t('any.stepToken', { chain: `<span style="color:${col}">${esc(netName(c))}</span>` })} <button type="button" class="linkbtn small" data-pickopen="${side}:chain">${t('any.otherChain')}</button></div>` +
       (list.length > 8 ? `<input id="pick-search" class="pv-search" autocomplete="off" placeholder="${esc(t('any.searchToken'))}" value="${esc(ui.pickQ || '')}">` : '') +
-      `<div class="pv-tokens" data-keepscroll="pv-${side}">${list.map((x) => `<button type="button" class="pv-token${cur.id === x.id ? ' on' : ''}" data-pickasset="${side}|${esc(x.id)}" data-q="${esc(x.sym.toLowerCase())}"${q && !x.sym.toLowerCase().includes(q) ? ' hidden' : ''}><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(x.sym)}</b><span class="pk-price">$${x.price >= 1 ? x.price.toFixed(2) : x.price.toPrecision(3)}</span></button>`).join('')}<p class="muted small pk-none" hidden>${t('any.none')}</p></div>`;
+      `<div class="pv-tokens" data-keepscroll="pv-${side}">${list.map((x) => `<button type="button" class="pv-token${cur.id === x.id ? ' on' : ''}" data-pickasset="${side}|${esc(x.id)}" data-q="${esc(x.sym.toLowerCase())}"${q && !x.sym.toLowerCase().includes(q) ? ' hidden' : ''}><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(ds(x.sym))}</b><span class="pk-price">$${x.price >= 1 ? x.price.toFixed(2) : x.price.toPrecision(3)}</span></button>`).join('')}<p class="muted small pk-none" hidden>${t('any.none')}</p></div>`;
   }
   return h + `</div>`;
 }
 function tokPick(side, x) {
   const ch = chainOf(x.chain);
-  return `<button type="button" class="tokpick${ui.picker === side ? ' on' : ''}" data-pickopen="${side}"><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><span class="tc-txt"><b>${esc(x.sym)}</b><span class="tc-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span></span><span class="tp-caret">▾</span></button>`;
+  return `<button type="button" class="tokpick${ui.picker === side ? ' on' : ''}" data-pickopen="${side}"><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><span class="tc-txt"><b>${esc(ds(x.sym))}</b><span class="tc-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span></span><span class="tp-caret">▾</span></button>`;
 }
 function pickerPanel(side) {
   const q = (ui.pickQ || '').trim().toLowerCase(), only = ui.pickChain || '';
@@ -1143,7 +1144,7 @@ function pickerPanel(side) {
   const key = (x) => `${x.sym} ${netName(x.chain)} ${x.chain}`.toLowerCase();
   return `<div class="pickpanel"><div class="pk-top"><input id="pick-search" autocomplete="off" placeholder="${esc(t('any.search'))}" value="${esc(ui.pickQ || '')}"><button type="button" class="linkbtn" data-pickclose="1">✕</button></div>` +
     `<div class="pk-chains"><button type="button" class="${only ? '' : 'on'}" data-pickchain="">${t('any.allChains')}</button>${chains.map((c) => { const ch = chainOf(c); return `<button type="button" class="${only === c ? 'on' : ''}" data-pickchain="${c}" style="--c:${ch ? ch[1] : '#556'}">${esc(netName(c))}</button>`; }).join('')}</div>` +
-    `<div class="pk-list" data-keepscroll="pk-${side}">${list.map((x) => { const ch = chainOf(x.chain); return `<button type="button" class="pk-item" data-pickasset="${side}|${esc(x.id)}" data-q="${esc(key(x))}"${q && !key(x).includes(q) ? ' hidden' : ''}><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(x.sym)}</b><span class="pk-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span><span class="pk-price">$${x.price >= 1 ? x.price.toFixed(2) : x.price.toPrecision(3)}</span></button>`; }).join('')}<p class="muted small pk-none" hidden>${t('any.none')}</p></div></div>`;
+    `<div class="pk-list" data-keepscroll="pk-${side}">${list.map((x) => { const ch = chainOf(x.chain); return `<button type="button" class="pk-item" data-pickasset="${side}|${esc(x.id)}" data-q="${esc(key(x))}"${q && !key(x).includes(q) ? ' hidden' : ''}><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(ds(x.sym))}</b><span class="pk-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span><span class="pk-price">$${x.price >= 1 ? x.price.toFixed(2) : x.price.toPrecision(3)}</span></button>`; }).join('')}<p class="muted small pk-none" hidden>${t('any.none')}</p></div></div>`;
 }
 function swapCardAny(f) {
   const a = A(f.fromId) || A(WNEAR_ID), b = A(f.toId) || (ui.assets || []).find((x) => x.id !== a.id);
@@ -1158,14 +1159,14 @@ function swapCardAny(f) {
   const legs = splitOk && f.legs;
   return `<div class="step-h"><span class="stepn">2</span>${t('real.step2')}</div><div class="swapcard">` +
     `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div>${sidePick('from', a)}` +
-    (legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>wNEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>`
-      : `<div class="sc-amt" title="${esc(t('any.range', { min: lim.min, max: lim.max, sym: a.sym }))}"><input id="real-amount" type="text" inputmode="decimal" autocomplete="off" value="${amtV}"><b>${esc(a.sym)}</b><span class="sc-range">${lim.min}–${lim.max}</span></div><div class="sc-usd small muted" data-price="${a.price}">≈ $${(amtV * a.price).toFixed(2)}</div>`) +
+    (legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>NEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>`
+      : `<div class="sc-amt" title="${esc(t('any.range', { min: lim.min, max: lim.max, sym: ds(a.sym) }))}"><input id="real-amount" type="text" inputmode="decimal" autocomplete="off" value="${amtV}"><b>${esc(ds(a.sym))}</b><span class="sc-range">${lim.min}–${lim.max}</span></div><div class="sc-usd small muted" data-price="${a.price}">≈ $${(amtV * a.price).toFixed(2)}</div>`) +
     (using ? `<div class="sc-lab sc-using" title="${esc(refundV)}">✓ ${t('wallet.usingThis', { a: esc(shortAddr(refundV)) })}</div><input type="hidden" id="real-refund" value="${esc(refundV)}">`
       : `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('any.fromWallet', { chain: esc(netName(a.chain)) })} ⓘ</label><input id="real-refund" class="${need.length && !refundV ? 'need' : ''}" placeholder="${esc(addrPh(a.chain))}" value="${esc(refundV)}">`) +
     tokenProof(a) + `</div><button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
     (legs ? `<div class="sc-side"><div class="sc-head sc-headrow">${t('split.receivers')} <button type="button" class="linkbtn small" data-splitoff="1">← ${t('split.one')}</button></div>${legRows(f)}</div>`
       : `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div>${sidePick('to', b)}` +
-        `<label class="sc-lab" title="${esc(t('any.toHint', { sym: b.sym, chain: netName(b.chain) }))}">${t('any.toWallet', { chain: esc(netName(b.chain)) })} ⓘ</label><div class="recip-row"><input id="real-recip" class="${need.length && !recipV ? 'need' : ''}" placeholder="${esc(addrPh(b.chain))}" value="${esc(recipV)}">${recipV ? `<button type="button" class="linkbtn small" data-recipclear="1">${t('any.otherAddr')}</button>` : ''}</div>` +
+        `<label class="sc-lab" title="${esc(t('any.toHint', { sym: ds(b.sym), chain: netName(b.chain) }))}">${t('any.toWallet', { chain: esc(netName(b.chain)) })} ⓘ</label><div class="recip-row"><input id="real-recip" class="${need.length && !recipV ? 'need' : ''}" placeholder="${esc(addrPh(b.chain))}" value="${esc(recipV)}">${recipV ? `<button type="button" class="linkbtn small" data-recipclear="1">${t('any.otherAddr')}</button>` : ''}</div>` +
         `<div class="sc-hint">${wB && recipV === wB ? '✓ ' + t('any.toOwn') : recipV ? '⚠️ ' + t('any.toOther') : ''}</div>${tokenProof(b)}</div>` +
         (splitOk ? `<button type="button" class="linkbtn split-btn" data-legadd="1">＋ ${t('split.start')}</button>` : `<button type="button" class="linkbtn split-btn" data-splitnear="1" title="${esc(t('split.fromNearHint'))}">＋ ${t('split.startNear')}</button>`)) +
     `</div><button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}><span class="stepn">3</span> ${ui.realBusy ? t('ai.thinking') : legs ? t('split.getQuotes', { n: f.legs.length }) : t('real.getQuote')}</button>`;
@@ -1214,7 +1215,7 @@ const legDst = (l) => { const x = A(l.to); return x ? [x.sym, x.chain] : REAL_DS
 const COL_MARK = '<!--col-->';
 // step 1: big, coloured buttons for the wallets this swap needs
 const CHAIN_ICON = { near: 'Ⓝ', sol: '◎', base: 'B', eth: 'Ξ', btc: '₿', arb: 'A', op: 'O', pol: 'P', bsc: 'B', avax: 'A', tron: 'T' };
-const WALLET_SHORT = { near: 'Meteor', sol: 'Phantom', base: 'MetaMask', evm: 'MetaMask' };
+const WALLET_SHORT = { near: 'Meteor / MyNearWallet', sol: 'Phantom, Solflare…', base: 'MetaMask, Rabby…', evm: 'MetaMask, Rabby…' };
 function walletTiles(srcChain, dstChain) {
   const w = ui.wallet || {}, seen = new Set(), tiles = [];
   for (const c of [srcChain, dstChain]) {
@@ -1224,10 +1225,16 @@ function walletTiles(srcChain, dstChain) {
     const icon = CHAIN_ICON[c] || esc(netName(c)[0]), cname = k === 'base' && isEvm(c) && c !== 'base' ? netName(c) : CH_NAME[c] || netName(c);
     if (!k) { tiles.push(`<div class="wtile manual" style="--c:${col}"><span class="wt-ic">${icon}</span><span class="wt-tx"><b>${esc(netName(c))}</b><span>${t('wallet.noBrowser')} · ${role}</span></span></div>`); continue; }
     tiles.push(w[k]
-      ? `<div class="wtile on" style="--c:${col}"><span class="wt-ic">${icon}</span><span class="wt-tx"><b title="${esc(w[k])}">✓ ${esc(w[k].length > 16 ? w[k].slice(0, 5) + '…' + w[k].slice(-4) : w[k])}</b><span>${esc(cname)} · ${role}</span></span><span class="wt-acts"><button type="button" class="wt-act" data-walletswap="${k}" title="${esc(t('wallet.swapHint'))}">⇄ ${t('wallet.swap')}</button><button type="button" class="wt-act off" data-walletoff="${k}">⏻ ${t('wallet.off')}</button></span></div>`
+      ? `<div class="wtile on" style="--c:${col}"><span class="wt-ic">${icon}</span><span class="wt-tx"><b title="${esc(w[k])}">✓ ${esc(w[k].length > 16 ? w[k].slice(0, 5) + '…' + w[k].slice(-4) : w[k])}</b><span>${esc(cname)} · ${esc((ui.walletName || {})[k] || '')}${(ui.walletName || {})[k] ? ' · ' : ''}${role}</span></span><span class="wt-acts"><button type="button" class="wt-act" data-walletswap="${k}" title="${esc(t('wallet.swapHint'))}">⇄ ${t('wallet.swap')}</button><button type="button" class="wt-act off" data-walletoff="${k}">⏻ ${t('wallet.off')}</button></span></div>`
       : `<button type="button" class="wtile" style="--c:${col}" data-wallet="${k}"><span class="wt-ic">${icon}</span><span class="wt-tx"><b>${t('wallet.connectShort', { chain: esc(cname) })}</b><span>${WALLET_SHORT[k]} · ${role}</span></span></button>`);
   }
-  return `<div class="wtiles"><div class="step-h"><span class="stepn">1</span>${t('wallet.step')}</div><div class="wtiles-row">${tiles.join('')}</div></div>`;
+  return `<div class="wtiles"><div class="step-h"><span class="stepn">1</span>${t('wallet.step')}</div><div class="wtiles-row">${tiles.join('')}</div>${walletChooser()}</div>`;
+}
+// which of the wallets installed in this browser to connect
+function walletChooser(only) {
+  const ch = ui.walletChoose;
+  if (!ch || (only && ch.kind !== only)) return '';
+  return `<div class="wchoose"><b>${t('wallet.which', { kind: ch.kind === 'sol' ? 'Solana' : 'EVM' })}</b><div class="wchoose-row">${ch.list.map((w) => `<button type="button" class="wc-btn" data-walletpick="${ch.kind}|${esc(w.id)}">${esc(w.name)}</button>`).join('')}<button type="button" class="linkbtn" data-walletpickoff="1">${t('real.cancelNo')}</button></div><p class="muted small">${t('wallet.whichHint')}</p></div>`;
 }
 // a swap card like an exchange: "you send" on top, "you get" below, a ⇄ button between them
 const CH_NAME = { near: 'NEAR', sol: 'Solana', base: 'Base' };
@@ -1249,7 +1256,7 @@ function swapCard(f, dir) {
     : tokChip(null, 'NEAR', 'NEAR', 'near', true);
   return `<div class="step-h"><span class="stepn">2</span>${t('real.step2')}</div><div class="swapcard">` +
     (out ? `<div class="sc-side"><div class="sc-head sc-headrow">${t('real.youSend')} ${sendChips}</div>` : `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div><div class="tokrow">${sendChips}</div>`) +
-    (out && f.legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>wNEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>` : `<div class="sc-amt" title="${esc(t('real.range', { min: src[2], max: src[3], sym: src[0] }))}"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${amt}"><b>${esc(src[0])}</b><span class="sc-range">${src[2]}–${src[3]}</span></div>`) +
+    (out && f.legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>NEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>` : `<div class="sc-amt" title="${esc(t('real.range', { min: src[2], max: src[3], sym: src[0] }))}"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${amt}"><b>${esc(src[0])}</b><span class="sc-range">${src[2]}–${src[3]}</span></div>`) +
         ((ui.wallet || {})[src[1]] && (ui.wallet || {})[src[1]] === refundV
           ? `<div class="sc-lab sc-using" title="${esc(refundV)}">✓ ${t('wallet.usingThis', { a: esc(shortAddr(refundV)) })}</div><input type="hidden" id="real-refund" value="${esc(refundV)}">`
           : `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('real.fromWallet', { chain: CH_NAME[src[1]] })} ⓘ</label><input id="real-refund" class="${need.includes('wallet:' + src[1]) && !refundV ? 'need' : ''}" placeholder="${esc(ADDR_PH[src[1]])}" value="${esc(refundV)}">`) +
@@ -1320,7 +1327,7 @@ function aiSwapBox() {
   if (!a.text && !a.reply) h += `<div class="aiswap-ex">${[ex, t('aiswap.example3')].map((x) => `<button type="button" class="linkbtn" data-aiswapex="${esc(x)}">“${esc(x)}”</button>`).join('')}</div>`;
   const r = a.reply;
   if (r) {
-    const f = r.form, src = f.dir === 'in' ? REAL_SRC[f.from] : ['wNEAR', 'near'], dst = f.dir === 'in' ? ['NEAR', 'near'] : REAL_DST[f.to];
+    const f = r.form, src = f.dir === 'in' ? REAL_SRC[f.from] : ['NEAR', 'near'], dst = f.dir === 'in' ? ['NEAR', 'near'] : REAL_DST[f.to];
     h += `<div class="aiswap-reply"><p><b>${t('aiswap.understood')}</b> ${f.amount} ${esc(src[0])} (${CH_NAME[src[1]]}) → ${esc(dst[0])} (${CH_NAME[dst[1]]})</p>`;
     if (r.say) h += `<p class="aiswap-say">“${esc(r.say)}”</p>`;
     const shortA = (x) => x ? (x.length > 22 ? x.slice(0, 8) + '…' + x.slice(-6) : x) : '—';
@@ -1356,7 +1363,7 @@ async function walletLib() {
   }
   return WL;
 }
-const WALLET_NAME = { near: 'Meteor / MyNearWallet', sol: 'Phantom', base: 'MetaMask' };
+const WALLET_NAME = { near: 'Meteor / MyNearWallet', sol: 'Phantom, Solflare…', base: 'MetaMask, Rabby…' };
 const shortAddr = (x) => (x && x.length > 22 ? x.slice(0, 6) + '…' + x.slice(-5) : x || '');
 function walletRow(srcChain, dstChain) {
   const chains = [...new Set([srcChain, dstChain])];
@@ -1367,21 +1374,29 @@ function walletRow(srcChain, dstChain) {
 }
 function walletSendBox(sw) {
   if (sw.status !== 'PENDING_DEPOSIT') return '';
-  const chain = sw.dir === 'in' || sw.dir === 'any' ? sw.fromChain : 'near', sym = sw.dir === 'in' || sw.dir === 'any' ? sw.fromSym : 'NEAR', kind = walletKind(chain), w = (ui.wallet || {})[kind];
+  const chain = sw.dir === 'in' || sw.dir === 'any' ? sw.fromChain : 'near', sym = sw.dir === 'in' || sw.dir === 'any' ? ds(sw.fromSym) : 'NEAR', kind = walletKind(chain), w = (ui.wallet || {})[kind];
   if (sw.sentTx) return `<p class="ok small">✓ ${t('wallet.sentTx', { h: esc(shortAddr(sw.sentTx)) })}</p>`;
   if (!kind) return `<p class="muted small">${t('wallet.noBrowserSend', { chain: esc(netName(chain)) })}</p>`;
   if (sw.dir === 'any' && chain === 'sol' && sym !== 'SOL' && !sw.fromContract) return `<p class="muted small">${t('wallet.noBrowserSend', { chain: esc(netName(chain)) })}</p>`;
-  if (!w) return `<div class="walletsend"><button class="primary" data-wallet="${kind}">🔗 ${t('wallet.needConnect', { w: WALLET_NAME[kind] || 'MetaMask' })}</button></div>`;
+  if (!w) return `<div class="walletsend"><button class="primary" data-wallet="${kind}">🔗 ${t('wallet.needConnect', { w: WALLET_NAME[kind] || 'MetaMask, Rabby…' })}</button>${walletChooser(kind)}</div>`;
   const differs = sw.refundTo && sw.refundTo.toLowerCase() !== String(w).toLowerCase();
   return `<div class="walletsend"><button class="primary big" data-walletsend="1" ${ui.walletBusy ? 'disabled' : ''}>${ui.walletBusy ? t('wallet.sending') : '👛 ' + t('wallet.send')}</button>` +
-    `<p class="small">${chain === 'near' && sym.replace(/^w/, '') === 'NEAR' ? t('wallet.sendNear', { a: sw.amountIn }) : t('wallet.sendOther', { a: sw.amountIn, sym: esc(sym) }) + (isEvm(chain) ? ' ' + t('wallet.evmChain', { chain: esc(netName(chain)) }) : '')}</p>` +
+    `<p class="small">${chain === 'near' && sym === 'NEAR' ? t('wallet.sendNear', { a: sw.amountIn }) : t('wallet.sendOther', { a: sw.amountIn, sym: esc(sym) }) + (isEvm(chain) ? ' ' + t('wallet.evmChain', { chain: esc(netName(chain)) }) : '')}</p>` +
     (differs ? `<p class="closed small">${t('wallet.differs', { a: esc(w), b: esc(sw.refundTo) })}</p>` : '') +
     `<p class="muted small">${t('wallet.orManual')}</p></div>`;
 }
-async function connectWallet(chain) {
+async function connectWallet(chain, pickId) {
   try {
     const L = await walletLib();
-    const a = chain === 'near' ? await L.nearConnect() : chain === 'sol' ? await L.solConnect() : await L.evmConnect();
+    if (chain !== 'near' && !pickId) {
+      const list = chain === 'sol' ? L.solWallets() : await new Promise((r) => setTimeout(() => r(L.evmWallets()), 150));
+      if (!list.length) { toast(t('wallet.noneFound', { kind: chain === 'sol' ? 'Solana' : 'EVM' }), 'bad'); return; }
+      if (list.length > 1) { ui.walletChoose = { kind: chain, list }; render(); return; }
+      pickId = list[0].id;
+    }
+    ui.walletChoose = null;
+    let a = chain === 'near' ? await L.nearConnect() : chain === 'sol' ? await L.solConnect(pickId) : await L.evmConnect(pickId);
+    if (a && typeof a === 'object') { ui.walletName = { ...(ui.walletName || {}), [chain]: a.name }; a = a.address; }
     if (!a) return;
     ui.wallet = { ...(ui.wallet || {}), [chain]: a };
     readRealForm();
@@ -1399,6 +1414,7 @@ async function walletOff(chain, again) {
   const was = (ui.wallet || {})[chain];
   try { const L = await walletLib(); await (chain === 'near' ? L.nearDisconnect() : chain === 'sol' ? L.solDisconnect() : L.evmDisconnect()); } catch { /* forget it here anyway */ }
   ui.wallet = { ...(ui.wallet || {}), [chain]: null };
+  ui.walletName = { ...(ui.walletName || {}), [chain]: null };
   readRealForm();
   if (ui.real.refundTo === was) ui.real.refundTo = '';
   if (ui.real.recipient === was) ui.real.recipient = '';
@@ -2876,6 +2892,9 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-legadd]')) { legAdd(); return; }
   const ld = e.target.closest('[data-legdel]');
   if (ld) { legDel(Number(ld.dataset.legdel)); return; }
+  const wp = e.target.closest('[data-walletpick]');
+  if (wp) { const [k, id] = wp.dataset.walletpick.split('|'); connectWallet(k, id); return; }
+  if (e.target.closest('[data-walletpickoff]')) { ui.walletChoose = null; render(); return; }
   const wc = e.target.closest('[data-wallet]');
   if (wc) { connectWallet(wc.dataset.wallet); return; }
   if (e.target.closest('[data-walletsend]')) { walletSend(); return; }
