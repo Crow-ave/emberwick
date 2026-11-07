@@ -913,7 +913,7 @@ function realSwapBox() {
   if (sw && sw.batch) return splitView(swapGroup(sw), R);
   let f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
   if (!ui.assets) loadAssets();
-  if (ui.assets && !f.any && !f.anyOff) { f = ui.real = { ...f, ...oldToAny(f) }; }
+  if (ui.assets && !f.any && !f.anyOff) { const conv = oldToAny(f); f = ui.real = conv.any ? { ...f, ...conv } : { ...f, any: true, fromId: WNEAR_ID, toId: (findAsset('USDC', 'near') || ui.assets.find((x) => x.id !== WNEAR_ID) || {}).id }; }
   const anyMode = !!(ui.assets && f.any && A(f.fromId) && A(f.toId));
   const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
   const shown = active || (sw && sw.status === 'SUCCESS');
@@ -932,7 +932,7 @@ function realSwapBox() {
   R += splitting ? bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: legSum(f.legs) }, { sym: legDst(f.legs[0])[0], chain: legDst(f.legs[0])[1], amount: null }, false, 'real') + `<p class="small muted">${t('split.picture', { n: f.legs.length, c: new Set(f.legs.map((l) => legDst(l)[1])).size })}</p>` : bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
   if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) R += aiSwapBox();
   let L = '';
-  if (!shown) L += anyMode ? swapCardAny(f) : swapCard(f, dir);
+  if (!shown) L += anyMode ? (ui.picker ? pickerView(ui.picker.side, ui.picker.step) : swapCardAny(f)) : swapCard(f, dir);
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
     const anyS = sw.dir === 'any', inDir = sw.dir === 'in', srcName = anyS ? netName(sw.fromChain) : sw.fromChain === 'base' ? 'Base' : 'Solana', srcChain = anyS || inDir ? sw.fromChain : 'near';
@@ -1080,6 +1080,34 @@ function oldToAny(f) {
 const savedFor = (w, c) => w[c] || (isEvm(c) ? w.evm || w.base || '' : '');
 const coinBg = (sym) => ASSET_COLOR[sym] || `hsl(${[...String(sym)].reduce((a, ch) => a + ch.charCodeAt(0), 0) * 37 % 360} 45% 45%)`;
 const coinGlyph = (sym) => GLYPH[sym] || esc(String(sym).replace(/^w(?=[A-Z])/, '')[0] || '?');
+// one side of the card: "Network ▾" and "Token ▾" as two separate, clear buttons
+function sidePick(side, x) {
+  const ch = chainOf(x.chain), col = ch ? ch[1] : '#556';
+  return `<div class="netrow"><button type="button" class="netbtn" data-pickopen="${side}:chain" style="--c:${col}"><span class="nb-lab">${t('any.network')}</span><span class="nb-ic">${CHAIN_ICON[x.chain] || esc(netName(x.chain)[0])}</span><b>${esc(netName(x.chain))}</b><span class="tp-caret">▾</span></button>` +
+    `<button type="button" class="tokbtn" data-pickopen="${side}:token"><span class="nb-lab">${t('any.token')}</span><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(x.sym)}</b><span class="tp-caret">▾</span></button></div>`;
+}
+// choosing, in place of the card: first the network (big buttons), then a token on it (most used first)
+function pickerView(side, step) {
+  const f = ui.real || {}, cur = A(side === 'from' ? f.fromId : f.toId) || {};
+  const order = (c) => { const i = POP_CHAINS.indexOf(c); return i < 0 ? 99 : i; };
+  const symOrder = (sym) => { const i = POP_SYMS.indexOf(sym); return i < 0 ? 99 : i; };
+  const title = t(side === 'from' ? 'any.pickFrom' : 'any.pickTo');
+  let h = `<div class="pickview"><div class="pv-head"><button type="button" class="linkbtn" data-pickclose="1">← ${t('any.back')}</button><b>${title}</b></div>`;
+  if (step === 'chain') {
+    const counts = {}; for (const x of ui.assets || []) counts[x.chain] = (counts[x.chain] || 0) + 1;
+    const chains = Object.keys(counts).sort((a, b) => order(a) - order(b) || netName(a).localeCompare(netName(b)));
+    h += `<div class="step-h"><span class="stepn">a</span>${t('any.stepChain')}</div><div class="pv-chains">${chains.map((c) => { const ch = chainOf(c), col = ch ? ch[1] : '#556';
+      return `<button type="button" class="pv-chain${cur.chain === c ? ' on' : ''}" data-pickchainset="${side}|${c}" style="--c:${col}"><span class="nb-ic">${CHAIN_ICON[c] || esc(netName(c)[0])}</span><b>${esc(netName(c))}</b><span class="pv-n">${t('any.tokens', { n: counts[c] })}${walletKind(c) ? '' : ' · ' + t('any.byHand')}</span></button>`; }).join('')}</div>`;
+  } else {
+    const c = ui.pickChain || cur.chain, ch = chainOf(c), col = ch ? ch[1] : '#556';
+    const list = (ui.assets || []).filter((x) => x.chain === c).sort((a, b) => symOrder(a.sym) - symOrder(b.sym) || a.sym.localeCompare(b.sym));
+    const q = (ui.pickQ || '').trim().toLowerCase();
+    h += `<div class="step-h"><span class="stepn">b</span>${t('any.stepToken', { chain: `<span style="color:${col}">${esc(netName(c))}</span>` })} <button type="button" class="linkbtn small" data-pickopen="${side}:chain">${t('any.otherChain')}</button></div>` +
+      (list.length > 8 ? `<input id="pick-search" class="pv-search" autocomplete="off" placeholder="${esc(t('any.searchToken'))}" value="${esc(ui.pickQ || '')}">` : '') +
+      `<div class="pv-tokens" data-keepscroll="pv-${side}">${list.map((x) => `<button type="button" class="pv-token${cur.id === x.id ? ' on' : ''}" data-pickasset="${side}|${esc(x.id)}" data-q="${esc(x.sym.toLowerCase())}"${q && !x.sym.toLowerCase().includes(q) ? ' hidden' : ''}><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(x.sym)}</b><span class="pk-price">$${x.price >= 1 ? x.price.toFixed(2) : x.price.toPrecision(3)}</span></button>`).join('')}<p class="muted small pk-none" hidden>${t('any.none')}</p></div>`;
+  }
+  return h + `</div>`;
+}
 function tokPick(side, x) {
   const ch = chainOf(x.chain);
   return `<button type="button" class="tokpick${ui.picker === side ? ' on' : ''}" data-pickopen="${side}"><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><span class="tc-txt"><b>${esc(x.sym)}</b><span class="tc-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span></span><span class="tp-caret">▾</span></button>`;
@@ -1107,14 +1135,14 @@ function swapCardAny(f) {
   const splitOk = a.id === WNEAR_ID;
   const legs = splitOk && f.legs;
   return `<div class="step-h"><span class="stepn">2</span>${t('real.step2')}</div><div class="swapcard">` +
-    `<div class="sc-side"><div class="sc-head sc-headrow">${t('real.youSend')} ${tokPick('from', a)}</div>` + (ui.picker === 'from' ? pickerPanel('from') : '') +
+    `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div>${sidePick('from', a)}` +
     (legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>wNEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>`
       : `<div class="sc-amt" title="${esc(t('any.range', { min: lim.min, max: lim.max, sym: a.sym }))}"><input id="real-amount" type="number" min="${lim.min}" max="${lim.max}" step="any" value="${amtV}"><b>${esc(a.sym)}</b><span class="sc-range">${lim.min}–${lim.max}</span></div><div class="sc-usd small muted" data-price="${a.price}">≈ $${(amtV * a.price).toFixed(2)}</div>`) +
     (using ? `<div class="sc-lab sc-using" title="${esc(refundV)}">✓ ${t('wallet.usingThis', { a: esc(shortAddr(refundV)) })}</div><input type="hidden" id="real-refund" value="${esc(refundV)}">`
       : `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('any.fromWallet', { chain: esc(netName(a.chain)) })} ⓘ</label><input id="real-refund" class="${need.length && !refundV ? 'need' : ''}" placeholder="${esc(addrPh(a.chain))}" value="${esc(refundV)}">`) +
     `</div><button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
     (legs ? `<div class="sc-side"><div class="sc-head">${t('split.receivers')}</div>${legRows(f)}</div>`
-      : `<div class="sc-side"><div class="sc-head sc-headrow">${t('real.youGet')} ${tokPick('to', b)}</div>` + (ui.picker === 'to' ? pickerPanel('to') : '') +
+      : `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div>${sidePick('to', b)}` +
         `<label class="sc-lab" title="${esc(t('any.toHint', { sym: b.sym, chain: netName(b.chain) }))}">${t('any.toWallet', { chain: esc(netName(b.chain)) })} ⓘ</label><input id="real-recip" class="${need.length && !recipV ? 'need' : ''}" placeholder="${esc(addrPh(b.chain))}" value="${esc(recipV)}"></div>` +
         (splitOk ? `<button type="button" class="linkbtn split-btn" data-legadd="1">＋ ${t('split.start')}</button>` : '')) +
     `</div><button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}><span class="stepn">3</span> ${ui.realBusy ? t('ai.thinking') : legs ? t('split.getQuotes', { n: f.legs.length }) : t('real.getQuote')}</button>`;
@@ -1469,7 +1497,9 @@ async function cancelReal() {
   const group = swapGroup(sw);
   view.realSwaps = (view.realSwaps || []).filter((x) => !group.includes(x));
   ui.aiSwap = null;
-  ui.real = { dir: sw.dir || 'out', to: sw.dir === 'in' ? 'USDC' : sw.to, from: sw.dir === 'in' ? sw.from : 'USDC-SOL', amount: sw.amountIn, refundTo: sw.refundTo, recipient: sw.recipient,
+  ui.real = sw.dir === 'any' ? { dir: 'out', any: true, fromId: sw.fromId, toId: group.length > 1 ? group[0].toId : sw.toId, amount: sw.batch ? group[0].amountIn : sw.amountIn, refundTo: sw.refundTo, recipient: sw.batch ? group[0].recipient : sw.recipient,
+    legs: sw.batch ? group.map((x) => ({ to: x.to, amount: x.amountIn, recipient: x.recipient })) : null }
+    : { dir: sw.dir || 'out', to: sw.dir === 'in' ? 'USDC' : sw.to, from: sw.dir === 'in' ? sw.from : 'USDC-SOL', amount: sw.amountIn, refundTo: sw.refundTo, recipient: sw.recipient,
     legs: sw.batch ? group.map((x) => ({ to: x.to, amount: x.amountIn, recipient: x.recipient })) : null };
   toast(t('real.cancelled'), 'win');
   render();
@@ -2795,8 +2825,10 @@ document.body.addEventListener('click', (e) => {
   const rc = e.target.closest('[data-realcancel]');
   if (rc) { const v = rc.dataset.realcancel; if (v === 'ask') ui.realCancelAsk = true; else if (v === 'no') ui.realCancelAsk = false; else cancelReal(); render(); return; }
   const po = e.target.closest('[data-pickopen]');
-  if (po) { readRealForm(); ui.picker = ui.picker === po.dataset.pickopen ? null : po.dataset.pickopen; ui.pickQ = ''; ui.pickChain = ''; render(); setTimeout(() => { const i = $('pick-search'); if (i) i.focus(); }, 30); return; }
-  if (e.target.closest('[data-pickclose]')) { ui.picker = null; render(); return; }
+  if (po) { readRealForm(); const [side, step] = po.dataset.pickopen.split(':'); const cur = A(side === 'from' ? ui.real.fromId : ui.real.toId); ui.picker = { side, step: step || 'chain' }; ui.pickQ = ''; ui.pickChain = cur ? cur.chain : ''; render(); return; }
+  const pcs = e.target.closest('[data-pickchainset]');
+  if (pcs) { const [side, c] = pcs.dataset.pickchainset.split('|'); ui.pickChain = c; ui.pickQ = ''; ui.picker = { side, step: 'token' }; render(); return; }
+  if (e.target.closest('[data-pickclose]')) { ui.picker = null; ui.pickQ = ''; render(); return; }
   const pc = e.target.closest('[data-pickchain]');
   if (pc) { readRealForm(); ui.pickChain = pc.dataset.pickchain; render(); return; }
   const pa = e.target.closest('[data-pickasset]');
@@ -3118,7 +3150,7 @@ function showLogTab(tab) {
   if (tab === 'chat') { ui.chatUnread = 0; renderChat(); }
 }
 // keep what was typed in the real-swap form across redraws; a new destination changes the address field
-document.addEventListener('input', (e) => { if (e.target.id === 'pick-search') { ui.pickQ = e.target.value; const q = ui.pickQ.trim().toLowerCase(); let n = 0; document.querySelectorAll('.pk-item').forEach((b) => { const on = !q || b.dataset.q.includes(q); b.hidden = !on; if (on) n++; }); document.querySelectorAll('.pk-none').forEach((el) => { el.hidden = n > 0; }); return; } if (e.target.id === 'real-amount') { const u = document.querySelector('.sc-usd'); if (u) u.textContent = '≈ $' + ((Number(e.target.value) || 0) * Number(u.dataset.price || 0)).toFixed(2); } if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); if (e.target.dataset && (e.target.dataset.legamt !== undefined || e.target.dataset.legrec !== undefined)) { readRealForm(); const n = legSum(ui.real.legs || []); document.querySelectorAll('.leg-total').forEach((el) => { el.textContent = t('split.total', { n }); }); document.querySelectorAll('.split-sum').forEach((el) => { el.textContent = n; }); } });
+document.addEventListener('input', (e) => { if (e.target.id === 'pick-search') { ui.pickQ = e.target.value; const q = ui.pickQ.trim().toLowerCase(); let n = 0; document.querySelectorAll('.pk-item, .pv-token').forEach((b) => { const on = !q || b.dataset.q.includes(q); b.hidden = !on; if (on) n++; }); document.querySelectorAll('.pk-none').forEach((el) => { el.hidden = n > 0; }); return; } if (e.target.id === 'real-amount') { const u = document.querySelector('.sc-usd'); if (u) u.textContent = '≈ $' + ((Number(e.target.value) || 0) * Number(u.dataset.price || 0)).toFixed(2); } if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); if (e.target.dataset && (e.target.dataset.legamt !== undefined || e.target.dataset.legrec !== undefined)) { readRealForm(); const n = legSum(ui.real.legs || []); document.querySelectorAll('.leg-total').forEach((el) => { el.textContent = t('split.total', { n }); }); document.querySelectorAll('.split-sum').forEach((el) => { el.textContent = n; }); } });
 document.addEventListener('change', (e) => { if (e.target.dataset && e.target.dataset.legto !== undefined) { const i = Number(e.target.dataset.legto), before = ((ui.real.legs || [])[i] || {}).to; readRealForm(); const l = ui.real.legs[i]; if (legDst({ to: before })[1] !== legDst(l)[1]) l.recipient = ''; render(); return; } if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; render(); } if (e.target.id === 'real-from') { readRealForm(); const s0 = REAL_SRC[ui.real.from]; ui.real.refundTo = ''; ui.real.amount = s0 ? s0[4] : 0.5; render(); } });
 
 document.addEventListener('submit', async (e) => {

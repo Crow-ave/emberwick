@@ -870,3 +870,28 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .pk-price { font-size: 11px; color: #8a7a66; }
 .sc-usd { margin-top: -2px; }
 .wtile.manual { cursor: default; opacity: .85; border-style: dashed; }
+
+/* network + token: two clear buttons per side, and a full-column view to choose */
+.netrow { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.netbtn, .tokbtn { --c: #556; position: relative; display: flex; align-items: center; gap: 6px; padding: 14px 8px 5px; border-radius: 10px; border: 2px solid var(--c); background: color-mix(in srgb, var(--c) 8%, #fff); cursor: pointer; font: inherit; color: #222; text-align: left; min-width: 0; }
+.tokbtn { border-color: #e0742b; background: #fff3e6; }
+.netbtn:hover, .tokbtn:hover { filter: brightness(.97); }
+.netbtn b, .tokbtn b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.nb-lab { position: absolute; top: 2px; left: 9px; font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #8a7a66; }
+.nb-ic { width: 24px; height: 24px; border-radius: 50%; background: var(--c); color: #fff; font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.tokbtn .tc-coin { width: 24px; height: 24px; }
+.pickview { display: grid; gap: 6px; }
+.pv-head { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.pv-chains { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; max-height: 420px; overflow: auto; }
+.pv-chain { --c: #556; display: grid; grid-template-columns: 28px 1fr; grid-template-rows: auto auto; column-gap: 7px; align-items: center; padding: 7px 8px; border-radius: 10px; border: 2px solid color-mix(in srgb, var(--c) 55%, #fff); background: #fff; cursor: pointer; font: inherit; text-align: left; }
+.pv-chain .nb-ic { grid-row: 1 / 3; width: 28px; height: 28px; }
+.pv-chain b { font-size: 13px; }
+.pv-n { font-size: 10.5px; color: #8a7a66; }
+.pv-chain:hover, .pv-chain.on { background: color-mix(in srgb, var(--c) 12%, #fff); border-color: var(--c); }
+.pv-search { padding: 6px 9px; font-size: 13px; border-radius: 8px; }
+.pv-tokens { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 5px; max-height: 380px; overflow: auto; }
+.pv-token { display: grid; grid-template-columns: 26px 1fr; grid-template-rows: auto auto; column-gap: 6px; align-items: center; padding: 6px 8px; border-radius: 10px; border: 1.5px solid #ecd9bf; background: #fff; cursor: pointer; font: inherit; text-align: left; }
+.pv-token .tc-coin { grid-row: 1 / 3; width: 26px; height: 26px; }
+.pv-token b { font-size: 13px; }
+.pv-token:hover, .pv-token.on { border-color: #e0742b; background: #fff3e6; }
+.pv-token[hidden] { display: none; }
