@@ -709,7 +709,7 @@ function panelExchange() {
     // two ways over the bridge: a free quote (dry run) or a real swap on mainnet with your own wallet
     const realMode = ui.exMode === 'real';
     h += `<div class="modeswitch"><button class="${realMode ? '' : 'on'}" data-exmode="dry">${t('real.modeDry')}</button><button class="${realMode ? 'on' : ''}" data-exmode="real">⚡ ${t('real.modeReal')}</button></div>`;
-    if (realMode) h += realSwapBox() + COL + oracleBox() + reserveBox(true);
+    if (realMode) h += realSwapBox();
     // the live cross-chain quote comes first, with the bridge picture right under it
     const eq = ui.exQuote && ui.exQuote.ok ? ui.exQuote : null;
     if (!realMode) {
@@ -721,6 +721,7 @@ function panelExchange() {
     else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
     h += COL + oracleBox() + reserveBox(true);
     }
+    const extraAt = h.length; // in the real swap, prices and the council money fold away
     const pr = ui.exPrices;
     h += `<p class="sub2">${t('ex.pricesTitle')}</p>`;
     if (!pr) h += `<p class="muted small">${t('ex.loading')}</p>`;
@@ -728,6 +729,7 @@ function panelExchange() {
     else h += `<table>${pr.tokens.map((x) => `<tr><td><b>${esc(x.symbol)}</b> <span class="muted small">${esc(x.chain)}</span></td><td class="n">$${Number(x.price).toLocaleString(undefined, { maximumFractionDigits: x.price < 10 ? 3 : 0 })}</td></tr>`).join('')}</table><p class="muted small">${t('ex.pricesSource')}</p>`;
     h += `<p class="sub2">${t('ex.bridgeTitle')}</p><p class="small">${t('ex.bridgeHelp', { n: me ? Math.floor(me.coins) : 0 })}</p><button class="primary" data-act="open-near">${t('ex.openNear')}</button>`;
     h += `<p class="muted small">${t('ex.changeNote')}</p>`;
+    if (realMode) h = h.slice(0, extraAt) + `<details class="realextra"><summary>${t('real.extra')}</summary>${oracleBox()}${reserveBox(true)}${h.slice(extraAt)}</details>`;
   }
   // two columns side by side, so nothing needs scrolling on a normal screen
   const at = h.indexOf('<div class="tabs">'), endTabs = h.indexOf('</div>', at) + 6, body = h.slice(endTabs);
@@ -905,8 +907,9 @@ const REAL_DST = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['S
 const curSwap = () => (view.realSwaps || []).filter((x) => !(ui.realDismissed || []).includes(x.depositAddress))[0];
 function realSwapBox() {
   const me = view.player, sw = curSwap();
-  let h = `<p class="sub2">⚡ ${t('real.title')}</p><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p>`;
-  if (!me) return h + `<p class="muted">${t('toast.join')}</p>`;
+  // one short line on top; the long explanation and the warning fold away
+  let R = `<details class="realinfo"><summary>ⓘ <b>${t('real.infoShort')}</b></summary><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p></details>`;
+  if (!me) return R + COL_MARK + `<p class="muted">${t('toast.join')}</p>`;
   const f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
   const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
   const shown = active || (sw && sw.status === 'SUCCESS');
@@ -917,29 +920,50 @@ function realSwapBox() {
   const dst = dir === 'out' ? REAL_DST[shown ? sw.to : f.to] || REAL_DST.USDC : null;
   const left = dir === 'out' ? { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount } : { sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount };
   const right = dir === 'out' ? { sym: dst[0], chain: dst[1], amount: shown ? amt(sw.amountOut) : null } : { sym: 'NEAR', chain: 'near', amount: shown ? amt(sw.amountOut) : null };
-  if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) h += aiSwapBox();
-  h += bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
-  if (!shown) h += swapCard(f, dir);
+  // first column: the wallet (step 1), the picture, and the AI that can fill the card; second column: the card itself
+  if (!shown) R += walletTiles(left.chain, right.chain);
+  R += bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
+  if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) R += aiSwapBox();
+  let L = '';
+  if (!shown) L += swapCard(f, dir);
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
-    const inDir = sw.dir === 'in', srcName = sw.fromChain === 'base' ? 'Base' : 'Solana';
-    h += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
-    if (sw.status === 'PENDING_DEPOSIT') h += walletSendBox(sw) + `<p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
-      (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
-      `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div>` +
-      (sw.sentTx ? '' : ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
-        : `<button class="linkbtn realcancel-btn" data-realcancel="ask">✕ ${t('real.cancel')}</button>`);
-    h += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
-    if (bad) h += `<p class="closed small">${t('real.s.' + sw.status)}</p>`;
+    const inDir = sw.dir === 'in', srcName = sw.fromChain === 'base' ? 'Base' : 'Solana', srcChain = inDir ? sw.fromChain : 'near';
+    L += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
+    L += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
+    if (sw.status === 'PENDING_DEPOSIT') {
+      L += walletSendBox(sw);
+      // sending by hand: open by itself only when no wallet is connected for that chain
+      const manualOpen = !(ui.wallet || {})[srcChain] && !sw.sentTx;
+      L += `<details class="realmanual"${manualOpen ? ' open' : ''}><summary>${t('real.manual')}</summary><p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
+        (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
+        `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div></details>`;
+      L += sw.sentTx ? '' : ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
+        : `<button class="linkbtn realcancel-btn" data-realcancel="ask">✕ ${t('real.cancel')}</button>`;
+    }
+    if (bad) L += `<p class="closed small">${t('real.s.' + sw.status)}</p>`;
     const lk = (x, base) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : base ? `<a href="${base}${encodeURIComponent(x.hash)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : esc(x.hash.slice(0, 10));
-    if ((sw.origin || []).length) h += `<p class="small">${t('real.originTx')} ${sw.origin.map((x) => lk(x, inDir ? (sw.fromChain === 'sol' ? 'https://solscan.io/tx/' : 'https://basescan.org/tx/') : NEAR_MAIN + '/txns/')).join(' ')}</p>`;
-    if ((sw.dest || []).length) h += `<p class="small">${t('real.destTx')} ${sw.dest.map((x) => lk(x, sw.chain === 'near' ? NEAR_MAIN + '/txns/' : sw.chain === 'sol' ? 'https://solscan.io/tx/' : sw.chain === 'base' ? 'https://basescan.org/tx/' : null)).join(' ')}</p>`;
-    h += `<p class="muted small"><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(sw.depositAddress)}" target="_blank" rel="noopener">${t('real.explorer')} ↗</a></p></div>`;
-    if (sw.status === 'SUCCESS' || bad) h += `<button data-realnew="1">${t('real.again')}</button>`;
+    if ((sw.origin || []).length) L += `<p class="small">${t('real.originTx')} ${sw.origin.map((x) => lk(x, inDir ? (sw.fromChain === 'sol' ? 'https://solscan.io/tx/' : 'https://basescan.org/tx/') : NEAR_MAIN + '/txns/')).join(' ')}</p>`;
+    if ((sw.dest || []).length) L += `<p class="small">${t('real.destTx')} ${sw.dest.map((x) => lk(x, sw.chain === 'near' ? NEAR_MAIN + '/txns/' : sw.chain === 'sol' ? 'https://solscan.io/tx/' : sw.chain === 'base' ? 'https://basescan.org/tx/' : null)).join(' ')}</p>`;
+    L += `<p class="muted small"><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(sw.depositAddress)}" target="_blank" rel="noopener">${t('real.explorer')} ↗</a></p></div>`;
+    if (sw.status === 'SUCCESS' || bad) L += `<button class="primary" data-realnew="1">${t('real.again')}</button>`;
   }
   const done = view.realDone || [];
-  if (done.length) h += `<p class="sub2">${t('real.doneTitle')}</p><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul>`;
-  return h;
+  if (done.length) R += `<details class="realdone"><summary>${t('real.doneTitle')} (${done.length})</summary><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(amt(x.amountOut)))} ${x.dir === 'in' ? 'NEAR' : esc(REAL_DST[x.to] ? `${REAL_DST[x.to][0]} (${CH_NAME[REAL_DST[x.to][1]]})` : x.to)}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul></details>`;
+  return R + COL_MARK + L;
+}
+const COL_MARK = '<!--col-->';
+// step 1: big, coloured buttons for the wallets this swap needs
+const CHAIN_ICON = { near: 'Ⓝ', sol: '◎', base: 'B' };
+const WALLET_SHORT = { near: 'Meteor', sol: 'Phantom', base: 'MetaMask' };
+function walletTiles(srcChain, dstChain) {
+  const chains = [...new Set([srcChain, dstChain])], w = ui.wallet || {};
+  return `<div class="wtiles"><div class="step-h"><span class="stepn">1</span>${t('wallet.step')}</div><div class="wtiles-row">${chains.map((c) => {
+    const ch = chainOf(c), col = ch ? ch[1] : '#556', role = c === srcChain ? t('wallet.roleSend') : t('wallet.roleGet');
+    return w[c]
+      ? `<div class="wtile on" style="--c:${col}"><span class="wt-ic">${CHAIN_ICON[c]}</span><span class="wt-tx"><b title="${esc(w[c])}">✓ ${esc(w[c].length > 16 ? w[c].slice(0, 5) + '…' + w[c].slice(-4) : w[c])}</b><span>${esc(CH_NAME[c])} · ${role}</span></span>${c === 'near' ? `<button type="button" class="linkbtn wt-off" data-walletoff="near">${t('wallet.off')}</button>` : ''}</div>`
+      : `<button type="button" class="wtile" style="--c:${col}" data-wallet="${c}"><span class="wt-ic">${CHAIN_ICON[c]}</span><span class="wt-tx"><b>${t('wallet.connectShort', { chain: CH_NAME[c] })}</b><span>${WALLET_SHORT[c]} · ${role}</span></span></button>`;
+  }).join('')}</div></div>`;
 }
 // a swap card like an exchange: "you send" on top, "you get" below, a ⇄ button between them
 const CH_NAME = { near: 'NEAR', sol: 'Solana', base: 'Base' };
@@ -959,18 +983,17 @@ function swapCard(f, dir) {
     : Object.entries(REAL_SRC).map(([k, v]) => tokChip('from', k, v[0], v[1], f.from === k)).join('');
   const getChips = out ? Object.entries(REAL_DST).map(([k, v]) => tokChip('to', k, v[0], v[1], f.to === k)).join('')
     : tokChip(null, 'NEAR', 'NEAR', 'near', true);
-  return walletRow(src[1], dst[1]) + `<div class="swapcard">` +
-    `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div><div class="tokrow">${sendChips}</div>` +
-    `<div class="sc-amt"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${amt}"><b>${esc(src[0])}</b></div>` +
-    `<div class="sc-hint">${t('real.range', { min: src[2], max: src[3], sym: src[0] })}</div>` +
-    `<label class="sc-lab">${t('real.fromWallet', { chain: CH_NAME[src[1]] })}</label><input id="real-refund" class="${need.includes('wallet:' + src[1]) && !refundV ? 'need' : ''}" placeholder="${esc(ADDR_PH[src[1]])}" value="${esc(refundV)}">` +
-    `<div class="sc-hint">${t('real.fromHint')}</div></div>` +
+  return `<div class="step-h"><span class="stepn">2</span>${t('real.step2')}</div><div class="swapcard">` +
+    (out ? `<div class="sc-side"><div class="sc-head sc-headrow">${t('real.youSend')} ${sendChips}</div>` : `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div><div class="tokrow">${sendChips}</div>`) +
+    `<div class="sc-amt" title="${esc(t('real.range', { min: src[2], max: src[3], sym: src[0] }))}"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${amt}"><b>${esc(src[0])}</b><span class="sc-range">${src[2]}–${src[3]}</span></div>` +
+        `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('real.fromWallet', { chain: CH_NAME[src[1]] })} ⓘ</label><input id="real-refund" class="${need.includes('wallet:' + src[1]) && !refundV ? 'need' : ''}" placeholder="${esc(ADDR_PH[src[1]])}" value="${esc(refundV)}">` +
+    `</div>` +
     `<button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
-    `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div><div class="tokrow">${getChips}</div>` +
-    `<div class="sc-est">≈ ? <b>${esc(dst[0])}</b> <span class="muted small">${t('real.est')}</span></div>` +
-    `<label class="sc-lab">${t('real.toWallet', { chain: CH_NAME[dst[1]] })}</label><input id="real-recip" class="${need.includes('wallet:' + dst[1]) && !recipV ? 'need' : ''}" placeholder="${esc(ADDR_PH[dst[1]])}" value="${esc(recipV)}">` +
-    `<div class="sc-hint">${out ? t('real.toHint', { sym: dst[0], chain: CH_NAME[dst[1]] }) : t('real.toHintNear')}</div></div>` +
-    `<button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
+    (!out ? `<div class="sc-side"><div class="sc-head sc-headrow">${t('real.youGet')} ${getChips}</div>` : `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div><div class="tokrow">${getChips}</div>`) +
+    
+    `<label class="sc-lab" title="${esc(out ? t('real.toHint', { sym: dst[0], chain: CH_NAME[dst[1]] }) : t('real.toHintNear'))}">${t('real.toWallet', { chain: CH_NAME[dst[1]] })} ⓘ</label><input id="real-recip" class="${need.includes('wallet:' + dst[1]) && !recipV ? 'need' : ''}" placeholder="${esc(ADDR_PH[dst[1]])}" value="${esc(recipV)}">` +
+    `</div>` +
+    `</div><button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}><span class="stepn">3</span> ${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button>`;
 }
 // turn the swap round, keeping the token and the wallets that still fit
 function flipReal() {
@@ -1019,7 +1042,7 @@ function aiSwapBox() {
   const a = ui.aiSwap || {}, ex = t('aiswap.example');
   let h = `<div class="aiswap"><div class="aiswap-head">🤖 ${t('aiswap.title')} <span class="aiswap-tag">NEAR AI${view.ai && view.ai.tee ? ' · TEE' : ''}</span></div>` +
     `<div class="row"><input id="ai-swap" placeholder="${esc(ex)}" value="${esc(a.text || '')}" maxlength="300"><button class="primary" data-aiswap="1" ${a.busy ? 'disabled' : ''}>${t(a.busy ? 'ai.thinking' : 'aiswap.go')}</button></div>`;
-  if (!a.text && !a.reply) h += `<div class="aiswap-ex">${[ex, t('aiswap.example2'), t('aiswap.example3')].map((x) => `<button type="button" class="linkbtn" data-aiswapex="${esc(x)}">“${esc(x)}”</button>`).join('')}</div>`;
+  if (!a.text && !a.reply) h += `<div class="aiswap-ex">${[ex, t('aiswap.example3')].map((x) => `<button type="button" class="linkbtn" data-aiswapex="${esc(x)}">“${esc(x)}”</button>`).join('')}</div>`;
   const r = a.reply;
   if (r) {
     const f = r.form, src = f.dir === 'in' ? REAL_SRC[f.from] : ['wNEAR', 'near'], dst = f.dir === 'in' ? ['NEAR', 'near'] : REAL_DST[f.to];
