@@ -218,11 +218,14 @@ async function intentsPayQuote(fromKey, emwk) {
 // never holds a key or sends funds; the player sends wNEAR from their own wallet. If anything goes wrong,
 // 1Click refunds to the player's refund account.
 const REAL_TO = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SOL', 'sol'], 'USDC-BASE': ['USDC', 'base'] };
+// the other way: pay from another chain and get wNEAR on NEAR (limits in that token)
+const REAL_FROM = { 'USDC-SOL': ['USDC', 'sol', 0.5, 15], SOL: ['SOL', 'sol', 0.003, 0.1], 'USDC-BASE': ['USDC', 'base', 0.5, 15] };
 const REAL_MAX_NEAR = 5, REAL_MIN_NEAR = 0.1;
 const nearAcct = (a) => /^(([a-z\d]+[-_])*[a-z\d]+\.)+near$/.test(a) || /^[0-9a-f]{64}$/.test(a);
 const recipientOk = (chain, a) => chain === 'near' ? nearAcct(a) : chain === 'sol' ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) : chain === 'base' ? /^0x[0-9a-fA-F]{40}$/.test(a) : false;
 const realAsk = new Map(); // player -> times of recent real quotes
-async function realQuote(pid, toKey, amount, refundTo, recipient) {
+async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null) {
+  if (fromKey) return realQuoteIn(pid, fromKey, amount, refundTo, recipient);
   const def = REAL_TO[toKey];
   if (!def) return { ok: false, error: 'Unknown destination.', code: 'real.badTo' };
   amount = Number(amount);
@@ -255,6 +258,38 @@ async function realQuote(pid, toKey, amount, refundTo, recipient) {
     return { ok: true, swap };
   } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160), code: 'real.noQuote' }; }
 }
+async function realQuoteIn(pid, fromKey, amount, refundTo, recipient) {
+  const def = REAL_FROM[fromKey];
+  if (!def) return { ok: false, error: 'Unknown source.', code: 'real.badTo' };
+  amount = Number(amount);
+  if (!(amount >= def[2] && amount <= def[3])) return { ok: false, error: `Between ${def[2]} and ${def[3]} ${def[0]}.`, code: 'real.badAmountIn', min: def[2], max: def[3], sym: def[0] };
+  refundTo = String(refundTo || '').trim(); recipient = String(recipient || '').trim().toLowerCase();
+  if (!recipientOk(def[1], refundTo)) return { ok: false, error: 'The refund address must be on the chain you pay from.', code: 'real.badRefundIn' };
+  if (!nearAcct(recipient)) return { ok: false, error: 'wNEAR goes to a NEAR mainnet account (name.near).', code: 'real.badRecipient' };
+  const times = (realAsk.get(pid) || []).filter((x) => Date.now() - x < 3600000);
+  if (times.length >= 5) return { ok: false, error: 'Too many real quotes this hour.', code: 'real.limit' };
+  realAsk.set(pid, [...times, Date.now()]);
+  try {
+    await intentsTokens();
+    const all = tokenCache.all || [];
+    const from = all.find((t) => t.symbol === def[0] && t.blockchain === def[1]), to = all.find((t) => t.assetId === 'nep141:wrap.near');
+    if (!from || !to) return { ok: false, error: 'NEAR Intents does not list that asset right now.', code: 'real.badTo' };
+    const units = (BigInt(Math.round(amount * 1e6)) * 10n ** BigInt(from.decimals)) / 1000000n;
+    const q = await getJson(`${ONECLICK}/quote`, { method: 'POST', body: JSON.stringify({
+      dry: false, swapType: 'EXACT_INPUT', slippageTolerance: 100,
+      originAsset: from.assetId, depositType: 'ORIGIN_CHAIN', destinationAsset: to.assetId, amount: units.toString(),
+      refundTo, refundType: 'ORIGIN_CHAIN', recipient, recipientType: 'DESTINATION_CHAIN',
+      deadline: new Date(Date.now() + 30 * 60000).toISOString(),
+    }) });
+    const qq = q.quote || {};
+    if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
+    const swap = { id: qq.depositAddress, player: pid, dir: 'in', from: fromKey, fromSym: def[0], fromChain: def[1], to: 'wNEAR', chain: 'near', amountIn: amount, amountOut: qq.amountOutFormatted || qq.amountOut, usdOut: qq.amountOutUsd, usdIn: qq.amountInUsd,
+      depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
+    state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
+    save();
+    return { ok: true, swap };
+  } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 160), code: 'real.noQuote' }; }
+}
 async function realStatus(addr) {
   const swap = (state.realSwaps || []).find((x) => x.depositAddress === addr);
   if (!swap) return { ok: false, error: 'unknown swap' };
@@ -269,9 +304,10 @@ async function realStatus(addr) {
       swap.logged = true;
       const p = state.players[swap.player], who = p ? p.name : 'A villager';
       const tx = (swap.dest[0] || swap.origin[0] || {}).hash || '';
-      addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${swap.amountIn} NEAR -> ${swap.amountOut} ${swap.to}.`, 'good', 'log.realSwap', { name: who, a: swap.amountIn, b: swap.amountOut, to: swap.to });
+      const fromTxt = swap.dir === 'in' ? `${swap.amountIn} ${swap.fromSym} (${swap.fromChain})` : `${swap.amountIn} NEAR`, toTxt = swap.dir === 'in' ? `${swap.amountOut} NEAR` : `${swap.amountOut} ${swap.to}`;
+      addLog(state, `${who} made a real cross-chain swap with NEAR Intents: ${fromTxt} -> ${toTxt}.`, 'good', 'log.realSwap2', { name: who, a: fromTxt, b: toTxt });
       // a record of the mainnet swap in the village's books on testnet (0.01 EMWK memo)
-      transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${swap.amountIn} NEAR -> ${swap.amountOut} ${swap.to}, tx ${tx.slice(0, 64)}` });
+      transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: real NEAR Intents swap on mainnet, ${fromTxt} -> ${toTxt}, tx ${tx.slice(0, 64)}` });
       broadcast();
     }
     save();
@@ -411,7 +447,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/intents/real') {
     const body = await readBody(req);
     if (!body.player || !state.players[body.player]) return sendJson(res, 400, { ok: false, error: 'join first' });
-    const r = await realQuote(body.player, body.to, body.amount, body.refundTo, body.recipient);
+    const r = await realQuote(body.player, body.to, body.amount, body.refundTo, body.recipient, body.dir === 'in' ? body.from : null);
     return sendJson(res, r.ok ? 200 : 400, r);
   }
   if (url.pathname === '/api/intents/real/status') {

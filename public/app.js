@@ -897,43 +897,64 @@ async function openMoney(acct) {
 // ---------- a REAL NEAR Intents swap on mainnet (small amounts, the player's own wallet) ----------
 const REAL_STEPS = ['PENDING_DEPOSIT', 'KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'];
 const NEAR_MAIN = 'https://nearblocks.io';
+const REAL_SRC = { 'USDC-SOL': ['USDC', 'sol', 0.5, 15, 0.5], SOL: ['SOL', 'sol', 0.003, 0.1, 0.005], 'USDC-BASE': ['USDC', 'base', 0.5, 15, 0.5] };
+const REAL_DST = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SOL', 'sol'], 'USDC-BASE': ['USDC', 'base'] };
 function realSwapBox() {
   const me = view.player, sw = (view.realSwaps || [])[0];
   let h = `<p class="sub2">⚡ ${t('real.title')}</p><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p>`;
   if (!me) return h + `<p class="muted">${t('toast.join')}</p>`;
-  const f = ui.real || { to: 'USDC', amount: 0.3, refundTo: '', recipient: '' };
+  const f = ui.real || { dir: 'out', to: 'USDC', from: 'USDC-SOL', amount: 0.3, refundTo: '', recipient: '' };
   const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
-  const dest = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SOL', 'sol'], 'USDC-BASE': ['USDC', 'base'] }[active || (sw && sw.status === 'SUCCESS') ? sw.to : f.to] || ['USDC', 'near'];
+  const shown = active || (sw && sw.status === 'SUCCESS');
+  const dir = shown ? sw.dir || 'out' : f.dir || 'out';
+  // which way: from NEAR to another chain, or from another chain to NEAR (the picture turns round)
+  if (!active) h += `<div class="modeswitch small2"><button class="${dir === 'out' ? 'on' : ''}" data-realdir="out">Ⓝ NEAR → ${t('real.otherChain')}</button><button class="${dir === 'in' ? 'on' : ''}" data-realdir="in">${t('real.otherChain')} → Ⓝ NEAR</button></div>`;
   const moving = !!(sw && ['KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'].includes(sw.status));
-  h += bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: sw && (active || sw.status === 'SUCCESS') ? sw.amountIn : f.amount }, { sym: dest[0], chain: dest[1], amount: sw && (active || sw.status === 'SUCCESS') ? sw.amountOut : null }, moving, 'real');
-  if (!active) {
+  if (dir === 'out') {
+    const d = REAL_DST[shown ? sw.to : f.to] || REAL_DST.USDC;
+    h += bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountIn : f.amount }, { sym: d[0], chain: d[1], amount: shown ? sw.amountOut : null }, moving, 'real');
+  } else {
+    const src = REAL_SRC[shown ? sw.from : f.from] || REAL_SRC['USDC-SOL'];
+    h += bridgeSvg({ sym: src[0], chain: src[1], amount: shown ? sw.amountIn : f.amount }, { sym: 'wNEAR', chain: 'near', amount: shown ? sw.amountOut : null }, moving, 'real');
+  }
+  if (!active && dir === 'out') {
     h += `<div class="realform"><label>${t('real.amount')}</label><div class="row"><input id="real-amount" type="number" min="0.1" max="5" step="0.1" value="${f.amount}"> <b>wNEAR</b></div>` +
       `<label>${t('real.to')}</label><select id="real-to">${[['USDC', 'USDC · NEAR'], ['USDC-SOL', 'USDC · Solana'], ['SOL', 'SOL · Solana'], ['USDC-BASE', 'USDC · Base']].map(([k, l]) => `<option value="${k}"${f.to === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` +
       `<label>${t('real.refund')}</label><input id="real-refund" placeholder="yourname.near" value="${esc(f.refundTo)}">` +
       `<label>${t(f.to === 'USDC' ? 'real.recipNear' : f.to === 'USDC-BASE' ? 'real.recipBase' : 'real.recipSol')}</label><input id="real-recip" placeholder="${f.to === 'USDC' ? 'yourname.near' : f.to === 'USDC-BASE' ? '0x…' : 'Solana address'}" value="${esc(f.recipient)}">` +
       `<button class="primary" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
   }
+  if (!active && dir === 'in') {
+    const src = REAL_SRC[f.from] || REAL_SRC['USDC-SOL'], chainName = src[1] === 'sol' ? 'Solana' : 'Base';
+    h += `<div class="realform"><label>${t('real.payWith')}</label><select id="real-from">${[['USDC-SOL', 'USDC · Solana'], ['SOL', 'SOL · Solana'], ['USDC-BASE', 'USDC · Base']].map(([k, l]) => `<option value="${k}"${f.from === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` +
+      `<label>${t('real.amountIn', { sym: src[0], min: src[2], max: src[3] })}</label><div class="row"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${f.amount >= src[2] && f.amount <= src[3] ? f.amount : src[4]}"> <b>${src[0]}</b></div>` +
+      `<label>${t('real.refundIn', { chain: chainName })}</label><input id="real-refund" placeholder="${src[1] === 'base' ? '0x…' : 'Solana address'}" value="${esc(f.refundTo)}">` +
+      `<label>${t('real.recipIn')}</label><input id="real-recip" placeholder="yourname.near" value="${esc(f.recipient)}">` +
+      `<button class="primary" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
+  }
   if (sw) {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
-    h += `<div class="realswap"><p class="small"><b>${t('real.quote', { a: sw.amountIn, b: sw.amountOut, to: sw.to.replace('-', ' · ') })}</b>${sw.usdOut ? ` (≈ $${sw.usdOut})` : ''}</p>`;
-    if (sw.status === 'PENDING_DEPOSIT') h += `<p class="small">${t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
-      (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t('real.how')}</p>` +
+    const inDir = sw.dir === 'in', srcName = sw.fromChain === 'base' ? 'Base' : 'Solana';
+    h += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: sw.amountOut }) : t('real.quote', { a: sw.amountIn, b: sw.amountOut, to: sw.to.replace('-', ' · ') })}</b>${sw.usdOut ? ` (≈ $${sw.usdOut})` : ''}</p>`;
+    if (sw.status === 'PENDING_DEPOSIT') h += `<p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
+      (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
       `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div>`;
     h += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (bad) h += `<p class="closed small">${t('real.s.' + sw.status)}</p>`;
     const lk = (x, base) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : base ? `<a href="${base}${encodeURIComponent(x.hash)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : esc(x.hash.slice(0, 10));
-    if ((sw.origin || []).length) h += `<p class="small">${t('real.originTx')} ${sw.origin.map((x) => lk(x, NEAR_MAIN + '/txns/')).join(' ')}</p>`;
-    if ((sw.dest || []).length) h += `<p class="small">${t('real.destTx')} ${sw.dest.map((x) => lk(x, sw.chain === 'near' ? NEAR_MAIN + '/txns/' : null)).join(' ')}</p>`;
+    if ((sw.origin || []).length) h += `<p class="small">${t('real.originTx')} ${sw.origin.map((x) => lk(x, inDir ? (sw.fromChain === 'sol' ? 'https://solscan.io/tx/' : 'https://basescan.org/tx/') : NEAR_MAIN + '/txns/')).join(' ')}</p>`;
+    if ((sw.dest || []).length) h += `<p class="small">${t('real.destTx')} ${sw.dest.map((x) => lk(x, sw.chain === 'near' ? NEAR_MAIN + '/txns/' : sw.chain === 'sol' ? 'https://solscan.io/tx/' : sw.chain === 'base' ? 'https://basescan.org/tx/' : null)).join(' ')}</p>`;
     h += `<p class="muted small"><a href="https://explorer.near-intents.org/transactions/${encodeURIComponent(sw.depositAddress)}" target="_blank" rel="noopener">${t('real.explorer')} ↗</a></p></div>`;
     if (sw.status === 'SUCCESS' || bad) h += `<button data-realnew="1">${t('real.again')}</button>`;
   }
   const done = view.realDone || [];
-  if (done.length) h += `<p class="sub2">${t('real.doneTitle')}</p><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} NEAR → ${esc(String(x.amountOut))} ${x.to}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul>`;
+  if (done.length) h += `<p class="sub2">${t('real.doneTitle')}</p><ul class="decided">${done.map((x) => `<li>${esc(x.name)} · ${x.amountIn} ${esc(x.fromSym || 'NEAR')} → ${esc(String(x.amountOut))} ${x.to}${x.dest[0] && x.dest[0].url ? ` · <a href="${esc(x.dest[0].url)}" target="_blank" rel="noopener">tx ↗</a>` : ''}</li>`).join('')}</ul>`;
   return h;
 }
 function readRealForm() {
   const g = (id) => { const el = $(id); return el ? el.value : ''; };
-  ui.real = { to: g('real-to') || 'USDC', amount: Number(g('real-amount')) || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim() };
+  const prev = ui.real || {};
+  ui.real = { dir: prev.dir || 'out', to: g('real-to') || prev.to || 'USDC', from: g('real-from') || prev.from || 'USDC-SOL', amount: Number(g('real-amount')) || prev.amount || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim() };
 }
 async function realQuoteNow() {
   readRealForm();
@@ -1375,15 +1396,19 @@ const ASSET_COLOR = { BTC: '#f2a33a', ETH: '#7b8cde', SOL: '#9b6bf2', USDC: '#3a
 // each chain gets its own colour and short name, drawn as the bank of the river and a badge on the coin
 const CHAINS = { near: ['NEAR', '#1f9d76'], sol: ['Solana', '#8a4de8'], solana: ['Solana', '#8a4de8'], base: ['Base', '#1652f0'], eth: ['Ethereum', '#627eea'], ethereum: ['Ethereum', '#627eea'], btc: ['Bitcoin', '#f7931a'], bitcoin: ['Bitcoin', '#f7931a'] };
 const chainOf = (c) => CHAINS[String(c || '').toLowerCase()] || null;
+// a token is drawn as a shiny coin with its currency sign and ticker; the chain it lives on is a big pill under it
+const GLYPH = { BTC: '₿', ETH: 'Ξ', USDC: '$', SOL: '◎', NEAR: 'Ⓝ', wNEAR: 'Ⓝ' };
 function bridgeSvg(from, to, live, mode) {
-  const node = (x, a) => {
+  const uid = 'b' + Math.random().toString(36).slice(2, 7);
+  const grad = (id, c) => `<radialGradient id="${uid}${id}" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".35" stop-color="${c}"/><stop offset="1" stop-color="${c}" stop-opacity=".92"/></radialGradient>`;
+  const node = (x, a, gid) => {
     const c = ASSET_COLOR[a.sym] || '#556', ch = chainOf(a.chain);
-    const fs = a.sym.length > 4 ? 11 : 14;
-    return `<g><circle cx="${x}" cy="74" r="31" fill="#fff" opacity=".9"/><circle cx="${x}" cy="74" r="28" fill="${c}"/><circle cx="${x}" cy="74" r="23" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2"/>` +
-      `<text x="${x}" y="${74 + fs / 2.8}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#fff">${esc(a.sym)}</text>` +
-      (ch ? `<circle cx="${x + 21}" cy="96" r="10" fill="${ch[1]}" stroke="#fff" stroke-width="2"/><text x="${x + 21}" y="100" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${ch[0][0]}</text>` +
-        `<rect x="${x - 34}" y="112" width="68" height="18" rx="9" fill="${ch[1]}"/><text x="${x}" y="125" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${esc(ch[0])}</text>` : '') +
-      (a.amount != null ? `<text x="${x}" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="${live ? '#2f7a3a' : '#7a6b58'}">${esc(String(a.amount))}</text>` : '') + `</g>`;
+    return `<g><ellipse cx="${x}" cy="108" rx="30" ry="5" fill="#000" opacity=".12"/>` +
+      `<circle cx="${x}" cy="70" r="34" fill="#fff"/><circle cx="${x}" cy="70" r="31" fill="url(#${uid}${gid})" stroke="${c}" stroke-width="1"/><circle cx="${x}" cy="70" r="25" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.5" stroke-dasharray="2 3"/>` +
+      `<text x="${x}" y="72" text-anchor="middle" font-size="26" font-weight="800" fill="#fff" font-family="system-ui, sans-serif">${GLYPH[a.sym] || esc(a.sym[0])}</text>` +
+      `<text x="${x}" y="91" text-anchor="middle" font-size="10" font-weight="800" fill="#fff" letter-spacing=".5">${esc(a.sym)}</text>` +
+      (ch ? `<rect x="${x - 40}" y="114" width="80" height="22" rx="11" fill="${ch[1]}" stroke="#fff" stroke-width="2"/><text x="${x}" y="129" text-anchor="middle" font-size="12.5" font-weight="800" fill="#fff">${esc(ch[0])}</text>` : '') +
+      (a.amount != null ? `<rect x="${x - 34}" y="14" width="68" height="20" rx="10" fill="${live ? '#e6f4e9' : '#f3ece1'}"/><text x="${x}" y="28" text-anchor="middle" font-size="12.5" font-weight="800" fill="${live ? '#2f7a3a' : '#7a6b58'}">${esc(String(a.amount))} ${esc(a.sym)}</text>` : '') + `</g>`;
   };
   const deck = (x1, x2) => `M${x1} 74 Q${(x1 + x2) / 2} 40 ${x2} 74`;
   const arch = (x1, x2) => `<path d="${deck(x1, x2)}" fill="none" stroke="#b98a5a" stroke-width="5" stroke-linecap="round" ${live ? '' : 'stroke-dasharray="6 6" opacity=".6"'}/>` +
@@ -1391,7 +1416,7 @@ function bridgeSvg(from, to, live, mode) {
   // the coins that cross carry the token's colour and first letter
   const coins = (x1, x2, color, delay, sym) => live ? [0, 0.8, 1.6].map((b) => `<g opacity="0"><set attributeName="opacity" to="1" begin="${b + delay}s"/><animateMotion dur="2.4s" begin="${b + delay}s" repeatCount="indefinite" path="${deck(x1, x2)}"/><circle r="7" fill="${color}" stroke="#fff" stroke-width="1.5"/><text y="3" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">${esc((sym || '?')[0] === 'w' ? 'N' : (sym || '?')[0])}</text></g>`).join('') : '';
   const fc = ASSET_COLOR[from.sym] || '#556', tc = ASSET_COLOR[to.sym] || '#556';
-  let svg = `<svg class="bridge" viewBox="0 0 440 136" role="img" aria-label="${esc(t('bridge.aria', { a: from.sym, b: to.sym }))}">` +
+  let svg = `<svg class="bridge" viewBox="0 0 440 142" role="img" aria-label="${esc(t('bridge.aria', { a: from.sym, b: to.sym }))}"><defs>${grad('f', ASSET_COLOR[from.sym] || '#556')}${grad('t', ASSET_COLOR[to.sym] || '#556')}</defs>` +
     `<rect x="0" y="96" width="440" height="44" rx="10" fill="#cfe3ee"/><path d="M0 104 q20 -6 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0" stroke="#a9cbe0" stroke-width="2" fill="none"/>` +
     // the two banks, coloured by chain
     (chainOf(from.chain) ? `<path d="M0 96 L0 60 Q40 50 118 62 L118 96 Z" fill="${chainOf(from.chain)[1]}" opacity=".16"/>` : '') +
@@ -1400,7 +1425,7 @@ function bridgeSvg(from, to, live, mode) {
     `<g><rect x="168" y="48" width="104" height="52" rx="12" fill="#fff8ee" stroke="#e0742b" stroke-width="2"/><text x="220" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="#b4531c">NEAR Intents</text>` +
     `<text x="220" y="88" text-anchor="middle" font-size="10" fill="#7a6b58">${esc(t('bridge.solvers'))}</text>` +
     [196, 220, 244].map((x, i) => `<circle cx="${x}" cy="56" r="3" fill="#e0742b">${live ? `<animate attributeName="opacity" values="1;.2;1" dur="1.2s" begin="${i * 0.3}s" repeatCount="indefinite"/>` : ''}</circle>`).join('') + `</g>` +
-    node(55, from) + node(385, to);
+    node(55, from, 'f') + node(385, to, 't');
   if (mode === 'plot' || mode === 'house') svg += `<g transform="translate(408 40)"><polygon points="0,10 12,0 24,10" fill="#c0443a"/><rect x="3" y="10" width="18" height="13" fill="#f3e3c4"/></g>`;
   svg += `</svg>`;
   if (mode === 'real') return `<div class="bridgebox">${svg}</div>`;
@@ -2237,6 +2262,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  const rd = e.target.closest('[data-realdir]');
+  if (rd) { readRealForm(); ui.real = { ...ui.real, dir: rd.dataset.realdir, refundTo: '', recipient: '', amount: rd.dataset.realdir === 'in' ? 0.5 : 0.3 }; render(); return; }
   const em = e.target.closest('[data-exmode]');
   if (em) { ui.exMode = em.dataset.exmode; const sw0 = (view.realSwaps || [])[0]; if (ui.exMode === 'real' && sw0 && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw0.status)) pollReal(sw0.depositAddress); render(); return; }
   if (e.target.closest('[data-realquote]')) { realQuoteNow(); return; }
@@ -2537,7 +2564,7 @@ function showLogTab(tab) {
 }
 // keep what was typed in the real-swap form across redraws; a new destination changes the address field
 document.addEventListener('input', (e) => { if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); });
-document.addEventListener('change', (e) => { if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; render(); } });
+document.addEventListener('change', (e) => { if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; render(); } if (e.target.id === 'real-from') { readRealForm(); const s0 = REAL_SRC[ui.real.from]; ui.real.refundTo = ''; ui.real.amount = s0 ? s0[4] : 0.5; render(); } });
 
 document.addEventListener('submit', async (e) => {
   if (e.target.classList && e.target.classList.contains('ai-ask')) {

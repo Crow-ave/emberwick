@@ -104,7 +104,7 @@ All pricing rules are in one readable file, **`server/pricing.js`**. Every price
 - **Renting out a home:** an owner sets a daily rent and another player moves in. Every morning the rent goes from the tenant straight to the owner, player to player, on NEAR.
 - **Neighbourhoods:** when land runs out, the council votes to open Ember Lane (12 plots, 78–108 EMWK); the treasury pays the carpenter and the woodcutter for roads and clearing. After that, Villa hill (6 big plots, 312–360 EMWK, level 5 needed, a villa takes 14 lumber). The AI villagers propose a new neighbourhood themselves when free plots run low.
 
-**A real NEAR Intents swap (mainnet):** NEAR Intents has no testnet, so the Exchange's NEAR bridge tab has a "Real swap (mainnet)" mode that does a real one with small amounts. The game asks 1Click for a real quote (`dry: false`) and shows the deposit address. You send wNEAR from your own NEAR wallet, and the game follows the swap through deposit seen, processing and delivered, with both transaction links. A finished swap goes into village news and is recorded on NEAR testnet in a memo with the mainnet transaction hash. The game never holds keys or funds. Limits: 0.1–5 NEAR, a few quotes per player per hour, and a refund to your own account if the swap does not complete.
+**A real NEAR Intents swap (mainnet):** NEAR Intents has no testnet, so the Exchange's NEAR bridge tab has a "Real swap (mainnet)" mode that does a real one with small amounts. The game asks 1Click for a real quote (`dry: false`) and shows the deposit address. You send wNEAR from your own NEAR wallet, and the game follows the swap through deposit seen, processing and delivered, with both transaction links. A finished swap goes into village news and is recorded on NEAR testnet in a memo with the mainnet transaction hash. It works both ways: NEAR → another chain (send wNEAR, get e.g. USDC or SOL), or another chain → NEAR (pay USDC or SOL from Solana or Base and receive wNEAR on your NEAR account). The bridge picture swaps sides with the direction. The game never holds keys or funds. Limits: 0.1–5 NEAR out, 0.5–15 USDC or 0.003–0.1 SOL in, a few quotes per player per hour, and a refund to your own account if the swap does not complete.
 
 **Newcomer families:** if no player buys, each morning the village treasury buys one deed priced at most 10% over its fair value (land + house + bed) for a family moving in, and sells the plot again at that value. Land always has a buyer at a fair price.
 
@@ -165,7 +165,7 @@ EMWK is a real NEP-141 token on NEAR testnet, and the game ledger is mirrored on
 
 - Items as NEP-245 tokens
 - Haggling with the AI craftsmen
-- Real swaps on the change desk (mainnet)
+- Real swaps on the change desk (mainnet), both directions
 
 ## Run it
 

@@ -705,3 +705,4 @@ table.mh td.in { color: #2d6a2d; font-weight: 600; } table.mh td.out { color: #a
 .modeswitch button { border: 0; border-radius: 0; background: #fff8ee; color: #b4531c; padding: 5px 12px; font-size: 12.5px; cursor: pointer; }
 .modeswitch button.on { background: #e0742b; color: #fff; font-weight: 600; }
 #view.card-on .nearbar, #view.card-wide .nearbar { display: none !important; }
+.modeswitch.small2 button { font-size: 12px; padding: 4px 10px; }
