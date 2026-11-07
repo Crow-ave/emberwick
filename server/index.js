@@ -228,6 +228,27 @@ const shortUsd = (v) => { const n = Number(v); return Number.isFinite(n) ? Numbe
 const nearAcct = (a) => /^(([a-z\d]+[-_])*[a-z\d]+\.)+near$/.test(a) || /^[0-9a-f]{64}$/.test(a);
 const recipientOk = (chain, a) => chain === 'near' ? nearAcct(a) : chain === 'sol' ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) : chain === 'base' ? /^0x[0-9a-fA-F]{40}$/.test(a) : false;
 const realAsk = new Map(); // player -> times of recent real quotes
+// an independent price check: what you send and what arrives, both at market price (CoinGecko), so the
+// player sees the full cost of the swap (fees and spread together), not only what the bridge says
+const MARKET = process.env.EMBERWICK_PRICES || 'https://api.coingecko.com/api/v3/simple/price?ids=near,solana,usd-coin&vs_currencies=usd';
+const GECKO_ID = { NEAR: 'near', wNEAR: 'near', SOL: 'solana', USDC: 'usd-coin' };
+let marketCache = { at: 0, p: null };
+async function marketPrices() {
+  if (marketCache.p && Date.now() - marketCache.at < 60000) return marketCache.p;
+  try {
+    const j = await getJson(MARKET);
+    const p = {}; for (const [sym, id] of Object.entries(GECKO_ID)) if (j && j[id] && j[id].usd) p[sym] = j[id].usd;
+    if (Object.keys(p).length) marketCache = { at: Date.now(), p };
+  } catch { /* the check is extra: the swap works without it */ }
+  return marketCache.p;
+}
+async function marketCheck(symIn, amountIn, symOut, amountOut) {
+  const p = await marketPrices();
+  if (!p || !p[symIn] || !p[symOut]) return null;
+  const vin = Number(amountIn) * p[symIn], vout = Number(amountOut) * p[symOut];
+  if (!(vin > 0) || !(vout >= 0)) return null;
+  return { in: Math.round(vin * 100) / 100, out: Math.round(vout * 100) / 100, cost: Math.round((vin - vout) * 100) / 100, pct: Math.round(((vin - vout) / vin) * 1000) / 10, source: 'CoinGecko' };
+}
 async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null, opts = {}) {
   if (fromKey) return realQuoteIn(pid, fromKey, amount, refundTo, recipient);
   const def = REAL_TO[toKey];
@@ -259,6 +280,7 @@ async function realQuote(pid, toKey, amount, refundTo, recipient, fromKey = null
     if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
     const swap = { id: qq.depositAddress, player: pid, to: toKey, chain: def[1], amountIn: amount, amountOut: shortAmt(qq.amountOutFormatted || qq.amountOut), usdOut: shortUsd(qq.amountOutUsd), usdIn: shortUsd(qq.amountInUsd),
       depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
+    swap.mkt = await marketCheck('NEAR', amount, def[0], swap.amountOut);
     state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
     save();
     return { ok: true, swap };
@@ -291,6 +313,7 @@ async function realQuoteIn(pid, fromKey, amount, refundTo, recipient) {
     if (!qq.depositAddress) return { ok: false, error: 'No deposit address in the quote.', code: 'real.noQuote' };
     const swap = { id: qq.depositAddress, player: pid, dir: 'in', from: fromKey, fromSym: def[0], fromChain: def[1], to: 'NEAR', chain: 'near', amountIn: amount, amountOut: shortAmt(qq.amountOutFormatted || qq.amountOut), usdOut: shortUsd(qq.amountOutUsd), usdIn: shortUsd(qq.amountInUsd),
       depositAddress: qq.depositAddress, depositMemo: qq.depositMemo || null, deadline: qq.deadline || null, timeEstimate: qq.timeEstimate || null, recipient, refundTo, status: 'PENDING_DEPOSIT', at: Date.now() };
+    swap.mkt = await marketCheck(def[0], amount, 'NEAR', swap.amountOut);
     state.realSwaps = [swap, ...(state.realSwaps || [])].slice(0, 40);
     save();
     return { ok: true, swap };

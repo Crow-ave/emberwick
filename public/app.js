@@ -934,6 +934,7 @@ function realSwapBox() {
     L += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
     L += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (sw.status === 'PENDING_DEPOSIT') {
+      R += feeBox([sw]);
       L += walletSendBox(sw);
       // sending by hand: open by itself only when no wallet is connected for that chain
       const manualOpen = !(ui.wallet || {})[srcChain] && !sw.sentTx;
@@ -981,6 +982,7 @@ function splitView(group, R) {
   let L = `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p><ol class="legst">` +
     group.map((x) => `<li class="st-${x.status}"><span class="leg-n">${x.leg || ''}</span><span class="legst-tx">${x.amountIn} wNEAR → <b>${esc(String(amt(x.amountOut)))} ${esc(DST_LABEL(x.to))}</b><br><span class="muted small" title="${esc(x.recipient)}">${esc(shortAddr(x.recipient))}</span> ${(x.dest || []).map(lk).join(' ')}</span><span class="legst-st" title="${esc(t('real.s.' + x.status))}">${SPLIT_ST[x.status] || '·'} ${t('split.st.' + x.status)}</span></li>`).join('') + `</ol>`;
   if (pending && !sent) {
+    R += feeBox(group);
     const w = (ui.wallet || {}).near;
     L += w ? `<div class="walletsend"><button class="primary big" data-walletsend="1" ${ui.walletBusy ? 'disabled' : ''}>${ui.walletBusy ? t('wallet.sending') : '👛 ' + t('split.send', { n: group.length })}</button><p class="small">${t('split.sendNote', { total, n: group.length })}</p></div>`
       : `<div class="walletsend"><button class="primary" data-wallet="near">🔗 ${t('wallet.needConnect', { w: WALLET_NAME.near })}</button></div>`;
@@ -991,6 +993,26 @@ function splitView(group, R) {
   L += `</div>`;
   if (ended) L += `<button class="primary" data-realnew="1">${t('real.again')}</button>`;
   return R + COL_MARK + L;
+}
+// ---------- what the swap really costs, shown before the player approves ----------
+const money = (v) => (v == null || !Number.isFinite(Number(v)) ? '?' : '$' + Number(v).toFixed(2));
+function feeBox(list) {
+  if (!list.length) return '';
+  const x0 = list[0], inDir = x0.dir === 'in', sym = inDir ? x0.fromSym : 'NEAR', chain = inDir ? x0.fromChain : 'near';
+  const add = (k) => list.reduce((a, x) => a + (Number(x[k]) || 0), 0);
+  const amountIn = Math.round(add('amountIn') * 1e6) / 1e6, usdIn = add('usdIn'), usdOut = add('usdOut');
+  const mk = list.every((x) => x.mkt) ? { in: list.reduce((a, x) => a + x.mkt.in, 0), out: list.reduce((a, x) => a + x.mkt.out, 0) } : null;
+  const vin = mk ? mk.in : usdIn, vout = mk ? mk.out : usdOut, cost = vin - vout, pct = vin > 0 ? (cost / vin) * 100 : null;
+  const level = pct == null ? '' : pct < 0 ? 'good' : pct < 1 ? 'good' : pct < 3 ? 'mid' : 'high';
+  const outTxt = list.length === 1 ? `${esc(String(amt(x0.amountOut)))} ${esc(inDir ? 'NEAR' : DST_LABEL(x0.to))}` : t('fee.parts', { n: list.length });
+  const gas = t('fee.gas.' + (chain === 'sol' ? 'sol' : chain === 'base' ? 'base' : 'near'));
+  const time = Math.max(...list.map((x) => Number(x.timeEstimate) || 0));
+  return `<div class="feebox"><div class="fee-h">🧾 ${t('fee.title')}</div><table>` +
+    `<tr><td>${t('fee.send')}</td><td class="n"><b>${amountIn} ${esc(sym)}</b> <span class="muted">≈ ${money(vin)}</span></td></tr>` +
+    `<tr><td>${t('fee.arrives')}</td><td class="n"><b>${outTxt}</b> <span class="muted">≈ ${money(vout)}</span></td></tr>` +
+    `<tr class="fee-cost ${level}"><td>${t(cost < 0 ? 'fee.gain' : 'fee.cost')}</td><td class="n"><b>${money(Math.abs(cost))}</b>${pct != null ? ` (%${Math.abs(pct).toFixed(1)})` : ''}</td></tr></table>` +
+    `<p class="small muted">${mk ? t('fee.costNoteMarket') : t('fee.costNoteIntents')}${mk ? ` ${t('fee.intentsSays', { a: money(usdIn), b: money(usdOut) })}` : ''}</p>` +
+    `<p class="small muted">⛽ ${gas}${time ? ` · ⏱ ${t('fee.time', { n: time })}` : ''}</p></div>`;
 }
 const COL_MARK = '<!--col-->';
 // step 1: big, coloured buttons for the wallets this swap needs
