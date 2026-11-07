@@ -952,6 +952,7 @@ function realSwapBox() {
     const k = REAL_STEPS.indexOf(sw.status), bad = ['REFUNDED', 'FAILED', 'INCOMPLETE_DEPOSIT'].includes(sw.status);
     const anyS = sw.dir === 'any', inDir = sw.dir === 'in', srcName = anyS ? netName(sw.fromChain) : sw.fromChain === 'base' ? 'Base' : 'Solana', srcChain = anyS || inDir ? sw.fromChain : 'near';
     L += `<div class="realswap"><p class="small"><b>${anyS ? t('any.quote', { a: sw.amountIn, fs: esc(sw.fromSym), fc: esc(netName(sw.fromChain)), b: amt(sw.amountOut), ts: esc(sw.toSym), tc: esc(netName(sw.chain)) }) : inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
+    if (sw.status === 'PENDING_DEPOSIT' && !sw.sentTx) L += `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>`;
     L += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (sw.status === 'PENDING_DEPOSIT') {
       R += feeBox([sw]);
@@ -1009,7 +1010,7 @@ function splitView(group, R) {
   R += bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: total }, { sym: d0[0], chain: d0[1], amount: null }, moving, 'real');
   R += `<p class="small muted">${t('split.picture', { n: group.length, c: new Set(group.map((x) => x.chain)).size })}</p>`;
   const lk = (x) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">tx ↗</a>` : '';
-  let L = `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p><ol class="legst">` +
+  let L = `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p>${pending && !sent ? `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>` : ''}<ol class="legst">` +
     group.map((x) => `<li class="st-${x.status}"><span class="leg-n">${x.leg || ''}</span><span class="legst-tx">${x.amountIn} wNEAR → <b>${esc(String(amt(x.amountOut)))} ${esc(DST_LABEL(x.to))}</b><br><span class="muted small" title="${esc(x.recipient)}">${esc(shortAddr(x.recipient))}</span> ${(x.dest || []).map(lk).join(' ')}</span><span class="legst-st" title="${esc(t('real.s.' + x.status))}">${SPLIT_ST[x.status] || '·'} ${t('split.st.' + x.status)}</span></li>`).join('') + `</ol>`;
   if (pending && !sent) {
     R += feeBox(group);
@@ -1115,7 +1116,7 @@ function pickerView(side, step) {
   if (step === 'chain') {
     const counts = {}; for (const x of ui.assets || []) counts[x.chain] = (counts[x.chain] || 0) + 1;
     const chains = Object.keys(counts).sort((a, b) => order(a) - order(b) || netName(a).localeCompare(netName(b)));
-    h += `<div class="step-h"><span class="stepn">a</span>${t('any.stepChain')}</div><div class="pv-chains">${chains.map((c) => { const ch = chainOf(c), col = ch ? ch[1] : '#556';
+    h += `<div class="step-h"><span class="stepn">a</span>${t('any.stepChain')}</div><div class="pv-chains" data-keepscroll="pvc-${side}">${chains.map((c) => { const ch = chainOf(c), col = ch ? ch[1] : '#556';
       return `<button type="button" class="pv-chain${cur.chain === c ? ' on' : ''}" data-pickchainset="${side}|${c}" style="--c:${col}"><span class="nb-ic">${CHAIN_ICON[c] || esc(netName(c)[0])}</span><b>${esc(netName(c))}</b><span class="pv-n">${t('any.tokens', { n: counts[c] })}${walletKind(c) ? '' : ' · ' + t('any.byHand')}</span></button>`; }).join('')}</div>`;
   } else {
     const c = ui.pickChain || cur.chain, ch = chainOf(c), col = ch ? ch[1] : '#556';
@@ -1162,11 +1163,11 @@ function swapCardAny(f) {
     (using ? `<div class="sc-lab sc-using" title="${esc(refundV)}">✓ ${t('wallet.usingThis', { a: esc(shortAddr(refundV)) })}</div><input type="hidden" id="real-refund" value="${esc(refundV)}">`
       : `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('any.fromWallet', { chain: esc(netName(a.chain)) })} ⓘ</label><input id="real-refund" class="${need.length && !refundV ? 'need' : ''}" placeholder="${esc(addrPh(a.chain))}" value="${esc(refundV)}">`) +
     tokenProof(a) + `</div><button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
-    (legs ? `<div class="sc-side"><div class="sc-head">${t('split.receivers')}</div>${legRows(f)}</div>`
+    (legs ? `<div class="sc-side"><div class="sc-head sc-headrow">${t('split.receivers')} <button type="button" class="linkbtn small" data-splitoff="1">← ${t('split.one')}</button></div>${legRows(f)}</div>`
       : `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div>${sidePick('to', b)}` +
         `<label class="sc-lab" title="${esc(t('any.toHint', { sym: b.sym, chain: netName(b.chain) }))}">${t('any.toWallet', { chain: esc(netName(b.chain)) })} ⓘ</label><div class="recip-row"><input id="real-recip" class="${need.length && !recipV ? 'need' : ''}" placeholder="${esc(addrPh(b.chain))}" value="${esc(recipV)}">${recipV ? `<button type="button" class="linkbtn small" data-recipclear="1">${t('any.otherAddr')}</button>` : ''}</div>` +
         `<div class="sc-hint">${wB && recipV === wB ? '✓ ' + t('any.toOwn') : recipV ? '⚠️ ' + t('any.toOther') : ''}</div>${tokenProof(b)}</div>` +
-        (splitOk ? `<button type="button" class="linkbtn split-btn" data-legadd="1">＋ ${t('split.start')}</button>` : '')) +
+        (splitOk ? `<button type="button" class="linkbtn split-btn" data-legadd="1">＋ ${t('split.start')}</button>` : `<button type="button" class="linkbtn split-btn" data-splitnear="1" title="${esc(t('split.fromNearHint'))}">＋ ${t('split.startNear')}</button>`)) +
     `</div><button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}><span class="stepn">3</span> ${ui.realBusy ? t('ai.thinking') : legs ? t('split.getQuotes', { n: f.legs.length }) : t('real.getQuote')}</button>`;
 }
 const TOKEN_PAGE = { near: 'https://nearblocks.io/token/', sol: 'https://solscan.io/token/', base: 'https://basescan.org/token/', eth: 'https://etherscan.io/token/', arb: 'https://arbiscan.io/token/', op: 'https://optimistic.etherscan.io/token/', pol: 'https://polygonscan.com/token/', bsc: 'https://bscscan.com/token/', avax: 'https://snowtrace.io/token/', gnosis: 'https://gnosisscan.io/token/', tron: 'https://tronscan.org/#/token20/' };
@@ -1466,7 +1467,7 @@ function readRealForm() {
   const prev = ui.real || {};
   ui.real = { dir: prev.dir || 'out', to: g('real-to') || prev.to || 'USDC', from: g('real-from') || prev.from || 'USDC-SOL', amount: Number(String(g('real-amount')).replace(',', '.')) || prev.amount || 0.3, refundTo: g('real-refund').trim(), recipient: g('real-recip').trim(), legs: prev.legs || null, any: prev.any, anyOff: prev.anyOff, fromId: prev.fromId, toId: prev.toId };
   // the rows of a split, as typed right now
-  if (ui.real.legs && document.querySelector('[data-legto]')) {
+  if (ui.real.legs && document.querySelector('[data-legrec]')) {
     ui.real.legs = ui.real.legs.map((l, i) => {
       const to = (document.querySelector(`[data-legto="${i}"]`) || {}).value || l.to;
       const am = Number((document.querySelector(`[data-legamt="${i}"]`) || {}).value);
@@ -1476,8 +1477,8 @@ function readRealForm() {
   }
 }
 // start a split, add a receiver, or take one away (one left: back to a normal swap)
-function legAdd() {
-  readRealForm();
+function legAdd(skipRead) {
+  if (!skipRead) readRealForm();
   const f = ui.real;
   const live = f.any && ui.assets, usdcSol = live && (findAsset('USDC', 'sol') || {}).id, usdcNear = live && (findAsset('USDC', 'near') || {}).id;
   if (!f.legs) f.legs = live ? [{ to: f.toId, amount: f.amount, recipient: f.recipient }, { to: f.toId === usdcSol ? usdcNear || f.toId : usdcSol || f.toId, amount: 0.1, recipient: '' }]
@@ -1522,7 +1523,7 @@ async function realQuoteNow() {
   render();
 }
 // give up a swap that is still waiting for the deposit, and go back to an empty card with the same choices
-async function cancelReal() {
+async function cancelReal(edit) {
   ui.realCancelAsk = false;
   const sw = curSwap();
   if (!sw) return;
@@ -1536,7 +1537,7 @@ async function cancelReal() {
     legs: sw.batch ? group.map((x) => ({ to: x.to, amount: x.amountIn, recipient: x.recipient })) : null }
     : { dir: sw.dir || 'out', to: sw.dir === 'in' ? 'USDC' : sw.to, from: sw.dir === 'in' ? sw.from : 'USDC-SOL', amount: sw.amountIn, refundTo: sw.refundTo, recipient: sw.recipient,
     legs: sw.batch ? group.map((x) => ({ to: x.to, amount: x.amountIn, recipient: x.recipient })) : null };
-  toast(t('real.cancelled'), 'win');
+  toast(t(edit ? 'real.editing' : 'real.cancelled'), 'win');
   render();
 }
 let realTimer = null;
@@ -2869,6 +2870,9 @@ document.body.addEventListener('click', (e) => {
   if (pc) { readRealForm(); ui.pickChain = pc.dataset.pickchain; render(); return; }
   const pa = e.target.closest('[data-pickasset]');
   if (pa) { const [side, id] = pa.dataset.pickasset.split('|'); pickAsset(side, id); return; }
+  if (e.target.closest('[data-realedit]')) { ui.realCancelAsk = false; cancelReal(true); return; }
+  if (e.target.closest('[data-splitnear]')) { readRealForm(); const a = A(ui.real.fromId), w = A(WNEAR_ID); if (w) { ui.real.amount = a ? Math.min(5, Math.max(0.1, nice((Number(ui.real.amount) || 0) * a.price / w.price))) : 0.3; ui.real.fromId = WNEAR_ID; ui.real.refundTo = (ui.wallet || {}).near || ''; } legAdd(true); return; }
+  if (e.target.closest('[data-splitoff]')) { readRealForm(); const l = (ui.real.legs || [])[0]; if (l) { if (A(l.to)) ui.real.toId = l.to; ui.real.recipient = l.recipient || ''; } ui.real.legs = null; render(); return; }
   if (e.target.closest('[data-legadd]')) { legAdd(); return; }
   const ld = e.target.closest('[data-legdel]');
   if (ld) { legDel(Number(ld.dataset.legdel)); return; }
