@@ -922,7 +922,9 @@ function realSwapBox() {
     h += `<div class="realswap"><p class="small"><b>${inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: sw.amountOut }) : t('real.quote', { a: sw.amountIn, b: sw.amountOut, to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${sw.usdOut})` : ''}</p>`;
     if (sw.status === 'PENDING_DEPOSIT') h += `<p class="small">${inDir ? t('real.sendIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName }) : t('real.send', { a: sw.amountIn })}</p><div class="realaddr"><code>${esc(sw.depositAddress)}</code> <button class="linkbtn" data-copy="${esc(sw.depositAddress)}">${t('real.copy')}</button></div>` +
       (sw.depositMemo ? `<p class="small">${t('real.memo')} <code>${esc(sw.depositMemo)}</code></p>` : '') + `<p class="muted small">${t(inDir ? 'real.howIn' : 'real.how', { chain: srcName })}</p>` +
-      `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div>`;
+      `<div class="row"><input id="real-tx" placeholder="${esc(t('real.txPh'))}"><button data-realsubmit="1">${t('real.submit')}</button></div>` +
+      (ui.realCancelAsk ? `<div class="realcancel"><p class="small"><b>${t('real.cancelSure')}</b></p><div class="row"><button class="danger" data-realcancel="yes">${t('real.cancelYes')}</button><button data-realcancel="no">${t('real.cancelNo')}</button></div></div>`
+        : `<button class="linkbtn realcancel-btn" data-realcancel="ask">✕ ${t('real.cancel')}</button>`);
     h += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (bad) h += `<p class="closed small">${t('real.s.' + sw.status)}</p>`;
     const lk = (x, base) => x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : base ? `<a href="${base}${encodeURIComponent(x.hash)}" target="_blank" rel="noopener">${esc(x.hash.slice(0, 10))}… ↗</a>` : esc(x.hash.slice(0, 10));
@@ -947,6 +949,7 @@ function swapCard(f, dir) {
   const src = out ? ['wNEAR', 'near', 0.1, 5, 0.3] : REAL_SRC[f.from] || REAL_SRC['USDC-SOL'];
   const dst = out ? REAL_DST[f.to] || REAL_DST.USDC : ['wNEAR', 'near'];
   const amt = f.amount >= src[2] && f.amount <= src[3] ? f.amount : src[4];
+  const need = ((ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.missing) || []);
   const sw0 = savedWallets(), refundV = f.refundTo || sw0[src[1]] || '', recipV = f.recipient || (dst[1] !== src[1] ? sw0[dst[1]] || '' : '');
   const sendChips = out ? tokChip(null, 'wNEAR', 'wNEAR', 'near', true)
     : Object.entries(REAL_SRC).map(([k, v]) => tokChip('from', k, v[0], v[1], f.from === k)).join('');
@@ -956,12 +959,12 @@ function swapCard(f, dir) {
     `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div><div class="tokrow">${sendChips}</div>` +
     `<div class="sc-amt"><input id="real-amount" type="number" min="${src[2]}" max="${src[3]}" step="${src[0] === 'SOL' ? 0.001 : 0.1}" value="${amt}"><b>${esc(src[0])}</b></div>` +
     `<div class="sc-hint">${t('real.range', { min: src[2], max: src[3], sym: src[0] })}</div>` +
-    `<label class="sc-lab">${t('real.fromWallet', { chain: CH_NAME[src[1]] })}</label><input id="real-refund" placeholder="${esc(ADDR_PH[src[1]])}" value="${esc(refundV)}">` +
+    `<label class="sc-lab">${t('real.fromWallet', { chain: CH_NAME[src[1]] })}</label><input id="real-refund" class="${need.includes('wallet:' + src[1]) && !refundV ? 'need' : ''}" placeholder="${esc(ADDR_PH[src[1]])}" value="${esc(refundV)}">` +
     `<div class="sc-hint">${t('real.fromHint')}</div></div>` +
     `<button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
     `<div class="sc-side"><div class="sc-head">${t('real.youGet')}</div><div class="tokrow">${getChips}</div>` +
     `<div class="sc-est">≈ ? <b>${esc(dst[0])}</b> <span class="muted small">${t('real.est')}</span></div>` +
-    `<label class="sc-lab">${t('real.toWallet', { chain: CH_NAME[dst[1]] })}</label><input id="real-recip" placeholder="${esc(ADDR_PH[dst[1]])}" value="${esc(recipV)}">` +
+    `<label class="sc-lab">${t('real.toWallet', { chain: CH_NAME[dst[1]] })}</label><input id="real-recip" class="${need.includes('wallet:' + dst[1]) && !recipV ? 'need' : ''}" placeholder="${esc(ADDR_PH[dst[1]])}" value="${esc(recipV)}">` +
     `<div class="sc-hint">${t('real.toHint', { sym: dst[0], chain: CH_NAME[dst[1]] })}</div></div>` +
     `<button class="primary sc-go" data-realquote="1" ${ui.realBusy ? 'disabled' : ''}>${t(ui.realBusy ? 'ai.thinking' : 'real.getQuote')}</button></div>`;
 }
@@ -1000,6 +1003,14 @@ function rememberWallets(f) {
   if (f.recipient && dst && !(dst === 'near' && src === 'near')) w[dst] = f.recipient;
   try { localStorage.setItem('ew.wallets', JSON.stringify(w)); } catch {}
 }
+// wallets to offer the AI: ones used before, overridden by what is typed in the card right now
+function walletsNow() {
+  const w = { ...savedWallets() }, f = ui.real || {};
+  const src = f.dir === 'in' ? (REAL_SRC[f.from] || [])[1] : 'near', dst = f.dir === 'in' ? 'near' : (REAL_DST[f.to] || [])[1];
+  if (f.refundTo && src) w[src] = f.refundTo;
+  if (f.recipient && dst && !(dst === 'near' && src === 'near')) w[dst] = f.recipient;
+  return w;
+}
 function aiSwapBox() {
   const a = ui.aiSwap || {}, ex = t('aiswap.example');
   let h = `<div class="aiswap"><div class="aiswap-head">🤖 ${t('aiswap.title')} <span class="aiswap-tag">NEAR AI${view.ai && view.ai.tee ? ' · TEE' : ''}</span></div>` +
@@ -1010,6 +1021,8 @@ function aiSwapBox() {
     const f = r.form, src = f.dir === 'in' ? REAL_SRC[f.from] : ['wNEAR', 'near'], dst = f.dir === 'in' ? ['wNEAR', 'near'] : REAL_DST[f.to];
     h += `<div class="aiswap-reply"><p><b>${t('aiswap.understood')}</b> ${f.amount} ${esc(src[0])} (${CH_NAME[src[1]]}) → ${esc(dst[0])} (${CH_NAME[dst[1]]})</p>`;
     if (r.say) h += `<p class="aiswap-say">“${esc(r.say)}”</p>`;
+    const shortA = (x) => x ? (x.length > 22 ? x.slice(0, 8) + '…' + x.slice(-6) : x) : '—';
+    h += `<p class="small">${t('aiswap.wallets', { a: esc(shortA(f.refundTo)), b: esc(shortA(f.recipient)) })}</p>`;
     if (r.missing.length) h += `<p class="closed small">${t('aiswap.missing')} ${r.missing.map((m) => m.startsWith('wallet:') ? t('aiswap.m.wallet', { chain: CH_NAME[m.slice(7)] }) : m === 'range' ? t('aiswap.m.range', r.limits) : t('aiswap.m.' + m)).join(' · ')}</p><p class="muted small">${t('aiswap.fillBelow')}</p>`;
     else if (r.quoteError) h += `<p class="closed small">${t(r.quoteError)}</p>`;
     h += `<p class="muted small">${r.by === 'ai' ? t('aiswap.byAi', { m: esc(r.model || 'NEAR AI') }) : t('aiswap.byRules')}</p></div>`;
@@ -1022,7 +1035,7 @@ async function aiSwapNow() {
   if (el) el.blur(); // a focused field keeps the card from redrawing
   readRealForm();
   ui.aiSwap = { text, busy: true, reply: null }; render();
-  const r = await post('/api/ai/swap', { player: playerId, text, lang: getLang(), wallets: savedWallets() });
+  const r = await post('/api/ai/swap', { player: playerId, text, lang: getLang(), wallets: walletsNow() });
   ui.aiSwap = { text, busy: false, reply: r && r.ok ? r : null };
   if (!r || !r.ok) { toast(t('aiswap.fail'), 'bad'); render(); return; }
   ui.real = { ...r.form };
@@ -1043,6 +1056,20 @@ async function realQuoteNow() {
   rememberWallets(ui.real);
   view.realSwaps = [r.swap, ...(view.realSwaps || [])];
   pollReal(r.swap.depositAddress);
+  render();
+}
+// give up a swap that is still waiting for the deposit, and go back to an empty card with the same choices
+async function cancelReal() {
+  ui.realCancelAsk = false;
+  const sw = (view.realSwaps || [])[0];
+  if (!sw) return;
+  const r = await post('/api/intents/real/cancel', { player: playerId, depositAddress: sw.depositAddress });
+  if (!r || !r.ok) { toast(t((r && r.code) || 'real.cantCancel'), 'bad'); return; }
+  clearInterval(realTimer);
+  view.realSwaps = (view.realSwaps || []).filter((x) => x.depositAddress !== sw.depositAddress);
+  ui.aiSwap = null;
+  ui.real = { dir: sw.dir || 'out', to: sw.dir === 'in' ? 'USDC' : sw.to, from: sw.dir === 'in' ? sw.from : 'USDC-SOL', amount: sw.amountIn, refundTo: sw.refundTo, recipient: sw.recipient };
+  toast(t('real.cancelled'), 'win');
   render();
 }
 let realTimer = null;
@@ -2343,6 +2370,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  const rc = e.target.closest('[data-realcancel]');
+  if (rc) { const v = rc.dataset.realcancel; if (v === 'ask') ui.realCancelAsk = true; else if (v === 'no') ui.realCancelAsk = false; else cancelReal(); render(); return; }
   if (e.target.closest('[data-aiswap]')) { aiSwapNow(); return; }
   const axe = e.target.closest('[data-aiswapex]');
   if (axe) { ui.aiSwap = { text: axe.dataset.aiswapex }; render(); const i = $('ai-swap'); if (i) i.focus(); return; }

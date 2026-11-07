@@ -293,6 +293,7 @@ async function realQuoteIn(pid, fromKey, amount, refundTo, recipient) {
 async function realStatus(addr) {
   const swap = (state.realSwaps || []).find((x) => x.depositAddress === addr);
   if (!swap) return { ok: false, error: 'unknown swap' };
+  if (swap.status === 'CANCELLED') return { ok: true, swap };
   try {
     const st = await getJson(`${ONECLICK}/status?depositAddress=${encodeURIComponent(addr)}`);
     const d = st.swapDetails || {};
@@ -488,6 +489,15 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/intents/real/status') {
     const r = await realStatus(String(url.searchParams.get('depositAddress') || ''));
     return sendJson(res, r.ok ? 200 : 400, r);
+  }
+  // give up a swap before any money was sent (a wrong address, a change of mind); the deposit address just expires
+  if (req.method === 'POST' && url.pathname === '/api/intents/real/cancel') {
+    const body = await readBody(req);
+    const swap = (state.realSwaps || []).find((x) => x.depositAddress === body.depositAddress && x.player === body.player);
+    if (!swap) return sendJson(res, 400, { ok: false, error: 'unknown swap' });
+    if (swap.status !== 'PENDING_DEPOSIT') return sendJson(res, 400, { ok: false, error: 'money is already on the way', code: 'real.cantCancel' });
+    swap.status = 'CANCELLED'; swap.cancelledAt = Date.now(); save();
+    return sendJson(res, 200, { ok: true });
   }
   if (req.method === 'POST' && url.pathname === '/api/intents/real/submit') {
     const body = await readBody(req);

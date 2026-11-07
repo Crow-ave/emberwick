@@ -741,3 +741,9 @@ table.mh td.in { color: #2d6a2d; font-weight: 600; } table.mh td.out { color: #a
 .aiswap-reply { background: #fff; border-radius: 10px; padding: 8px 10px; display: grid; gap: 3px; }
 .aiswap-reply p { margin: 0; }
 .aiswap-say { font-style: italic; color: #3b4a6b; }
+
+.realcancel-btn { margin-top: 6px; color: #b3261e; }
+.realcancel { background: #fff1ef; border: 1px solid #f0b8b1; border-radius: 10px; padding: 8px 10px; margin-top: 6px; }
+.realcancel p { margin: 0 0 6px; }
+.realcancel .danger { background: #c0392b; color: #fff; border-color: #c0392b; }
+.sc-side input.need { border: 2px solid #e0742b; background: #fff6ec; }
