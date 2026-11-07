@@ -340,6 +340,51 @@ async function anyAssets() {
   return (tokenCache.all || []).filter((x) => x && x.assetId && x.symbol && Number(x.price) > 0 && Number.isInteger(x.decimals))
     .map((x) => ({ id: x.assetId, sym: x.symbol, chain: x.blockchain, decimals: x.decimals, price: Number(x.price), contract: contractOf(x) }));
 }
+// ---------- the balance of the player's own connected wallet, for the token they are about to send ----------
+// read-only public RPC calls; the address is the one the wallet itself reported
+const NEAR_RPC = process.env.EMBERWICK_NEARRPC || 'https://free.rpc.fastnear.com';
+const EVM_RPC = { eth: 'https://eth.llamarpc.com', base: 'https://mainnet.base.org', arb: 'https://arb1.arbitrum.io/rpc', op: 'https://mainnet.optimism.io', pol: 'https://polygon-rpc.com', bsc: 'https://bsc-dataseed.binance.org', avax: 'https://api.avax.network/ext/bc/C/rpc', gnosis: 'https://rpc.gnosischain.com', bera: 'https://rpc.berachain.com' };
+const evmRpc = (c) => process.env.EMBERWICK_EVMRPC || EVM_RPC[c];
+const NEAR_GAS_KEEP = 0.05; // left in the wallet for gas and storage
+const balCache = new Map();
+const rpc = (url, method, params) => getJson(url, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) }).then((j) => { if (j && j.error) throw new Error(j.error.message || JSON.stringify(j.error).slice(0, 80)); return j.result; });
+const fromInt = (v, dec) => { const b = BigInt(v || 0), d = 10n ** BigInt(dec); return Number(b / d) + Number(b % d) / Number(d); };
+async function walletBalance(assetId, address) {
+  const list = await anyAssets();
+  const x = list.find((a) => a.id === assetId);
+  if (!x) return { ok: false, error: 'unknown token' };
+  const key = assetId + '|' + address, hit = balCache.get(key);
+  if (hit && Date.now() - hit.at < 20000) return hit.v;
+  let amount = null, note = null;
+  if (x.chain === 'near') {
+    if (!nearAcct(address)) return { ok: false, error: 'not a NEAR account' };
+    if (x.id === 'nep141:wrap.near' || !x.contract) {
+      // the swap sends native NEAR (wrapped on the way); what can be spent is the balance minus the storage it pays for
+      const v = await rpc(NEAR_RPC, 'query', { request_type: 'view_account', finality: 'final', account_id: address }).catch((e) => { if (/does not exist|UNKNOWN_ACCOUNT/i.test(e.message)) return { amount: '0', storage_usage: 0 }; throw e; });
+      const free = fromInt(v.amount, 24) - (Number(v.storage_usage || 0) * 1e19) / 1e24;
+      amount = Math.max(0, free - NEAR_GAS_KEEP); note = 'nearKeep';
+    } else {
+      const r = await rpc(NEAR_RPC, 'query', { request_type: 'call_function', finality: 'final', account_id: x.contract, method_name: 'ft_balance_of', args_base64: Buffer.from(JSON.stringify({ account_id: address })).toString('base64') });
+      amount = fromInt(JSON.parse(Buffer.from(r.result).toString()) || '0', x.decimals);
+    }
+  } else if (x.chain === 'sol') {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return { ok: false, error: 'not a Solana address' };
+    if (!x.contract) { const r = await rpc(SOL_RPC, 'getBalance', [address, { commitment: 'confirmed' }]); amount = Math.max(0, (r.value || 0) / 1e9 - 0.002); note = 'solKeep'; }
+    else {
+      const r = await rpc(SOL_RPC, 'getTokenAccountsByOwner', [address, { mint: x.contract }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
+      amount = (r.value || []).reduce((s2, a) => s2 + Number(((a.account.data.parsed || {}).info || {}).tokenAmount ? a.account.data.parsed.info.tokenAmount.uiAmountString : 0), 0);
+    }
+  } else if (EVM_CHAINS[x.chain]) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return { ok: false, error: 'not an EVM address' };
+    const url = evmRpc(x.chain);
+    if (!x.contract) { const r = await rpc(url, 'eth_getBalance', [address, 'latest']); amount = Math.max(0, fromInt(BigInt(r), x.decimals) - (x.chain === 'eth' ? 0.0005 : 0.00005)); note = 'evmKeep'; }
+    else { const r = await rpc(url, 'eth_call', [{ to: x.contract, data: '0x70a08231' + address.slice(2).toLowerCase().padStart(64, '0') }, 'latest']); amount = fromInt(BigInt(r && r !== '0x' ? r : '0x0'), x.decimals); }
+  } else return { ok: false, error: 'no balance check for this network', code: 'bal.none' };
+  const v = { ok: true, amount: Math.floor(amount * 1e6) / 1e6, sym: x.sym, chain: x.chain, usd: Math.round(amount * x.price * 100) / 100, note, at: Date.now() };
+  balCache.set(key, { at: Date.now(), v });
+  if (balCache.size > 500) balCache.delete(balCache.keys().next().value);
+  return v;
+}
 async function quoteAny(pid, fromId, toId, amount, refundTo, recipient, opts = {}) {
   let list;
   try { list = await anyAssets(); } catch (e) { return { ok: false, error: String(e.message || e).slice(0, 120), code: 'real.noQuote' }; }
@@ -754,6 +799,10 @@ const server = http.createServer(async (req, res) => {
     const h = swap && swap.bookRef && bridge && bridge.txOf ? bridge.txOf(swap.bookRef) : null;
     const real = h && !['sync', 'internal', 'netted'].includes(h);
     return sendJson(res, 200, { ok: !!swap, tx: real ? h : null, state: !swap ? 'none' : !swap.bookRef ? 'none' : real ? 'done' : h || 'waiting', url: real && bridge ? `${bridge.view().explorer}/txns/${h}` : null });
+  }
+  if (url.pathname === '/api/wallet/balance') {
+    try { return sendJson(res, 200, await walletBalance(String(url.searchParams.get('asset') || ''), String(url.searchParams.get('address') || '').trim())); }
+    catch (e) { return sendJson(res, 200, { ok: false, error: String(e.message || e).slice(0, 120) }); }
   }
   if (url.pathname === '/api/sol/blockhash') {
     try {

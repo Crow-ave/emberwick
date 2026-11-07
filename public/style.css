@@ -974,3 +974,9 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .sw-list{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px}
 .sw-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#b8321f;margin-right:5px;vertical-align:-1px}
 .ichip.sealchip{background:#fbe3dc;border-color:#e2a594}.ichip.sealchip::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:#b8321f;margin-right:4px}
+
+/* the connected wallet's balance under the amount */
+.sc-bal{font-size:12.5px;margin:3px 0 2px;display:flex;flex-wrap:wrap;gap:2px 6px;align-items:baseline}
+.sc-bal .bal-short{display:none;color:#b3261e;font-weight:600}
+.sc-bal.short{color:#b3261e}.sc-bal.short .bal-short{display:inline}
+.sc-bal .bal-note{flex-basis:100%}

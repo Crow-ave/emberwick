@@ -1175,6 +1175,34 @@ function pickerPanel(side) {
     `<div class="pk-chains"><button type="button" class="${only ? '' : 'on'}" data-pickchain="">${t('any.allChains')}</button>${chains.map((c) => { const ch = chainOf(c); return `<button type="button" class="${only === c ? 'on' : ''}" data-pickchain="${c}" style="--c:${ch ? ch[1] : '#556'}">${esc(netName(c))}</button>`; }).join('')}</div>` +
     `<div class="pk-list" data-keepscroll="pk-${side}">${list.map((x) => { const ch = chainOf(x.chain); return `<button type="button" class="pk-item" data-pickasset="${side}|${esc(x.id)}" data-q="${esc(key(x))}"${q && !key(x).includes(q) ? ' hidden' : ''}><span class="tc-coin" style="background:${coinBg(x.sym)}">${coinGlyph(x.sym)}</span><b>${esc(ds(x.sym))}</b><span class="pk-chain" style="color:${ch ? ch[1] : '#555'}">${esc(netName(x.chain))}</span><span class="pk-price">$${x.price >= 1 ? x.price.toFixed(2) : x.price.toPrecision(3)}</span></button>`; }).join('')}<p class="muted small pk-none" hidden>${t('any.none')}</p></div></div>`;
 }
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'real-amount') return;
+  const box = document.querySelector('.sc-bal[data-bal]'); if (!box) return;
+  box.classList.toggle('short', Number(String(e.target.value).replace(',', '.')) > Number(box.dataset.bal) + 1e-9);
+});
+// the connected wallet's balance of the token the player is about to send (read-only, refreshed every 20 s)
+ui.bal = ui.bal || {};
+const balKey = (id, addr) => id + '|' + addr;
+async function loadBal(id, addr) {
+  const k = balKey(id, addr), b = ui.bal[k];
+  if (b && (b.loading || Date.now() - b.at < 20000)) return;
+  ui.bal[k] = { ...(b || {}), loading: true, at: Date.now() };
+  const r = await (await fetch(`/api/wallet/balance?asset=${encodeURIComponent(id)}&address=${encodeURIComponent(addr)}`)).json().catch(() => null);
+  ui.bal[k] = { ...(r || { ok: false }), at: Date.now() };
+  if (ui.exMode === 'real') render();
+}
+const balFloor = (n) => { const d = n >= 100 ? 2 : n >= 1 ? 4 : 6; return Math.floor(n * 10 ** d) / 10 ** d; };
+function balLine(a, addr, want, noMax) {
+  if (!addr) return '';
+  const b = ui.bal[balKey(a.id, addr)];
+  if (!b || (Date.now() - b.at > 20000 && !b.loading)) loadBal(a.id, addr);
+  if (!b || (b.loading && b.amount == null)) return `<div class="sc-bal muted">👛 ${t('bal.loading')}</div>`;
+  if (!b.ok) return b.code === 'bal.none' ? '' : `<div class="sc-bal muted" title="${esc(b.error || '')}">👛 ${t('bal.failed')} <button type="button" class="linkbtn small" data-balre="${esc(a.id)}|${esc(addr)}">↻</button></div>`;
+  const short = want != null && Number(want) > b.amount + 1e-9;
+  return `<div class="sc-bal${short ? ' short' : ''}" data-bal="${b.amount}">👛 ${t('bal.have', { n: balFloor(b.amount), sym: esc(ds(b.sym)) })}${b.usd ? ` <span class="muted">≈ $${b.usd.toFixed(2)}</span>` : ''}` +
+    (want === undefined || noMax ? '' : ` <button type="button" class="linkbtn small" data-balmax="${b.amount}">${t('bal.max')}</button>`) +
+    `<span class="bal-short">${t('bal.short')}</span>${b.note ? `<span class="muted small bal-note">${t('bal.' + b.note)}</span>` : ''}</div>`;
+}
 function swapCardAny(f) {
   const a = A(f.fromId) || A(WNEAR_ID), b = A(f.toId) || (ui.assets || []).find((x) => x.id !== a.id);
   const lim = usdLimits(a);
@@ -1190,6 +1218,7 @@ function swapCardAny(f) {
     `<div class="sc-side"><div class="sc-head">${t('real.youSend')}</div>${sidePick('from', a)}` +
     (legs ? `<div class="sc-amt"><b class="split-sum">${legSum(f.legs)}</b> <b>NEAR</b> <span class="sc-range">${t('split.sumNote')}</span></div>`
       : `<div class="sc-amt" title="${esc(t('any.range', { min: lim.min, max: lim.max, sym: ds(a.sym) }))}"><input id="real-amount" type="text" inputmode="decimal" autocomplete="off" value="${amtV}"><b>${esc(ds(a.sym))}</b><span class="sc-range">${lim.min}–${lim.max}</span></div><div class="sc-usd small muted" data-price="${a.price}">≈ $${(amtV * a.price).toFixed(2)}</div>`) +
+    balLine(a, wA, legs ? legSum(f.legs) : amtV, !!legs) +
     (using ? `<div class="sc-lab sc-using" title="${esc(refundV)}">✓ ${t('wallet.usingThis', { a: esc(shortAddr(refundV)) })}</div><input type="hidden" id="real-refund" value="${esc(refundV)}">`
       : `<label class="sc-lab" title="${esc(t('real.fromHint'))}">${t('any.fromWallet', { chain: esc(netName(a.chain)) })} ⓘ</label><input id="real-refund" class="${need.length && !refundV ? 'need' : ''}" placeholder="${esc(addrPh(a.chain))}" value="${esc(refundV)}">`) +
     tokenProof(a) + `</div><button type="button" class="sc-flip" data-realflip="1" title="${esc(t('real.flip'))}">⇅</button>` +
@@ -1613,6 +1642,7 @@ function pollReal(addr) {
         if (r.swap.status === 'SUCCESS' && !(r.swap.dest || []).length && (pollReal.extra[a] || 0) <= 6) open++; // links not in yet: ask again
       } else open++;
     }
+    if (won) ui.bal = {};
     if (won && !maybeSeal()) { play('level'); toast(t('real.success'), 'win'); }
     if (!open) clearInterval(realTimer);
     render();
@@ -3085,6 +3115,18 @@ document.body.addEventListener('click', (e) => {
   const em = e.target.closest('[data-exmode]');
   if (em) { ui.exMode = em.dataset.exmode; if (ui.exMode === 'real') pollCurrent(); render(); return; }
   if (e.target.closest('[data-realquote]')) { realQuoteNow(); return; }
+  const bm = e.target.closest('[data-balmax]');
+  if (bm) {
+    readRealForm();
+    const f = ui.real || {}, a = A(f.fromId); if (!a) return;
+    const lim = usdLimits(a), v = balFloor(Math.min(Number(bm.dataset.balmax), lim.max));
+    if (!(v >= lim.min)) { toast(t('bal.tooLittle', { min: lim.min, sym: ds(a.sym) }), 'bad'); return; }
+    f.amount = v; const inp = $('real-amount'); if (inp) inp.value = v;
+    if (Number(bm.dataset.balmax) > lim.max) toast(t('bal.capped', { max: lim.max, sym: ds(a.sym) }), 'info');
+    render(); return;
+  }
+  const br = e.target.closest('[data-balre]');
+  if (br) { const [id, addr] = br.dataset.balre.split('|'); delete ui.bal[balKey(id, addr)]; loadBal(id, addr); render(); return; }
   if (e.target.closest('[data-realnew]')) { dismissSwaps((view.realSwaps || []).filter((x) => REAL_END.includes(x.status) || x.status === 'INCOMPLETE_DEPOSIT').map((x) => x.depositAddress)); ui.aiSwap = null; render(); return; }
   if (e.target.closest('[data-realsubmit]')) { const sw = curSwap(), tx = ($('real-tx') || {}).value || ''; if (sw && tx.trim()) post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: tx.trim() }).then((r) => toast(r.ok ? t('real.submitted') : errText(r), r.ok ? 'win' : 'bad')); return; }
   const cp = e.target.closest('[data-copy]');
