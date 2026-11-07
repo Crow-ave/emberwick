@@ -700,3 +700,8 @@ table.mh td.in { color: #2d6a2d; font-weight: 600; } table.mh td.out { color: #a
 .realaddr code { font-size: 11px; word-break: break-all; background: #fff; padding: 2px 4px; border-radius: 4px; }
 .realsteps { margin: 6px 0 4px 18px; padding: 0; font-size: 12.5px; }
 .realsteps li { color: #888; } .realsteps li.done { color: #2d6a2d; } .realsteps li.done::marker { content: '✓ '; } .realsteps li.now { color: #3b4a85; font-weight: 600; }
+
+.modeswitch { display: inline-flex; border: 1px solid #e0742b; border-radius: 999px; overflow: hidden; margin: 2px 0 8px; }
+.modeswitch button { border: 0; border-radius: 0; background: #fff8ee; color: #b4531c; padding: 5px 12px; font-size: 12.5px; cursor: pointer; }
+.modeswitch button.on { background: #e0742b; color: #fff; font-weight: 600; }
+#view.card-on .nearbar, #view.card-wide .nearbar { display: none !important; }

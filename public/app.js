@@ -666,8 +666,7 @@ function panelExchange() {
   if (tab === 'change' && !ui.exPrices && !ui.exPricesLoading) { ui.exPricesLoading = true; loadExPrices(); }
   let h = `<h2>${t('b.exchange')}</h2><p class="muted small">${t('ex.intro', { fee: Math.round(mk.fee * 100) })}</p>`;
   const COL = '<!--col-->';
-  h += `<div class="tabs">${['change', 'real', 'goods', 'deeds'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
-  if (tab === 'real') h += realSwapBox();
+  h += `<div class="tabs">${['change', 'goods', 'deeds'].map((k) => `<button class="tab${tab === k ? ' on' : ''}" data-extab="${k}">${t('ex.tab.' + k)}</button>`).join('')}</div>`;
   if (tab === 'goods') {
     const mine = me ? mk.goods.filter((g) => (me.inv[g] || 0) > 0) : [];
     const shopPrice = (g) => { const n = Object.values(view.npcs).find((x) => x.sells[g] !== undefined); return n ? n.sells[g] : null; };
@@ -707,15 +706,21 @@ function panelExchange() {
     h += `<p class="muted small">${t('ex.deedNote')}</p>`;
   }
   if (tab === 'change') {
+    // two ways over the bridge: a free quote (dry run) or a real swap on mainnet with your own wallet
+    const realMode = ui.exMode === 'real';
+    h += `<div class="modeswitch"><button class="${realMode ? '' : 'on'}" data-exmode="dry">${t('real.modeDry')}</button><button class="${realMode ? 'on' : ''}" data-exmode="real">⚡ ${t('real.modeReal')}</button></div>`;
+    if (realMode) h += realSwapBox() + COL + oracleBox() + reserveBox(true);
     // the live cross-chain quote comes first, with the bridge picture right under it
     const eq = ui.exQuote && ui.exQuote.ok ? ui.exQuote : null;
+    if (!realMode) {
     h += `<p class="sub2">${t('ex.quoteTitle')}</p><div class="row exform"><input id="ex-q-amount" type="number" min="0.1" max="1000" step="0.1" value="${ui.exQAmount || 1}"> NEAR → <select id="ex-q-to">${['USDC', 'BTC', 'ETH', 'SOL'].map((k) => `<option${ui.exQTo === k ? ' selected' : ''}>${k}</option>`).join('')}</select><button class="primary" data-act="exQuote">${t('ex.getQuote')}</button></div>`;
-    h += bridgeSvg(eq ? { sym: 'NEAR', chain: 'near', amount: eq.amountIn } : { sym: 'NEAR', chain: 'near' }, eq ? { sym: eq.to, chain: eq.chain, amount: eq.amountOut } : { sym: ui.exQTo || 'USDC', chain: '' }, !!eq, 'swap');
+    h += bridgeSvg(eq ? { sym: 'NEAR', chain: 'near', amount: eq.amountIn } : { sym: 'NEAR', chain: 'near' }, eq ? { sym: eq.to, chain: eq.chain, amount: eq.amountOut } : { sym: ui.exQTo || 'USDC', chain: ({ USDC: 'near', BTC: 'btc', ETH: 'eth', SOL: 'sol' })[ui.exQTo || 'USDC'] || '' }, !!eq, 'swap');
     const q = ui.exQuote;
     if (q === 'wait') h += `<p class="muted small">${t('ex.loading')}</p>`;
     else if (q && q.ok) h += `<div class="contract"><b>${t('ex.quoteOut', { a: q.amountIn, b: q.amountOut, sym: q.to, chain: q.chain })}</b>${q.usdOut ? `<div class="small">≈ $${q.usdOut}</div>` : ''}<p class="muted small">${t('ex.quoteNote')}</p></div>`;
     else if (q) h += `<p class="muted small">${/fetch failed|abort|ENOTFOUND|ECONN/i.test(q.error || '') || !q.error ? t('ex.offline') : t('ex.quoteFailed', { why: esc(q.error) })}</p>`;
     h += COL + oracleBox() + reserveBox(true);
+    }
     const pr = ui.exPrices;
     h += `<p class="sub2">${t('ex.pricesTitle')}</p>`;
     if (!pr) h += `<p class="muted small">${t('ex.loading')}</p>`;
@@ -894,12 +899,15 @@ const REAL_STEPS = ['PENDING_DEPOSIT', 'KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCES
 const NEAR_MAIN = 'https://nearblocks.io';
 function realSwapBox() {
   const me = view.player, sw = (view.realSwaps || [])[0];
-  let h = `<p class="sub2">🌉 ${t('real.title')}</p><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p>`;
+  let h = `<p class="sub2">⚡ ${t('real.title')}</p><p class="small">${t('real.lead')}</p><p class="small closed">${t('real.warn')}</p>`;
   if (!me) return h + `<p class="muted">${t('toast.join')}</p>`;
   const f = ui.real || { to: 'USDC', amount: 0.3, refundTo: '', recipient: '' };
   const active = sw && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw.status) && (!sw.deadline || Date.parse(sw.deadline) > Date.now() - 3600000);
+  const dest = { USDC: ['USDC', 'near'], 'USDC-SOL': ['USDC', 'sol'], SOL: ['SOL', 'sol'], 'USDC-BASE': ['USDC', 'base'] }[active || (sw && sw.status === 'SUCCESS') ? sw.to : f.to] || ['USDC', 'near'];
+  const moving = !!(sw && ['KNOWN_DEPOSIT_TX', 'PROCESSING', 'SUCCESS'].includes(sw.status));
+  h += bridgeSvg({ sym: 'wNEAR', chain: 'near', amount: sw && (active || sw.status === 'SUCCESS') ? sw.amountIn : f.amount }, { sym: dest[0], chain: dest[1], amount: sw && (active || sw.status === 'SUCCESS') ? sw.amountOut : null }, moving, 'real');
   if (!active) {
-    h += `<div class="realform"><label>${t('real.amount')}</label><input id="real-amount" type="number" min="0.1" max="5" step="0.1" value="${f.amount}"> wNEAR` +
+    h += `<div class="realform"><label>${t('real.amount')}</label><div class="row"><input id="real-amount" type="number" min="0.1" max="5" step="0.1" value="${f.amount}"> <b>wNEAR</b></div>` +
       `<label>${t('real.to')}</label><select id="real-to">${[['USDC', 'USDC · NEAR'], ['USDC-SOL', 'USDC · Solana'], ['SOL', 'SOL · Solana'], ['USDC-BASE', 'USDC · Base']].map(([k, l]) => `<option value="${k}"${f.to === k ? ' selected' : ''}>${l}</option>`).join('')}</select>` +
       `<label>${t('real.refund')}</label><input id="real-refund" placeholder="yourname.near" value="${esc(f.refundTo)}">` +
       `<label>${t(f.to === 'USDC' ? 'real.recipNear' : f.to === 'USDC-BASE' ? 'real.recipBase' : 'real.recipSol')}</label><input id="real-recip" placeholder="${f.to === 'USDC' ? 'yourname.near' : f.to === 'USDC-BASE' ? '0x…' : 'Solana address'}" value="${esc(f.recipient)}">` +
@@ -929,13 +937,13 @@ function readRealForm() {
 }
 async function realQuoteNow() {
   readRealForm();
-  ui.realBusy = true; renderPanel();
+  ui.realBusy = true; render();
   const r = await post('/api/intents/real', { player: playerId, ...ui.real });
   ui.realBusy = false;
-  if (!r.ok) { toast(t(r.code || 'real.noQuote'), 'bad'); renderPanel(); return; }
+  if (!r.ok) { toast(t(r.code || 'real.noQuote'), 'bad'); render(); return; }
   view.realSwaps = [r.swap, ...(view.realSwaps || [])];
   pollReal(r.swap.depositAddress);
-  renderPanel();
+  render();
 }
 let realTimer = null;
 function pollReal(addr) {
@@ -946,7 +954,7 @@ function pollReal(addr) {
     const k = (view.realSwaps || []).findIndex((x) => x.depositAddress === addr);
     if (k >= 0) view.realSwaps[k] = r.swap;
     if (['SUCCESS', 'REFUNDED', 'FAILED'].includes(r.swap.status)) { clearInterval(realTimer); if (r.swap.status === 'SUCCESS') { play('level'); toast(t('real.success'), 'win'); } }
-    if (ui.selected === 'exchange' || ui.selected === 'go-d3') renderPanel();
+    render();
   }, 6000);
 }
 
@@ -976,7 +984,7 @@ function renderNearbar() {
   const box = $('nearbar');
   let closed = false; try { closed = localStorage.getItem('ew.nearbar') === '0'; } catch {}
   // out of the way while a scene or a card on the map is open
-  if (!view || ui.scene || document.querySelector('.card-wide, #map-card:not([hidden])')) { box.hidden = true; return; }
+  if (!view || ui.scene || onMapCard(ui.selected)) { box.hidden = true; return; }
   const oc = view.onchain || {}, c = view.chain || {};
   const key = JSON.stringify([getLang(), closed, oc.tx, chainOk(), (view.aiLog || []).length]);
   box.hidden = false;
@@ -1363,28 +1371,39 @@ function boardSection() {
 
 
 // ---------- the NEAR Intents bridge picture: where the money goes, step by step ----------
-const ASSET_COLOR = { BTC: '#f2a33a', ETH: '#7b8cde', SOL: '#9b6bf2', USDC: '#3a7bd5', NEAR: '#24302e' };
+const ASSET_COLOR = { BTC: '#f2a33a', ETH: '#7b8cde', SOL: '#9b6bf2', USDC: '#3a7bd5', NEAR: '#24302e', wNEAR: '#24302e' };
+// each chain gets its own colour and short name, drawn as the bank of the river and a badge on the coin
+const CHAINS = { near: ['NEAR', '#1f9d76'], sol: ['Solana', '#8a4de8'], solana: ['Solana', '#8a4de8'], base: ['Base', '#1652f0'], eth: ['Ethereum', '#627eea'], ethereum: ['Ethereum', '#627eea'], btc: ['Bitcoin', '#f7931a'], bitcoin: ['Bitcoin', '#f7931a'] };
+const chainOf = (c) => CHAINS[String(c || '').toLowerCase()] || null;
 function bridgeSvg(from, to, live, mode) {
-  const node = (x, a, right) => {
-    const c = ASSET_COLOR[a.sym] || '#556';
-    return `<g><circle cx="${x}" cy="74" r="30" fill="${c}"/><text x="${x}" y="79" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${esc(a.sym)}</text>` +
-      (a.chain ? `<text x="${x}" y="122" text-anchor="middle" font-size="11" fill="#7a6b58">${esc(a.chain)}</text>` : '') +
+  const node = (x, a) => {
+    const c = ASSET_COLOR[a.sym] || '#556', ch = chainOf(a.chain);
+    const fs = a.sym.length > 4 ? 11 : 14;
+    return `<g><circle cx="${x}" cy="74" r="31" fill="#fff" opacity=".9"/><circle cx="${x}" cy="74" r="28" fill="${c}"/><circle cx="${x}" cy="74" r="23" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2"/>` +
+      `<text x="${x}" y="${74 + fs / 2.8}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#fff">${esc(a.sym)}</text>` +
+      (ch ? `<circle cx="${x + 21}" cy="96" r="10" fill="${ch[1]}" stroke="#fff" stroke-width="2"/><text x="${x + 21}" y="100" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${ch[0][0]}</text>` +
+        `<rect x="${x - 34}" y="112" width="68" height="18" rx="9" fill="${ch[1]}"/><text x="${x}" y="125" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${esc(ch[0])}</text>` : '') +
       (a.amount != null ? `<text x="${x}" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="${live ? '#2f7a3a' : '#7a6b58'}">${esc(String(a.amount))}</text>` : '') + `</g>`;
   };
   const deck = (x1, x2) => `M${x1} 74 Q${(x1 + x2) / 2} 40 ${x2} 74`;
   const arch = (x1, x2) => `<path d="${deck(x1, x2)}" fill="none" stroke="#b98a5a" stroke-width="5" stroke-linecap="round" ${live ? '' : 'stroke-dasharray="6 6" opacity=".6"'}/>` +
     [0.25, 0.5, 0.75].map((f) => { const x = x1 + (x2 - x1) * f, y = 74 - 34 * 4 * f * (1 - f) * 1; return `<line x1="${x}" y1="${y + 2}" x2="${x}" y2="96" stroke="#c9a77f" stroke-width="2"/>`; }).join('');
-  const coins = (x1, x2, color, delay) => live ? [0, 0.8, 1.6].map((b) => `<circle r="5" fill="${color}" stroke="#fff" stroke-width="1.5" opacity="0"><set attributeName="opacity" to="1" begin="${b + delay}s"/><animateMotion dur="2.4s" begin="${b + delay}s" repeatCount="indefinite" path="${deck(x1, x2)}"/></circle>`).join('') : '';
+  // the coins that cross carry the token's colour and first letter
+  const coins = (x1, x2, color, delay, sym) => live ? [0, 0.8, 1.6].map((b) => `<g opacity="0"><set attributeName="opacity" to="1" begin="${b + delay}s"/><animateMotion dur="2.4s" begin="${b + delay}s" repeatCount="indefinite" path="${deck(x1, x2)}"/><circle r="7" fill="${color}" stroke="#fff" stroke-width="1.5"/><text y="3" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">${esc((sym || '?')[0] === 'w' ? 'N' : (sym || '?')[0])}</text></g>`).join('') : '';
   const fc = ASSET_COLOR[from.sym] || '#556', tc = ASSET_COLOR[to.sym] || '#556';
-  let svg = `<svg class="bridge" viewBox="0 0 440 140" role="img" aria-label="${esc(t('bridge.aria', { a: from.sym, b: to.sym }))}">` +
+  let svg = `<svg class="bridge" viewBox="0 0 440 136" role="img" aria-label="${esc(t('bridge.aria', { a: from.sym, b: to.sym }))}">` +
     `<rect x="0" y="96" width="440" height="44" rx="10" fill="#cfe3ee"/><path d="M0 104 q20 -6 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0" stroke="#a9cbe0" stroke-width="2" fill="none"/>` +
-    arch(85, 168) + arch(272, 355) + coins(85, 168, fc, 0) + coins(272, 355, tc, 1.2) +
+    // the two banks, coloured by chain
+    (chainOf(from.chain) ? `<path d="M0 96 L0 60 Q40 50 118 62 L118 96 Z" fill="${chainOf(from.chain)[1]}" opacity=".16"/>` : '') +
+    (chainOf(to.chain) ? `<path d="M440 96 L440 60 Q400 50 322 62 L322 96 Z" fill="${chainOf(to.chain)[1]}" opacity=".16"/>` : '') +
+    arch(85, 168) + arch(272, 355) + coins(85, 168, fc, 0, from.sym) + coins(272, 355, tc, 1.2, to.sym) +
     `<g><rect x="168" y="48" width="104" height="52" rx="12" fill="#fff8ee" stroke="#e0742b" stroke-width="2"/><text x="220" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="#b4531c">NEAR Intents</text>` +
     `<text x="220" y="88" text-anchor="middle" font-size="10" fill="#7a6b58">${esc(t('bridge.solvers'))}</text>` +
     [196, 220, 244].map((x, i) => `<circle cx="${x}" cy="56" r="3" fill="#e0742b">${live ? `<animate attributeName="opacity" values="1;.2;1" dur="1.2s" begin="${i * 0.3}s" repeatCount="indefinite"/>` : ''}</circle>`).join('') + `</g>` +
     node(55, from) + node(385, to);
   if (mode === 'plot' || mode === 'house') svg += `<g transform="translate(408 40)"><polygon points="0,10 12,0 24,10" fill="#c0443a"/><rect x="3" y="10" width="18" height="13" fill="#f3e3c4"/></g>`;
   svg += `</svg>`;
+  if (mode === 'real') return `<div class="bridgebox">${svg}</div>`;
   const steps = mode === 'swap'
     ? [['quote', true], ['sign', false], ['solve', false], ['out', false]]
     : [['quote', true], ['deposit', false], ['solve', false], ['arrive', false], [mode, false]];
@@ -2218,8 +2237,10 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  const em = e.target.closest('[data-exmode]');
+  if (em) { ui.exMode = em.dataset.exmode; const sw0 = (view.realSwaps || [])[0]; if (ui.exMode === 'real' && sw0 && !['SUCCESS', 'REFUNDED', 'FAILED'].includes(sw0.status)) pollReal(sw0.depositAddress); render(); return; }
   if (e.target.closest('[data-realquote]')) { realQuoteNow(); return; }
-  if (e.target.closest('[data-realnew]')) { view.realSwaps = []; renderPanel(); return; }
+  if (e.target.closest('[data-realnew]')) { view.realSwaps = []; render(); return; }
   if (e.target.closest('[data-realsubmit]')) { const sw = (view.realSwaps || [])[0], tx = ($('real-tx') || {}).value || ''; if (sw && tx.trim()) post('/api/intents/real/submit', { depositAddress: sw.depositAddress, txHash: tx.trim() }).then((r) => toast(r.ok ? t('real.submitted') : errText(r), r.ok ? 'win' : 'bad')); return; }
   const cp = e.target.closest('[data-copy]');
   if (cp) { try { navigator.clipboard.writeText(cp.dataset.copy); toast(t('real.copied'), 'win'); } catch {} return; }
@@ -2516,7 +2537,7 @@ function showLogTab(tab) {
 }
 // keep what was typed in the real-swap form across redraws; a new destination changes the address field
 document.addEventListener('input', (e) => { if (e.target.id && e.target.id.startsWith('real-') && e.target.id !== 'real-tx') readRealForm(); });
-document.addEventListener('change', (e) => { if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; renderPanel(); } });
+document.addEventListener('change', (e) => { if (e.target.id === 'real-to') { readRealForm(); ui.real.recipient = ''; render(); } });
 
 document.addEventListener('submit', async (e) => {
   if (e.target.classList && e.target.classList.contains('ai-ask')) {
