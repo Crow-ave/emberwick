@@ -921,3 +921,16 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .wchoose-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 3px; align-items: center; }
 .wc-btn { border: 1.5px solid #c9b79c; background: #fffaf2; border-radius: 999px; padding: 5px 12px; font-weight: 700; cursor: pointer; font: inherit; font-weight: 700; }
 .wc-btn:hover { border-color: #e0742b; background: #fff3e6; }
+
+/* system status */
+.sysbox{border:1px solid #e3d6bf;border-radius:10px;padding:6px 10px;margin:8px 0;background:#fffaf2}
+.sysbox summary{cursor:pointer;font-weight:600}
+.systab{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
+.systab td{padding:3px 4px;border-bottom:1px solid #f0e6d4;vertical-align:top;word-break:break-all}
+.systab td:first-child{color:#7a6a55;white-space:nowrap;width:1%;padding-right:10px;word-break:normal}
+.syst{display:inline-block;padding:1px 7px;border-radius:9px;font-size:12px;font-weight:600}
+.syst.st-ok{background:#e1f3e3;color:#21653a}.syst.st-low{background:#fde4dc;color:#a3331a}.syst.st-off{background:#eee;color:#666}
+.sysnote{background:#fff3e6;border-radius:8px;padding:6px 8px}
+.syslog{max-height:240px;overflow:auto;font:12px/1.45 ui-monospace,Menlo,monospace;background:#2b2520;color:#eadfcf;border-radius:8px;padding:6px 8px}
+.syslog div{padding:1px 0;word-break:break-word}.syslog .muted{color:#9c8f7e}
+.syslog .bad{color:#ffb39e}.syslog .good{color:#a8e6b4}

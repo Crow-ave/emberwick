@@ -12,6 +12,31 @@ import { Bridge, makeNearAdapter, fileStore } from './near.js';
 import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+// ---------- system log: the last [NEAR] and [AI] lines, so players can see them in the game ----------
+const sysLog = [];
+const SYS_MAX = 80;
+{
+  const orig = console.log.bind(console);
+  console.log = (...args) => {
+    orig(...args);
+    try {
+      const text = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+      const m = /^\[(NEAR|AI)\]\s*/.exec(text);
+      if (!m) return;
+      const clean = text.slice(m[0].length).replace(/ed25519:[1-9A-HJ-NP-Za-km-z]{20,}/g, 'ed25519:…').replace(/\n\[(NEAR|AI)\]\s*/g, ' ').slice(0, 300);
+      sysLog.unshift({ at: Date.now(), src: m[1], text: clean });
+      if (sysLog.length > SYS_MAX) sysLog.length = SYS_MAX;
+    } catch { /* never break logging */ }
+  };
+}
+let bankNear = { at: 0, value: null };
+async function bankBalance() {
+  if (!bridge || !bridge.root || !bridge.adapter) return null;
+  if (Date.now() - bankNear.at < 30000) return bankNear.value;
+  try { bankNear = { at: Date.now(), value: await bridge.adapter.nearBalance(bridge.root) }; } catch { bankNear.at = Date.now(); }
+  return bankNear.value;
+}
 const PUBLIC = path.join(root, 'public');
 const SAVE = process.env.EMBERWICK_SAVE || path.join(root, 'data', 'state.json'); // a second village (e.g. for the online demo) can keep its own save
 const PORT = Number(process.env.PORT) || 3000;
@@ -565,6 +590,18 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
   if (url.pathname === '/api/world') return sendJson(res, 200, { buildings: BUILDINGS, goods: GOODS, paths: START_PATHS, routes: PATH_ROUTE, token: TOKEN, rules: { ticksPerDay: RULES.ticksPerDay, tickMs: RULES.tickMs } });
+  if (url.pathname === '/api/system') {
+    const c = bridge ? bridge.view() : null;
+    const bal = await bankBalance();
+    const a = aiPublic();
+    return sendJson(res, 200, {
+      network: c ? c.network : null, explorer: c ? c.explorer : null, status: c ? c.status : 'off',
+      bank: c && c.accounts ? c.accounts.bank : null, bankNear: bal, gasMin: 0.5,
+      lowGas: !!(c && c.lowGas), pending: c ? c.pending : 0, txCount: c ? c.txCount : 0,
+      ai: { status: a.status, provider: a.provider, model: a.model, tee: a.tee, attestAt: a.attest && a.attest.at || null, error: a.error },
+      uptime: Math.round(process.uptime()), log: sysLog.slice(0, 50),
+    });
+  }
   if (url.pathname === '/api/state') return sendJson(res, 200, view(url.searchParams.get('player')));
 
   if (url.pathname === '/api/stream') {

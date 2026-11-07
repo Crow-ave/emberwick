@@ -1747,7 +1747,13 @@ function renderPanel() {
   const typing = document.activeElement && panel.contains(document.activeElement) && ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
   if (typing) return; // keep what the player is typing
   if (!onMapCard(ui.selected) && $('map-card')) { $('map-card').hidden = true; $('view').classList.remove('card-on', 'card-wide'); }
-  if (ui.selected === 'near') { panel.innerHTML = closeBtn() + panelNear(); panel.hidden = false; return; }
+  if (ui.selected === 'near') {
+    if (!sysTimer) watchSys();
+    const top = panel.scrollTop, lg = panel.querySelector('.syslog'), lgTop = lg ? lg.scrollTop : 0;
+    panel.innerHTML = closeBtn() + panelNear(); panel.hidden = false;
+    panel.scrollTop = top; const lg2 = panel.querySelector('.syslog'); if (lg2) lg2.scrollTop = lgTop;
+    return;
+  }
   if (ui.selected === 'board') { panel.innerHTML = closeBtn() + boardSection(); panel.hidden = false; return; }
   if (ui.selected === 'trade') { panel.innerHTML = closeBtn() + panelTrade(); panel.hidden = false; return; }
   if (ui.selected === 'rename' && view.player) { panel.innerHTML = closeBtn() + `<h2>${t('rename.title')}</h2><p class="small">${t('rename.help')}</p><form id="rename-form" class="row"><input id="rename-input" maxlength="20" value="${esc(view.player.name)}"><button class="primary" type="submit">${t('rename.save')}</button></form>`; panel.hidden = false; return; }
@@ -2184,10 +2190,49 @@ function feedList(list, mineOnly) {
   }).join('')}</ul>`;
 }
 
+// ---------- system status: bank gas, NEAR AI and the server's last log lines ----------
+let sysTimer = null;
+async function loadSys() {
+  try { ui.sys = await (await fetch('/api/system')).json(); } catch { ui.sys = ui.sys || { failed: true }; }
+  if (ui.selected === 'near') renderPanel();
+}
+function watchSys() {
+  clearInterval(sysTimer); sysTimer = null;
+  if (ui.selected !== 'near') return;
+  loadSys();
+  sysTimer = setInterval(() => { if (ui.selected === 'near' && !document.hidden) loadSys(); else if (ui.selected !== 'near') { clearInterval(sysTimer); sysTimer = null; } }, 15000);
+}
+function sysBox() {
+  const s = ui.sys;
+  let h = `<details class="sysbox" data-keep="sys" ${keepOpen('sys', true) ? 'open' : ''}><summary>🛠 ${t('sys.title')}</summary>`;
+  if (!s) return h + `<p class="muted small">${t('sys.loading')}</p></details>`;
+  if (s.failed) return h + `<p class="muted small">${t('sys.failed')}</p></details>`;
+  const time = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const bankLink = s.bank ? (s.explorer ? `<a href="${s.explorer}/address/${encodeURIComponent(s.bank)}" target="_blank" rel="noopener">${esc(s.bank)}</a>` : esc(s.bank)) : '–';
+  const bal = typeof s.bankNear === 'number' ? s.bankNear.toFixed(2) + ' NEAR' : '–';
+  const gas = !s.bank ? 'off' : s.lowGas || (typeof s.bankNear === 'number' && s.bankNear < s.gasMin) ? 'low' : 'ok';
+  const aiOk = s.ai && s.ai.status === 'ready';
+  h += `<table class="systab">` +
+    `<tr><td>${t('sys.bank')}</td><td>${bankLink}</td></tr>` +
+    `<tr><td>${t('sys.balance')}</td><td>${bal}</td></tr>` +
+    `<tr><td>${t('sys.gas')}</td><td><span class="syst st-${gas}">${t('sys.gas.' + gas, { n: s.gasMin })}</span></td></tr>` +
+    `<tr><td>${t('sys.queue')}</td><td>${t('sys.queueVal', { p: s.pending || 0, n: s.txCount || 0 })}</td></tr>` +
+    `<tr><td>${t('sys.ai')}</td><td><span class="syst st-${aiOk ? 'ok' : 'low'}">${aiOk ? esc(s.ai.model || '') : t('sys.aiOff')}</span>${aiOk && s.ai.tee ? ` · 🔒 TEE${s.ai.attestAt ? ' · ' + t('sys.attestAt', { time: time(s.ai.attestAt) }) : ''}` : ''}${!aiOk && s.ai && s.ai.error ? `<br><span class="muted small">${esc(s.ai.error)}</span>` : ''}</td></tr>` +
+    `</table>`;
+  if (gas === 'low') h += `<p class="small sysnote">${t('sys.lowHelp', { n: s.gasMin })}</p>`;
+  h += `<p class="sub2">${t('sys.log')} <button class="linkbtn small" data-sysrefresh>↻ ${t('sys.refresh')}</button></p>`;
+  h += s.log && s.log.length
+    ? `<div class="syslog" data-keepscroll="syslog">${s.log.map((l) => `<div class="${/out of testnet NEAR|failed|not available|could not|error/i.test(l.text) ? 'bad' : /arrived|ready|using it|received/i.test(l.text) ? 'good' : ''}"><span class="muted">${time(l.at)}</span> <b>${l.src}</b> ${esc(l.text)}</div>`).join('')}</div>`
+    : `<p class="muted small">${t('sys.noLog')}</p>`;
+  h += `<p class="muted small">${t('sys.note')}</p></details>`;
+  return h;
+}
+
 function panelNear() {
   const c = view.chain || { status: 'off' };
   const me = view.player;
   let h = `<h2>${t('near.title')}</h2><p class="muted small">${t('near.intro')}</p>`;
+  h += sysBox();
   const st = c.status;
   if (st === 'setup') h += `<div class="status">${t('near.st.setup', { step: t('near.step.' + ((c.detail && c.detail.step) || 'root')) })}</div>`;
   else if (st === 'need-funds') {
@@ -2952,7 +2997,8 @@ document.body.addEventListener('click', (e) => {
     if (me && window.EmberwickWallet && (!me.near || ui.challenge)) nearMeteor();
     return;
   }
-  if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); return; }
+  if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); watchSys(); return; }
+  if (e.target.closest('[data-sysrefresh]')) { loadSys(); return; }
   const btn = e.target.closest('#panel button[data-act], #dock button[data-act], #scene-bar button[data-act], #scene-menu button[data-act], #map-card button[data-act]');
   if (!btn) return;
   const a = btn.dataset.act;
