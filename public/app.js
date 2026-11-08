@@ -3407,6 +3407,15 @@ function renderTicker(pr) {
   el.innerHTML = h + `<p class="muted small">${t('ticker.src')}</p>`;
 }
 
+// tell the server someone is really playing (at most every 5 minutes); NEAR AI plans pause for idle tabs
+let hereAt = 0;
+['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((ev) => document.addEventListener(ev, () => {
+  if (document.hidden || Date.now() - hereAt < 5 * 60000) return;
+  hereAt = Date.now(); fetch('/api/here', { method: 'POST' }).catch(() => {});
+}, { passive: true, capture: true }));
+const sayHere = () => { if (!document.hidden) { hereAt = Date.now(); fetch('/api/here', { method: 'POST' }).catch(() => {}); } };
+setTimeout(sayHere, 1500); // opening the page counts
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - hereAt > 5 * 60000) sayHere(); });
 // ---------- village chat ----------
 let chatSeen = null; // the newest message id already shown as a bubble
 function renderChat() {

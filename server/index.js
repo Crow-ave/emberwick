@@ -572,8 +572,14 @@ function broadcast() {
 
 // NEAR AI: each village morning one request plans the day for every craftsman, only while someone is playing
 let aiBusy = false, aiTry = { day: 0, n: 0, at: 0 };
+// NEAR AI costs money per request: the morning plan is only made while someone is really playing
+// (a click, a key or a scroll in the last 30 minutes), not for a tab left open in the background
+let lastHere = Date.now(), idleSaid = false;
+const IDLE_MS = (Number(process.env.EMBERWICK_IDLE_MIN) || 30) * 60000;
 async function aiMorning() {
   if (aiBusy || ai.status !== 'ready' || !clients.size || (state.ff && state.ff.running) || state.aiPlannedDay === state.day) return;
+  if (Date.now() - lastHere > IDLE_MS) { if (!idleSaid) { idleSaid = true; console.log(`[AI] nobody has played for ${IDLE_MS / 60000} minutes: morning plans paused until someone does`); } return; }
+  if (idleSaid) { idleSaid = false; console.log('[AI] a player is back: morning plans on again'); }
   if (aiTry.day === state.day && (aiTry.n >= 3 || Date.now() - aiTry.at < 90000)) return; // up to 3 tries a village day
   aiBusy = true;
   const day = state.day;
@@ -640,6 +646,8 @@ function readBody(req) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (req.method === 'POST') lastHere = Date.now(); // someone is really playing
+  if (req.method === 'POST' && url.pathname === '/api/here') { res.writeHead(204); return res.end(); }
 
   if (url.pathname === '/api/world') return sendJson(res, 200, { buildings: BUILDINGS, goods: GOODS, paths: START_PATHS, routes: PATH_ROUTE, token: TOKEN, rules: { ticksPerDay: RULES.ticksPerDay, tickMs: RULES.tickMs } });
   if (url.pathname === '/api/system') {
