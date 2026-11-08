@@ -933,6 +933,21 @@ function doneItem(x) {
   return h + `</div></details>`;
 }
 const doneBox = () => { const done = view.realDone || []; return done.length ? `<details class="realdone" data-keep="done"${keepOpen('done')}><summary>${t('real.doneTitle')} (${done.length})</summary><div class="donelist">${done.map(doneItem).join('')}</div></details>` : ''; };
+// before approving: where the money comes from and where it really ends up (the wallet window only shows the deposit address)
+const ADDR_PAGE = { near: 'https://nearblocks.io/address/', sol: 'https://solscan.io/account/', base: 'https://basescan.org/address/', eth: 'https://etherscan.io/address/', arb: 'https://arbiscan.io/address/', op: 'https://optimistic.etherscan.io/address/', pol: 'https://polygonscan.com/address/', bsc: 'https://bscscan.com/address/', avax: 'https://snowtrace.io/address/', gnosis: 'https://gnosisscan.io/address/', btc: 'https://mempool.space/address/', tron: 'https://tronscan.org/#/address/' };
+function addrRow(label, addr, chain, role) {
+  if (!addr) return '';
+  const k = walletKind(chain), cw = (ui.wallet || {})[k], nm = (ui.walletName || {})[k];
+  const mine = !!(cw && String(cw).toLowerCase() === String(addr).toLowerCase());
+  const base = ADDR_PAGE[chain];
+  const tag = mine ? `<span class="chk-ok">✓ ${t('chk.connected', { w: esc(nm || netName(chain)) })}</span>`
+    : role === 'to' ? `<span class="chk-warn">⚠ ${t('chk.other')}</span>` : `<span class="chk-warn">⚠ ${t('chk.notConnected')}</span>`;
+  return `<div class="chk-row"><div class="chk-lab">${label} <span class="muted">· ${esc(netName(chain))}</span></div><div class="chk-addr"><code>${esc(addr)}</code></div><div class="chk-meta">${tag} <button type="button" class="linkbtn small" data-copy="${esc(addr)}">${t('real.copy')}</button>${base ? ` <a class="small" href="${base}${encodeURIComponent(addr)}" target="_blank" rel="noopener">${t('chk.explorer')} ↗</a>` : ''}</div></div>`;
+}
+function checkBox(fromAddr, fromChain, rows, pending) {
+  return `<div class="chkbox"><div class="chk-head">🔎 ${t('chk.title')}</div>` + addrRow(t('chk.from'), fromAddr, fromChain, 'from') + rows +
+    (pending ? `<p class="small muted chk-note">${t('chk.note')}</p>` : '') + `</div>`;
+}
 function realSwapBox() {
   const me = view.player;
   let sw = curSwap();
@@ -960,6 +975,7 @@ function realSwapBox() {
   // first column: the wallet (step 1), the picture, and the AI that can fill the card; second column: the card itself
   const splitting = !shown && (anyMode ? f.fromId === WNEAR_ID : dir === 'out') && f.legs;
   if (!shown) R += splitting ? walletTiles('near', 'near') : walletTiles(left.chain, right.chain);
+  else if (!finished && sw.status === 'PENDING_DEPOSIT' && !sw.sentTx) R += walletTiles(left.chain, right.chain);
   R += splitting ? bridgeSvg({ sym: 'NEAR', chain: 'near', amount: legSum(f.legs) }, { sym: ds(legDst(f.legs[0])[0]), chain: legDst(f.legs[0])[1], amount: null }, false, 'real') + `<p class="small muted">${t('split.picture', { n: f.legs.length, c: new Set(f.legs.map((l) => legDst(l)[1])).size })}</p>` : bridgeSvg(left, right, moving, shown ? 'real' : 'real-flip');
   if (!shown || (ui.aiSwap && ui.aiSwap.reply && ui.aiSwap.reply.swap && sw && ui.aiSwap.reply.swap.depositAddress === sw.depositAddress)) R += aiSwapBox();
   let L = banner;
@@ -970,6 +986,7 @@ function realSwapBox() {
     if (finished) L += `<div class="lastres ${sw.status === 'SUCCESS' ? 'ok' : 'bad'}"><span>${sw.status === 'SUCCESS' ? '✓' : '↩'} <b>${t(sw.status === 'SUCCESS' ? 'real.doneOk' : 'real.doneBad')}</b> <span class="muted">${t('real.doneKeep')}</span></span></div>`;
     L += `<div class="realswap"><p class="small"><b>${anyS ? t('any.quote', { a: sw.amountIn, fs: esc(ds(sw.fromSym)), fc: esc(netName(sw.fromChain)), b: amt(sw.amountOut), ts: esc(ds(sw.toSym)), tc: esc(netName(sw.chain)) }) : inDir ? t('real.quoteIn', { a: sw.amountIn, sym: sw.fromSym, chain: srcName, b: amt(sw.amountOut) }) : t('real.quote', { a: sw.amountIn, b: amt(sw.amountOut), to: REAL_DST[sw.to] ? `${REAL_DST[sw.to][0]} (${CH_NAME[REAL_DST[sw.to][1]]})` : sw.to })}</b>${sw.usdOut ? ` (≈ $${Number(sw.usdOut).toFixed(2)})` : ''}</p>`;
     if (sw.status === 'PENDING_DEPOSIT' && !sw.sentTx) L += `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>`;
+    L += checkBox(sw.refundTo, srcChain, addrRow(t('chk.to'), sw.recipient, sw.chain || 'near', 'to'), sw.status === 'PENDING_DEPOSIT' && !sw.sentTx);
     L += `<ol class="realsteps">${REAL_STEPS.map((s2, i) => `<li class="${i < k || sw.status === 'SUCCESS' ? 'done' : i === k ? 'now' : ''}">${t('real.s.' + s2)}</li>`).join('')}</ol>`;
     if (sw.status === 'PENDING_DEPOSIT') {
       R += feeBox([sw]);
@@ -1038,7 +1055,7 @@ function splitView(group, R) {
   };
   const wtx = (group.find((x) => x.sentTx) || {}).sentTx;
   let L = ended ? `<div class="lastres ${group.every((x) => x.status === 'SUCCESS') ? 'ok' : 'bad'}"><span>${group.every((x) => x.status === 'SUCCESS') ? '✓' : '↩'} <b>${t(group.every((x) => x.status === 'SUCCESS') ? 'split.doneOk' : 'split.doneSome')}</b> <span class="muted">${t('real.doneKeep')}</span></span></div>` : '';
-  L += `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p>${pending && !sent ? `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>` : ''}<ol class="legst">` +
+  L += `<div class="realswap"><p class="small"><b>${t('split.head', { n: group.length, total })}</b></p>${pending && !sent ? `<button type="button" class="editquote" data-realedit="1">✎ ${t('real.edit')}</button>` : ''}${checkBox(group[0].refundTo, 'near', group.map((x, i) => addrRow(t('chk.toN', { n: i + 1 }), x.recipient, x.chain || 'near', 'to')).join(''), pending && !sent)}<ol class="legst">` +
     group.map((x) => `<li class="st-${x.status}"><span class="leg-n">${x.leg || ''}</span><span class="legst-tx">${x.amountIn} NEAR → <b>${esc(String(amt(x.amountOut)))} ${esc(DST_LABEL(x.to))}</b><br><span class="muted small" title="${esc(x.recipient)}">${esc(shortAddr(x.recipient))}</span>${proofs(x)}</span><span class="legst-st" title="${esc(t('real.s.' + x.status))}">${SPLIT_ST[x.status] || '·'} ${t('split.st.' + x.status)}</span></li>`).join('') + `</ol>`;
   if (pending && !sent) {
     R += feeBox(group);
