@@ -1070,7 +1070,7 @@ function feeBox(list) {
   return `<div class="feebox"><div class="fee-h">🧾 ${t('fee.title')}</div><table>` +
     `<tr><td>${t('fee.send')}</td><td class="n"><b>${amountIn} ${esc(sym)}</b> <span class="muted">≈ ${money(vin)}</span></td></tr>` +
     `<tr><td>${t('fee.arrives')}</td><td class="n"><b>${outTxt}</b> <span class="muted">≈ ${money(vout)}</span></td></tr>` +
-    `<tr class="fee-cost ${level}"><td>${t(cost < 0 ? 'fee.gain' : 'fee.cost')}</td><td class="n"><b>${money(Math.abs(cost))}</b>${pct != null ? ` (%${Math.abs(pct).toFixed(1)})` : ''}</td></tr></table>` +
+    `<tr class="fee-cost ${level}"><td>${t(cost < 0 ? 'fee.gain' : 'fee.cost')}</td><td class="n"><b>${money(Math.abs(cost))}</b>${pct != null ? ` (${getLang() === 'tr' ? '%' + Math.abs(pct).toFixed(1) : Math.abs(pct).toFixed(1) + '%'})` : ''}</td></tr></table>` +
     `<p class="small muted">${mk ? t('fee.costNoteMarket') : t('fee.costNoteIntents')}${mk ? ` ${t('fee.intentsSays', { a: money(usdIn), b: money(usdOut) })}` : ''}</p>` +
     `<p class="small muted">⛽ ${gas}${time ? ` · ⏱ ${t('fee.time', { n: time })}` : ''}</p>` + (list.length === 1 ? altBox(x0, cost) : '') + `</div>`;
 }
@@ -2394,7 +2394,7 @@ function panelNear() {
   if (c.lowGas) h += `<div class="near-box warn"><p>${t('near.lowGas')}</p><code class="addr">${esc(c.lowGas.address)}</code>` +
     `<div class="row"><button data-act="near-copy" data-copy="${esc(c.lowGas.address)}">${t('near.copy')}</button>` +
     `<a class="btnlink" href="${c.wallet}" target="_blank" rel="noopener">${t('near.openWallet')}</a></div></div>`;
-  else h += `<div class="status">${t('near.st.' + (st in { off: 1, starting: 1, error: 1 } ? st : 'starting'))}</div>`;
+  else if (!['ready', 'setup', 'need-funds'].includes(st)) h += `<div class="status">${t('near.st.' + (st in { off: 1, starting: 1, error: 1 } ? st : 'starting'))}</div>`;
 
   if (c.accounts && st === 'ready') {
     const a = c.accounts, bal = c.balances || {};
