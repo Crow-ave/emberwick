@@ -1677,7 +1677,7 @@ function maybeSeal() {
   const key = sealKey(g);
   if (ui.sealed.includes(key) || $('seal')) return false;
   const doneAt = Math.max(...g.map((x) => x.doneAt || 0));
-  if (doneAt && Date.now() - doneAt > 20 * 60000) return false; // an old swap: no party
+  if (!doneAt || Date.now() - doneAt > 20 * 60000) return false; // an old swap (or one from before seals existed): no party
   ui.sealed = [...ui.sealed, key].slice(-40); try { localStorage.setItem('ew.sealed', JSON.stringify(ui.sealed)); } catch {}
   showSeal(g);
   return true;
