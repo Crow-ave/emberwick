@@ -214,6 +214,16 @@ Every real swap (a split counts once) puts one **Village seal** in the player's 
 - **Sounds and music** made live in the browser, no sound files.
 - **Phone layout** for small screens.
 
+### 11. Why come back tomorrow
+
+The village keeps living when you log off, and the game shows you what that meant for you.
+
+- **"While you were away":** when you come back after at least a village day, a summary opens over the map: the money that came in and went out of your purse and why (rent from your tenant, wages, sales, taxes, council payouts), the prices that moved most since you left, and what happened in the village (droughts, winter, the dragon, council results). Code: `markSeen` and `awaySummary` in `server/economy.js`, `/api/away`.
+- **Income that runs without you:** a tenant pays daily rent for your house; listings on the exchange sell to other players, craftsmen and villagers; the council can pay villagers out of the treasury.
+- **Things that finish on their own clock:** council votes close after a few days, market listings expire after 3 days, food on credit is due the next morning, and apprentice jobs pay per shift (up to 3 a day).
+- **Opportunities that change:** prices follow stock, so what was cheap when you left may sell well when you return; droughts, winter and the dragon change what the village needs.
+- **Goals that take days:** skill levels, a plot and a house, a tenant, seals on the council wall, the Bridge Master badge.
+
 ---
 
 ## Try it as a judge (do X, see Y)
@@ -332,6 +342,7 @@ The server is the single source of truth for the game state (`data/state.json`).
 | GET | `/api/ai/plan?day=` | The exact JSON of a morning plan (its SHA-256 is on NEAR) |
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
 | POST | `/api/ai/swap` | Read a swap sentence into the swap form |
+| GET | `/api/away?player=` | What changed for a player since they last played (shown once) |
 | GET | `/api/system` | Bank, gas, queue, NEAR AI and the last 50 log lines |
 | GET | `/api/near/challenge`, POST `/api/near/verify`, `/api/near/link` | Link a NEAR wallet with a NEP-413 signature |
 | POST | `/api/near/withdraw`, `/api/near/deposit` | Cash EMWK out to, or in from, the linked wallet |

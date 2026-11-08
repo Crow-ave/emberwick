@@ -2062,6 +2062,40 @@ function runMarket(state) {
 
 // ---------- fast-forward: a week of village life in about a minute (for players and judges) ----------
 const WATCH = [['bakery', 'bread', 'sells'], ['mill', 'flour', 'sells'], ['smithy', 'sword', 'sells'], ['tailor', 'coat', 'sells'], ['mill', 'wheat', 'buys'], ['smithy', 'ore', 'buys'], ['woodcutter', 'wood', 'buys'], ['tailor', 'wool', 'buys']];
+// ---------- while you were away: what changed for a player since they last played ----------
+// remembered at the player's last action (or the last summary): the ledger position and the watched prices
+export function markSeen(state, playerId) {
+  const p = state.players[playerId];
+  if (!p) return;
+  p.seen = { at: Date.now(), day: state.day, tick: state.tick, led: state.ledgerSeq || 0,
+    prices: Object.fromEntries(WATCH.map(([npc, g, side]) => [`${npc}.${g}.${side}`, state.npcs[npc] ? r2(state.npcs[npc][side][g]) : null])) };
+}
+// shown when the player comes back after at least one village day and ten minutes; then the mark moves to now
+export function awaySummary(state, playerId, minMs = 10 * 60000) {
+  const p = state.players[playerId];
+  if (!p) return null;
+  const seen = p.seen;
+  if (!seen || Date.now() - seen.at < minMs || state.tick - seen.tick < RULES.ticksPerDay) { if (!seen) markSeen(state, playerId); return null; }
+  const me = 'player:' + playerId, money = new Map();
+  let net = 0;
+  for (const e of state.ledger || []) {
+    if (e.id <= seen.led || (e.from !== me && e.to !== me)) continue;
+    const amt = e.to === me ? e.amount : -e.amount;
+    net += amt;
+    const k = e.why || 'transfer', m = money.get(k) || { why: k, amount: 0, n: 0 };
+    m.amount += amt; m.n += 1; money.set(k, m);
+  }
+  const lines = [...money.values()].map((m) => ({ ...m, amount: r2(m.amount) })).filter((m) => Math.abs(m.amount) >= 0.01).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 6);
+  const prices = WATCH.map(([npc, g, side]) => {
+    const from = seen.prices && seen.prices[`${npc}.${g}.${side}`], to = state.npcs[npc] ? r2(state.npcs[npc][side][g]) : null;
+    return from && to ? { npc, good: g, side, from, to, change: Math.round((to / from - 1) * 100) } : null;
+  }).filter((x) => x && x.change !== 0).sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 4);
+  const news = (state.log || []).filter((l) => l.day > seen.day && l.kind !== 'info').slice(0, 6);
+  const out = { days: state.day - seen.day, fromDay: seen.day, toDay: state.day, net: r2(net), lines, prices, news, balance: r2(balance(state, me)) };
+  markSeen(state, playerId);
+  return out;
+}
+
 export function weekSnapshot(state) {
   return {
     day: state.day, tick: state.tick, treasury: r2(balance(state, 'treasury')), readiness: state.readiness,

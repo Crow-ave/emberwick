@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { markSeen, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -650,6 +650,12 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/here') { res.writeHead(204); return res.end(); }
 
   if (url.pathname === '/api/world') return sendJson(res, 200, { buildings: BUILDINGS, goods: GOODS, paths: START_PATHS, routes: PATH_ROUTE, token: TOKEN, rules: { ticksPerDay: RULES.ticksPerDay, tickMs: RULES.tickMs } });
+  // what changed for a player while they were away (once, then the mark moves to now)
+  if (url.pathname === '/api/away') {
+    const pid = String(url.searchParams.get('player') || '');
+    const away = state.players[pid] ? awaySummary(state, pid, (Number(process.env.EMBERWICK_AWAY_MIN) || 10) * 60000) : null;
+    return sendJson(res, 200, { ok: true, away });
+  }
   if (url.pathname === '/api/system') {
     const c = bridge ? bridge.view() : null;
     const bal = await bankBalance();
@@ -853,7 +859,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/action') {
     const body = await readBody(req);
     const r = playerAction(state, body.player, body);
-    if (r.ok) broadcast();
+    if (r.ok) { markSeen(state, body.player); broadcast(); }
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 

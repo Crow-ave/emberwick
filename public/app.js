@@ -778,6 +778,20 @@ async function exAct(type, extra) {
 }
 
 // what happened in the fast-forwarded week
+// while you were away: money in and out, prices that moved, what happened in the village
+function panelAway() {
+  const a = ui.away;
+  // a price you pay going up is bad news; a price a craftsman pays you going up is good news
+  const arrow = (c, side) => { const good = side === 'buys' ? c > 0 : c < 0; return `<span class="${good ? 'ok' : 'bad'}">${c > 0 ? '▲' : '▼'} ${Math.abs(c)}%</span>`; };
+  const title = t(a.days === 1 ? 'away.title1' : 'away.title', { n: a.days });
+  let h = `<h2>${title}</h2><p class="muted small">${t('away.intro', { a: a.fromDay, b: a.toDay })}</p>`;
+  h += `<div class="books-top"><div><span class="muted small">${t('away.net')}</span><b class="${a.net > 0 ? 'ok' : a.net < 0 ? 'bad' : ''}">${a.net > 0 ? '+' : ''}${a.net} EMWK</b></div><div><span class="muted small">${t('away.balance')}</span><b>${a.balance} EMWK</b></div></div>`;
+  if (a.lines.length) h += `<p class="sub2">${t('away.money')}</p><table>${a.lines.map((m) => `<tr><td>${esc(m.why)}${m.n > 1 ? ` <span class="muted small">×${m.n}</span>` : ''}</td><td class="n ${m.amount > 0 ? 'ok' : 'bad'}">${m.amount > 0 ? '+' : ''}${m.amount}</td></tr>`).join('')}</table>`;
+  else h += `<p class="small muted">${t('away.noMoney')}</p>`;
+  if (a.prices.length) h += `<p class="sub2">${t('away.prices')}</p><table>${a.prices.map((x) => `<tr><td>${goodName(x.good)} <span class="muted small">${t(x.side === 'sells' ? 'ff.sells' : 'ff.buys', { name: npcName(x.npc) })}</span></td><td class="n">${Math.round(x.from)} → ${Math.round(x.to)}</td><td class="n">${arrow(x.change, x.side)}</td></tr>`).join('')}</table>`;
+  if (a.news.length) h += `<p class="sub2">${t('away.news')}</p><ul class="decided">${a.news.map((l) => `<li class="${l.kind}">${t('log.day', { n: l.day })}: ${esc(logText(l))}</li>`).join('')}</ul>`;
+  return h + `<button class="primary" data-awayclose="1">${t('away.ok')}</button>`;
+}
 function panelWeek() {
   const w = view.week;
   const arrow = (c) => (c > 0 ? `<span class="bad">▲ ${c}%</span>` : c < 0 ? `<span class="ok">▼ ${-c}%</span>` : `<span class="muted">=</span>`);
@@ -1875,7 +1889,7 @@ const phoneLayout = () => matchMedia('(max-width: 700px)').matches;
 const closeBtn = () => `<button class="close" data-act="close" aria-label="${t('ui.close')}">×</button>`;
 
 // big places (treasury, council) open as a card over the map, so nothing is lost below the side panel
-const MAP_CARD = new Set(['treasury', 'council', 'exchange', 'week']);
+const MAP_CARD = new Set(['treasury', 'council', 'exchange', 'week', 'away']);
 // a plot for sale also opens as a big card on the game screen, so its Buy button is right there
 const onMapCard = (id) => MAP_CARD.has(id) || !!(id && view && view.plots && view.plots[id] && !view.plots[id].owner && !view.plots[id].built);
 function renderMapCard(id, top, html) {
@@ -1913,6 +1927,7 @@ function renderPanel() {
   if (ui.selected === 'talk' && ui.talk) { panel.innerHTML = closeBtn() + panelTalk(); panel.hidden = false; return; }
   if (ui.selected === 'guide') { panel.innerHTML = closeBtn() + panelGuide(); panel.hidden = false; return; }
   if (ui.selected === 'lands') { panel.innerHTML = closeBtn() + panelLands(); panel.hidden = false; return; }
+  if (ui.selected === 'away' && ui.away && renderMapCard('away', '', panelAway())) { panel.innerHTML = closeBtn() + `<h2>${t(ui.away.days === 1 ? 'away.title1' : 'away.title', { n: ui.away.days })}</h2><p class="muted small">${t('card.onMap')}</p>`; panel.hidden = false; return; }
   if (ui.selected === 'week' && view.week && renderMapCard('week', '', panelWeek())) { panel.innerHTML = closeBtn() + `<h2>${t('ff.title')}</h2><p class="muted small">${t('card.onMap')}</p>`; panel.hidden = false; return; }
   const b = world.buildings.find((x) => x.id === ui.selected);
   if (!b && ui.district) { panel.innerHTML = panelRoadsign(); panel.hidden = false; return; }
@@ -2724,6 +2739,11 @@ function render() {
     ffb.disabled = !!run || !playerId;
     ffb.title = t('ff.title');
   }
+  // coming back after a while: once per visit, a summary of what changed for this player opens over the map
+  if (view && view.player && playerId && !ui.awayAsked) {
+    ui.awayAsked = true;
+    fetch('/api/away?player=' + encodeURIComponent(playerId)).then((r) => r.json()).then((r) => { if (r && r.away && !ui.selected && !ui.scene) { ui.away = r.away; ui.selected = 'away'; render(); } }).catch(() => {});
+  }
   // when a fast-forward ends, its summary opens over the map once
   if (view && view.week && ui.weekSeen !== view.week.toDay && !(view.ff && view.ff.running)) { ui.weekSeen = view.week.toDay; if (ui.ffAsked) { ui.selected = 'week'; ui.scene = null; } }
   if (world && view) syncOthers(); renderHud(); renderMapNow(); renderChrome(); renderPanel(); renderDock(); renderScene(); }
@@ -3178,6 +3198,7 @@ document.body.addEventListener('click', (e) => {
   }
   if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); watchSys(); return; }
   if (e.target.closest('[data-sysrefresh]')) { loadSys(); return; }
+  if (e.target.closest('[data-awayclose]')) { ui.selected = null; ui.away = null; render(); return; }
   const btn = e.target.closest('#panel button[data-act], #dock button[data-act], #scene-bar button[data-act], #scene-menu button[data-act], #map-card button[data-act]');
   if (!btn) return;
   const a = btn.dataset.act;
