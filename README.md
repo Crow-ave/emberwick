@@ -1,6 +1,6 @@
 # Emberwick
 
-**A living village economy on NEAR.** AI craftsmen with their own NEAR wallets run the shops, think privately with NEAR AI Cloud inside a TEE, and trade in a real token economy on NEAR testnet. Players work, haggle, rent homes, own land as NFTs and vote in a village DAO, and the village exchange makes **real cross-chain swaps on mainnet through NEAR Intents**, from the player's own wallet.
+**A living village economy on NEAR.** AI craftsmen with their own NEAR wallets run the shops, think privately with NEAR AI Cloud inside a TEE, and trade in a real token economy on NEAR testnet. Players work, haggle, rent homes, own land as NFTs and vote in a village council whose results are recorded on NEAR, and the village exchange makes **real cross-chain swaps on mainnet through NEAR Intents**, from the player's own wallet.
 
 Built from scratch during the NEAR hackathon: the first commit is from 2 November 2026, so every line of code here was written in the hackathon window. Tracks: Games With Real Economies · Agent Economy · Privacy & Private AI · Unstoppable DeFi · NFTs That Do Something · Open Innovation.
 
@@ -38,7 +38,7 @@ Everything below is implemented and running in this repository and in the online
 ```yaml
 project: Emberwick
 kind: browser game (multiplayer village economy simulation)
-one_line: AI shopkeepers with NEAR wallets, a NEP-141 token economy on NEAR testnet, NFT land deeds, a DAO, and real NEAR Intents cross-chain swaps on mainnet
+one_line: AI shopkeepers with NEAR wallets, a NEP-141 token economy on NEAR testnet, NFT land deeds, a village council (in-game governance with on-chain records), and real NEAR Intents cross-chain swaps on mainnet
 live_demo: https://emberwick-xcf8.onrender.com
 stack:
   server: Node.js 22+, no framework (server/*.js), state saved to data/state.json, live updates over Server-Sent Events
@@ -92,7 +92,7 @@ Screenshots are from a local run in English. The swap screens used a test RPC, s
 | ![A shop scene: the blacksmith answers a player's question through NEAR AI, with buttons the rules checked](docs/img/shop-near-ai.jpg) **AI craftsman (NEAR AI, TEE).** The smith answers in character; under the answer are action buttons the game rules checked. The side panel shows today's AI plan, its hash recorded on NEAR and the TEE attestation. | ![The NEAR panel with live system status: village bank, gas, transaction queue, NEAR AI model and server log](docs/img/near-panel.jpg) **NEAR panel and system status.** Village bank and gas money, transaction queue, NEAR AI model and TEE status, and the server's last 50 `[NEAR]`/`[AI]` log lines. |
 | ![The real swap card: connected NEAR wallet, wallet balance, network and token pickers, AI command box](docs/img/swap-card.jpg) **Real swap card.** Connect a wallet (step 1), choose network and token on each side (step 2), see the wallet's balance, or type the swap as a sentence for NEAR AI. | ![A real NEAR Intents quote with a cost breakdown and the one-approval send button](docs/img/swap-quote.jpg) **Quote with full cost.** What you send, what arrives, total cost at market prices (CoinGecko) next to NEAR Intents' own figures, wallet fee, time, and other routes (Omni Bridge, LI.FI). |
 | ![The village seal: a wax seal stamped over the screen after a delivered swap, with proof links](docs/img/village-seal.jpg) **Village seal.** When a swap is delivered: route, delivery time, proof link, the village-book record on NEAR testnet, a ready X post and the Bridge Master badge. | ![A delivered swap: all four steps ticked, wallet, deposit and delivery transaction links](docs/img/swap-delivered.jpg) **Delivered swap.** The finished swap stays on the card with the wallet, deposit and delivery transactions and the NEAR Intents explorer link until the player starts a new one. |
-| ![Split send: one NEAR send split to three receivers on Solana and NEAR](docs/img/split-send.jpg) **Split send.** One NEAR transaction, one approval, up to five receivers on different chains and tokens. | ![The council hall with the wall of village seals and the proposal form](docs/img/council.jpg) **Council (DAO) and the wall of seals.** Vote weight, open votes, proposals; every seal hung on the wall lowers the market fee for everyone. |
+| ![Split send: one NEAR send split to three receivers on Solana and NEAR](docs/img/split-send.jpg) **Split send.** One NEAR transaction, one approval, up to five receivers on different chains and tokens. | ![The council hall with the wall of village seals and the proposal form](docs/img/council.jpg) **Council and the wall of seals.** Vote weight, open votes, proposals; every seal hung on the wall lowers the market fee for everyone. |
 
 ![The judge tour card over the village map](docs/img/judge-tour.jpg)
 
@@ -108,7 +108,7 @@ Screenshots are from a local run in English. The swap screens used a test RPC, s
 | **On-chain records (memos)** | AI plan SHA-256, signed job contracts, council results, and every real mainnet swap are written to NEAR testnet as 0.01 EMWK memo transfers. | `server/economy.js`, `server/index.js` | Memo text on the transfer in NearBlocks |
 | **NEP-171 NFTs (land deeds)** | Each plot of land is an NFT. The deed lets you build, sleep at home, rent out for daily income, and sell on the exchange with NFT escrow. | `server/near.js` (`setupDeeds`, `moveDeed`), `contracts/emwk_deeds.wasm` | [deeds contract](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet); deed card in game |
 | **NEP-413 wallet link** | A player proves ownership of a NEAR account by signing a message; the server checks it against the account's full-access key. Then EMWK can be cashed out to, or deposited from, that wallet. | `server/index.js` (`/api/near/*`), `public/vendor/near-wallet.js` | NEAR panel → wallet section |
-| **NEAR Intents (mainnet)** | Real cross-chain swaps between any supported tokens and chains, one approval from the player's wallet, tracked to delivery. Also live dry-run quotes, a pay-from-any-chain preview, a DAO reserve quote and a NEAR price oracle. | `server/index.js` (`realQuote`, `quoteAny`, `realStatus`), `public/app.js` (swap UI), `public/vendor/wallets.src.mjs` | [A real swap made from the game](https://explorer.near-intents.org/transactions/8pbsZb3giBZLihUSarvtvQDR4gNbz5Td7WP4gdCyRMDC) |
+| **NEAR Intents (mainnet)** | Real cross-chain swaps between any supported tokens and chains, one approval from the player's wallet, tracked to delivery. Also live dry-run quotes, a pay-from-any-chain preview, a council reserve quote and a NEAR price oracle. | `server/index.js` (`realQuote`, `quoteAny`, `realStatus`), `public/app.js` (swap UI), `public/vendor/wallets.src.mjs` | [A real swap made from the game](https://explorer.near-intents.org/transactions/8pbsZb3giBZLihUSarvtvQDR4gNbz5Td7WP4gdCyRMDC) |
 | **Chain abstraction** | One NEAR transaction with one approval funds up to five swaps to different chains (split send). NEAR is the meeting point even for Base → Solana. | `wallets.src.mjs` (`nearSendMany`), `server/index.js` (`/api/intents/real/multi`) | Split view: one wallet transaction for all parts |
 
 ---
@@ -153,12 +153,15 @@ Each feature lists what it does, how it works, and where it lives in the code.
 - **A deed that does something:** build a home (6 lumber + 40 EMWK), add a bed to sleep there, rent it out for daily player-to-player rent on NEAR, and sell it on the exchange. On sale, the bank holds the NFT in escrow and sends it to the buyer's wallet.
 - **Fair-value floor:** if no player buys, the treasury buys one deed a day for a newcomer family at most 10% over fair value (land + house + bed), so land always has a buyer.
 
-### 5. Village council (DAO)
+### 5. Village council (in-game governance with on-chain records)
+
+The council is governance inside the game, not a DAO contract. Proposals, votes and vote weights live in the game state on the server, and the server carries out a passed decision. What goes on NEAR is the record: the result of every vote, and the payments a decision causes.
+
 
 - **Proposals** from a fixed menu the game can execute: fund a craftsman, change the market tax (1–6%), top up the newcomer fund, hold a festival, build a watchtower, open a neighbourhood, or set part of the treasury aside in USDC or BTC (with a live NEAR Intents quote). A small fee, a quorum of 4 voters, at most 3 open proposals, and a locked reserve protect the treasury.
 - **Voters:** players, the twelve villager bots and the AI craftsmen, each in their own interest, with reasons shown.
 - **Vote weight:** half the square root of coins, plus days in the village (max 10), plus contribution (max 10). Wealth helps but cannot buy the vote.
-- **On chain:** when a vote closes, the treasury sends a 0.01 EMWK record whose memo holds the proposal, result and weights.
+- **On chain (record only):** when a vote closes, the treasury sends a 0.01 EMWK record whose memo holds the proposal, result and weights. The voting itself does not happen on chain and no contract enforces voting rights; a governance contract is on the roadmap.
 - **Watchtowers:** a passed tower proposal pays the carpenter 250 EMWK and adds 10% readiness against the dragon.
 - **Wall of village seals:** see 8.9.
 
@@ -304,10 +307,10 @@ Emberwick is a **blockchain-backed game run by a server**, not a fully on-chain 
 | EMWK a player cashed out | The player's own NEAR wallet | Stays with the player |
 | EMWK still inside the game | The village bank's account on NEAR (the game owes it to the player) | Stays in the bank account; the player cannot move it without the game |
 | Craftsmen's and treasury money | Their own NEAR sub-accounts | Stays on chain |
-| Land deeds | NEP-171 NFTs; in the player's verified wallet, or held by the bank until the player verifies | NFTs in wallets stay with their owners |
+| Land deeds | NEP-171 NFTs; in the player's verified wallet, or held by the bank until the player verifies. The game's own record decides who may build, sleep and collect rent on a plot; selling in the game requires the NFT to be in the bank's escrow, checked on chain. A deed moved to another wallet outside the game does not move those rights yet (roadmap). | NFTs in wallets stay with their owners |
 | Real NEAR Intents swaps | Mainnet, from the player's own wallet to the player's own address | Already settled; the game never held the funds |
 | Records (AI plan hashes, daily village-state hashes, job contracts, council results, swap records) | Memos on NEAR testnet transfers | Stay readable forever, and prove what the state was each day |
-| Prices, stock, jobs, homes, votes in progress, chat | `data/state.json` on the server | Lost with the server; the public part of each day can be checked against its hash on NEAR |
+| Prices, stock, jobs, homes, council proposals and votes, chat | `data/state.json` on the server | Lost with the server; the public part of each day can be checked against its hash on NEAR |
 
 **AI: what it changes and what it cannot.** NEAR AI decides, within fixed limits, how much each craftsman wants to keep in stock (×0.7–1.4 of the rule-based target) and how it prices each good (×0.9–1.1); the rule-based prices then follow that stock. It also decides who gets food on credit, which actions to suggest to a player, how a haggle is voiced, and how a swap sentence is read. It cannot move coins, create money, change the rules or send a swap: every transfer goes through `transfer()` in `server/economy.js`, and every suggested action is checked by the rules before it becomes a button the player presses. With NEAR AI off, the same economy runs on rules alone; the AI makes the craftsmen plan ahead and talk to players, and its plans are recorded so anyone can see what it decided.
 
@@ -395,7 +398,7 @@ flowchart LR
   end
   subgraph Server[Node.js server]
     IDX[server/index.js<br/>HTTP API, SSE, swaps]
-    ECO[server/economy.js + pricing.js<br/>ledger, shops, jobs, land, DAO]
+    ECO[server/economy.js + pricing.js<br/>ledger, shops, jobs, land, council]
     AI[server/ai.js<br/>NEAR AI client]
     BR[server/near.js<br/>NEAR bridge]
   end
@@ -520,7 +523,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 - **Game keys** live in `~/.emberwick/` on the server machine (or a host's secret variable), never in the repository and never printed in logs.
 - **Players' funds:** the game never holds keys or player funds for real swaps. Every deposit is signed in the player's own wallet, which shows the amount and the address first. Refunds go to the player's own address.
 - **AI cannot move money:** NEAR AI suggests; the rules in `server/economy.js` decide. Suggested actions become buttons only after a rules check, and a swap sentence only fills the form.
-- **DAO safety:** a fixed menu of executable decisions (no free-form "send treasury money anywhere"), a proposal fee, quorum, caps per decision, and a locked reserve.
+- **Council safety:** a fixed menu of executable decisions (no free-form "send treasury money anywhere"), a proposal fee, quorum, caps per decision, and a locked reserve.
 - **Verifiable AI:** the TEE attestation, each plan's answer signature checked against the attested key, and the on-chain plan hashes let anyone check what the model was asked and answered, and where.
 
 ---
@@ -534,12 +537,14 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell with escrow |
 | **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other: they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
 | **Privacy & Private AI** | Every model call goes to NEAR AI Cloud; the game picks a model with a TEE attestation report, keeps the report public (`/api/ai/attestation`), checks each morning plan's signature against the attested key (`/api/ai/proof`), and hashes each day's plan onto NEAR |
-| **Open Innovation** | Craftsmen that plan with NEAR AI Cloud (verifiable private inference) inside safe limits; a DAO where AI villagers vote with reasons, recorded on NEAR |
+| **Open Innovation** | Craftsmen that plan with NEAR AI Cloud (verifiable private inference) inside safe limits; a village council where AI villagers vote with reasons, with every result recorded on NEAR |
 
 ---
 
 ## Roadmap
 
+- A governance contract for the council: votes cast and counted on chain
+- Deed rights that follow the NFT: whoever holds the deed on chain owns the plot in the game, so deeds can trade on any NEAR marketplace
 - The village on mainnet: real universal checkout (pay for land or rent from any chain through a NEAR Intents deposit address)
 - Items as NEP-245 multi-tokens
 - Swarm-for-Hire: the council posts a job, players fund AI apprentices with NEAR to pay for inference, the council reviews the work before payment
