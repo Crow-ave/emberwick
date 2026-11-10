@@ -2,7 +2,7 @@
 
 **A living village economy on NEAR.** AI craftsmen with their own NEAR wallets run the shops, think privately with NEAR AI Cloud inside a TEE, and trade in a real token economy on NEAR testnet. Players work, haggle, rent homes, own land as NFTs and vote in a village DAO, and the village exchange makes **real cross-chain swaps on mainnet through NEAR Intents**, from the player's own wallet.
 
-Built for the NEAR hackathon (Games With Real Economies · Unstoppable DeFi · NFTs That Do Something · Open Innovation).
+Built from scratch during the NEAR hackathon: the first commit is from 2 November 2026, so every line of code here was written in the hackathon window. Tracks: Games With Real Economies · Agent Economy · Privacy & Private AI · Unstoppable DeFi · NFTs That Do Something · Open Innovation.
 
 **▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** (desktop and phone). Press **Judge tour** in the top bar for a two-minute walk through every NEAR part.
 
@@ -20,13 +20,14 @@ Built for the NEAR hackathon (Games With Real Economies · Unstoppable DeFi · N
 6. [Proof on chain](#proof-on-chain)
 7. [Verify it yourself](#verify-it-yourself)
 8. [What is on chain and what is not](#what-is-on-chain-and-what-is-not)
-9. [Architecture](#architecture)
-10. [HTTP API](#http-api)
-11. [Run it](#run-it)
-12. [Project layout](#project-layout)
-13. [Security and trust model](#security-and-trust-model)
-14. [Hackathon tracks](#hackathon-tracks)
-15. [Roadmap](#roadmap)
+9. [Economy simulation (100 days, reproducible)](#economy-simulation-100-days-reproducible)
+10. [Architecture](#architecture)
+11. [HTTP API](#http-api)
+12. [Run it](#run-it)
+13. [Project layout](#project-layout)
+14. [Security and trust model](#security-and-trust-model)
+15. [Hackathon tracks](#hackathon-tracks)
+16. [Roadmap](#roadmap)
 
 ---
 
@@ -62,7 +63,7 @@ near_ai:
 safety_limits:
   ai_can_only_nudge: stock target x0.7-1.4, sell price x0.9-1.1; every coin moves by the rules in server/economy.js
   real_swaps: 0.1-5 NEAR or $0.40-$20 per swap, 5 quotes per player per hour, refund to the player's own address
-tests: npm test (100 simulated game days of economy invariants, then the NEAR bridge against an in-memory chain)
+tests: npm test (100 simulated game days of economy invariants, then the NEAR bridge against an in-memory chain); npm run report (reproducible 100-day economy report); both run offline without keys
 license: MIT
 ```
 
@@ -308,6 +309,52 @@ Emberwick is a **blockchain-backed game run by a server**, not a fully on-chain 
 
 **Contracts.** The token and the deed contracts are the standard NEP-141 and NEP-171 examples of near-sdk-rs 4.0, deployed unchanged on testnet. They have not had a separate audit; no mainnet value sits in them.
 
+
+---
+
+## Economy simulation (100 days, reproducible)
+
+`npm run report` runs the village for 100 game days with **no players, no NEAR AI and nobody touching prices**, from a fixed seed, and prints the result below. It takes about a second, needs no network, and gives the same numbers every time.
+
+Emberwick economy report: 100 village days, seed 42, no players, no NEAR AI, nobody touching prices
+
+| Measure | Result |
+|---|---|
+| Money supply (EMWK) | 25000 at the start, 25000 at the end; largest drift during the run 0 |
+| Money moved | 108627 EMWK in 16750 transfers (1086 EMWK a day) |
+| Treasury | 9600 → 8889 EMWK; in: morning village tax 2407 · market tax 595 · profit tax 430; out: guard salary 2225 · council payout to villagers 816 · council decisions 600 · build a watchtower 500 · daily village record on NEAR 1 |
+| Villagers (12 bots), average purse | 125 → 591 EMWK (richest 1000, poorest 366) |
+| Village events | 36 council proposals · 2 workshop upgrades · 2 watchtowers built · 12 winters · 8 dragon warnings · 5 droughts · 8 dragon attacks repelled |
+
+| Shop | Wallet start → end (EMWK) | Lowest point | Workshop level |
+|---|---|---|---|
+| woodcutter | 400 → 385 | 343 | 1 |
+| mill | 400 → 544 | 379 | 1 |
+| bakery | 450 → 692 | 424 | 1 |
+| smithy | 600 → 720 | 298 | 2 |
+| carpenter | 450 → 500 | 400 | 1 |
+| inn | 500 → 523 | 451 | 2 |
+| tailor | 400 → 409 | 228 | 1 |
+| tower (guard; paid daily by the treasury, spends it on swords and bread) | 700 → 46 | 1 | 1 |
+
+| Price (EMWK) | Start | End | Low | High |
+|---|---|---|---|---|
+| bread (bakery sells) | 6 | 5 | 4 | 23 |
+| flour (mill sells) | 6 | 5 | 4 | 24 |
+| sword (smithy sells) | 45 | 53 | 27 | 101 |
+| coat (tailor sells) | 26 | 13 | 13 | 26 |
+| wheat (mill pays) | 3 | 2 | 2 | 12 |
+| ore (smithy pays) | 6 | 24 | 2 | 24 |
+| wood (woodcutter pays) | 3 | 2 | 2 | 5 |
+| wool (tailor pays) | 3 | 2 | 1 | 12 |
+
+What it shows:
+- **The money supply never changes:** 25,000 EMWK at every tick, with more than 100,000 EMWK changing hands.
+- **No shop goes broke on its own,** and the treasury never had to rescue one. The guard tower is not a business: the treasury pays it a daily salary and it spends it on swords and bread, which is why its purse runs low; all 8 dragon attacks were repelled.
+- **Prices follow supply and demand by themselves:** with no players mining, ore becomes scarce and the smith's price for it rises; coats get cheaper as wool piles up.
+- **The villagers earn from work:** their average purse grows from 125 to 591 EMWK.
+- **Honest limit:** without players the treasury runs a small deficit (guard salary and council payouts are larger than taxes), about 7 EMWK a day against a balance of almost 9,000. Player trading adds market tax.
+
 ---
 
 ## Architecture
@@ -382,11 +429,21 @@ The server is the single source of truth for the game state (`data/state.json`).
 
 You need [Node.js](https://nodejs.org) 22 or newer.
 
+**Quick check, no keys and no network needed:**
+```bash
+npm install
+npm test          # economy and NEAR bridge checks (in-memory chain), about a minute
+npm run report    # the 100-day economy simulation above, about a second
+npm run demo      # open http://localhost:3000
+```
+Without a network connection or NEAR keys the game still runs: the NEAR bridge waits and keeps retrying, NEAR AI is skipped and the craftsmen use their rules. Set `EMBERWICK_NEAR=0` to turn the bridge off completely.
+
 ```bash
 npm install   # once
 npm start     # http://localhost:3000, one game day lasts 8 minutes
 npm run demo  # fast mode for recording: one game day lasts 2 minutes
 npm test      # 100 game days of economy checks, then the NEAR bridge against an in-memory chain
+npm run report  # the 100-day economy simulation report
 ```
 
 On first start the game creates its NEAR testnet accounts and keeps the keys in `~/.emberwick/near-keys.json`, outside the project folder.
@@ -417,6 +474,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | `server/ai.js` | NEAR AI Cloud: model choice, attestation, morning plan, answers, haggling, swap sentences |
 | `server/near.js` | NEAR bridge: account setup, token and deed contracts, batched transfers, balance sync |
 | `server/selftest.js`, `server/neartest.js`, `server/fakechain.js` | Tests and the in-memory chain used by them |
+| `tools/economy-report.mjs` | The reproducible 100-day economy report (`npm run report`) |
 | `public/app.js` | Panels, swap card, wallets, seal, judge tour |
 | `public/iso.js`, `public/scenes.js` | Isometric map and close-up scenes |
 | `public/i18n.js` | Six languages |
@@ -446,6 +504,8 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | **Games With Real Economies** | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token, and real swaps that lower the village's market fee |
 | **Unstoppable DeFi** | The exchange: player order book, NFT deed escrow, real NEAR Intents swaps across chains with cost transparency, one-approval split sends |
 | **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell with escrow |
+| **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other: they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
+| **Privacy & Private AI** | Every model call runs on NEAR AI Cloud in a TEE; the game picks only attested models, keeps the attestation report public (`/api/ai/attestation`), and hashes each day's plan onto NEAR |
 | **Open Innovation** | Craftsmen that plan with NEAR AI Cloud (verifiable private inference) inside safe limits; a DAO where AI villagers vote with reasons, recorded on NEAR |
 
 ---
