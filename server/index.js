@@ -139,7 +139,20 @@ function moveHeldDeeds(pid) {
 const chainView = () => (bridge ? bridge.view() : { status: 'off' });
 // a new id every time the server starts: pages that were open before a restart know to start over
 const BOOT = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const view = (pid) => ({ ...publicView(state, pid), chain: chainView(), boot: BOOT, ai: aiPublic() });
+// is every coin the game owes covered by EMWK the village bank really holds on NEAR?
+// owed = every game account kept in the bank's NEAR account (players, villagers, newcomer fund ...);
+// the treasury, the rent deposits and the craftsmen have NEAR accounts of their own and are not owed by the bank
+function solvency() {
+  const c = bridge ? bridge.view() : null;
+  const b = state.balances, sum = (f) => Math.round(Object.entries(b).filter(([k]) => f(k)).reduce((a, [, v]) => a + v, 0) * 100) / 100;
+  const owed = sum((k) => !(k === 'treasury' || k === 'deposits' || k.startsWith('npc:'))), players = sum((k) => k.startsWith('player:'));
+  const chain = c && c.balances && c.accounts && c.accounts.bank in c.balances ? c.balances[c.accounts.bank] : null;
+  // transfers still queued for NEAR: once they land the bank's balance changes by this much
+  const onWay = chain === null || !bridge.inFlight ? 0 : Math.round(bridge.inFlight(c.accounts.bank) * 100) / 100;
+  const after = chain === null ? null : Math.round((chain + onWay) * 100) / 100;
+  return { chain, onWay, after, owed, players, others: Math.round((owed - players) * 100) / 100, ratio: after === null || owed <= 0 ? null : Math.round((after / owed) * 10000) / 10000, pending: c ? c.pending : 0, bank: c && c.accounts ? c.accounts.bank : null, token: c && c.accounts ? c.accounts.token : null };
+}
+const view = (pid) => ({ ...publicView(state, pid), chain: chainView(), boot: BOOT, ai: aiPublic(), solvency: solvency() });
 
 // ---------- NEAR Intents (1Click API) for the change desk ----------
 const ONECLICK = process.env.EMBERWICK_ONECLICK || 'https://1click.chaindefuser.com/v0'; // overridable only for offline tests
@@ -848,6 +861,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Plan-Sha256': rec.hash });
     return res.end(rec.json);
   }
+  // every kept village record at once (each with its hash), so anyone can keep an independent archive
+  if (url.pathname === '/api/state-records') return sendJson(res, 200, { ok: true, days: (state.dayLog || []).map((x) => ({ day: x.day, sha256: x.hash, json: x.json })) });
+  if (url.pathname === '/api/solvency') return sendJson(res, 200, solvency());
   if (url.pathname === '/api/state-record') {
     const d = Number(url.searchParams.get('day')), rec = (state.dayLog || []).find((x) => x.day === d) || (state.dayLog || [])[0];
     if (!rec) return sendJson(res, 404, { ok: false, error: 'no village record yet (the first is written at the end of a village day)' });

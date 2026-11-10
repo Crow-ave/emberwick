@@ -991,3 +991,7 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .chk-meta{font-size:12px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
 .chk-ok{color:#21653a;font-weight:600}.chk-warn{color:#a3331a;font-weight:600}
 .chk-note{margin:6px 0 0}
+
+.solvbox{border:1px solid var(--line,#d9cdb4);border-radius:8px;padding:6px 10px;margin:8px 0;background:rgba(255,255,255,.35)}
+.solvbox .sub2{margin:2px 0 4px}
+.solvbox .systab td:first-child{white-space:normal;width:40%}

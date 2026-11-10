@@ -1139,7 +1139,7 @@ function recordDayState(state) {
   if (!state.day) return;
   const json = JSON.stringify(dayStateRecord(state));
   const hash = crypto.createHash('sha256').update(json).digest('hex');
-  state.dayLog = [{ day: state.day, hash, json }, ...(state.dayLog || []).filter((x) => x.day !== state.day)].slice(0, 10);
+  state.dayLog = [{ day: state.day, hash, json }, ...(state.dayLog || []).filter((x) => x.day !== state.day)].slice(0, 60); // about 60 village days; tools/archive-records.mjs keeps a copy elsewhere
   transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick village record day ${state.day}: sha256 ${hash.slice(0, 32)} (public state at the end of the day)`, dayRecord: state.day });
 }
 

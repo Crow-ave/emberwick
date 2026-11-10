@@ -1786,13 +1786,14 @@ function renderNearbar() {
   // out of the way while a scene or a card on the map is open
   if (!view || ui.scene || onMapCard(ui.selected)) { box.hidden = true; return; }
   const oc = view.onchain || {}, c = view.chain || {};
-  const key = JSON.stringify([getLang(), closed, oc.tx, chainOk(), (view.aiLog || []).length]);
+  const key = JSON.stringify([getLang(), closed, oc.tx, chainOk(), (view.aiLog || []).length, view.solvency && view.solvency.ratio]);
   box.hidden = false;
   if (box.dataset.k === key) return;
   box.dataset.k = key;
   if (closed) { box.innerHTML = `<button class="nb-open" data-nearbar="1">⛓ ${t('ni.title')}</button>`; return; }
   box.innerHTML = `<div class="nb-head"><b>⛓ ${t('ni.title')}</b><button class="linkbtn" data-nearbar="0" aria-label="close">✕</button></div>` +
     `<div class="nb-row">${NEAR_FEATURES.map((f) => `<button type="button" class="nb-item" data-tour="${f.tour}" title="${esc(t('ni.' + f.k + '.d'))}"><span>${f.icon}</span>${t('ni.' + f.k)}</button>`).join('')}</div>` +
+    (chainOk() && view.solvency && typeof view.solvency.chain === 'number' && view.solvency.ratio !== null ? `<div class="nb-foot">🏦 ${t('solv.pct', { r: Math.min(999, Math.floor(view.solvency.ratio * 1000) / 10).toFixed(1) })}</div>` : '') +
     `<div class="nb-foot">${chainOk() ? t('ni.counts', { tx: oc.tx || c.txCount || 0, ai: oc.aiPlans || 0, d: Object.values(view.plots || {}).filter((x) => x.deed && x.deed.minted).length }) : t('ni.offlineShort')}</div>`;
 }
 
@@ -2414,10 +2415,27 @@ function sysBox() {
   return h;
 }
 
+// the village bank's reserve next to what the game owes, read from NEAR and from the game's ledger
+function solvencyBox() {
+  const v = view.solvency;
+  if (!v || !v.bank) return '';
+  const f = (n) => Number(n).toLocaleString(getLang(), { maximumFractionDigits: 2 });
+  const read = typeof v.chain === 'number';
+  const pct = read && v.ratio !== null ? Math.floor(v.ratio * 1000) / 10 : null;
+  const ok = pct !== null && pct >= 99.9, cls = !read ? 'off' : ok ? 'ok' : v.pending ? 'low' : 'off';
+  const bankLink = chainOk() ? '<br><span class="small">' + exLink('address/' + v.bank, t('solv.check')) + '</span>' : '';
+  return `<div class="solvbox"><p class="sub2">🏦 ${t('solv.title')}</p><table class="systab">` +
+    `<tr><td>${t('solv.chain')}</td><td><b>${read ? f(v.chain) + ' EMWK' : `<span class="muted">${t('solv.noRead')}</span>`}</b>${bankLink}${read && v.onWay ? `<br><span class="small muted">${t('solv.onWay', { n: (v.onWay > 0 ? '+' : '') + f(v.onWay) })}</span>` : ''}</td></tr>` +
+    `<tr><td>${t('solv.owed')}</td><td><b>${f(v.owed)} EMWK</b><br><span class="small muted">${t('solv.split', { p: f(v.players), o: f(v.others) })}</span></td></tr>` +
+    `<tr><td>${t('solv.cover')}</td><td><span class="syst st-${cls}">${pct !== null ? (ok ? '✓ ' : '') + t('solv.pct', { r: pct >= 100 ? f(pct) : pct.toFixed(1) }) : '–'}</span></td></tr>` +
+    `</table><p class="muted small">${t('solv.note')}</p></div>`;
+}
+
 function panelNear() {
   const c = view.chain || { status: 'off' };
   const me = view.player;
   let h = `<h2>${t('near.title')}</h2><p class="muted small">${t('near.intro')}</p>`;
+  h += solvencyBox();
   h += sysBox();
   const st = c.status;
   if (st === 'setup') h += `<div class="status">${t('near.st.setup', { step: t('near.step.' + ((c.detail && c.detail.step) || 'root')) })}</div>`;

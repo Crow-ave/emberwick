@@ -186,6 +186,17 @@ export class Bridge {
     this.queue.push({ from: this.root, to: wallet, amount: toUnits(amount), label: `${who} → ${wallet}`, withdraw: true, player, who: { from: player ? 'player:' + player : 'bank', to: 'wallet', fromName: who, toName: wallet } });
   }
 
+  // EMWK on its way into (+) or out of (-) an account: queued, or being sent and not yet confirmed
+  inFlight(id) {
+    let n = 0n;
+    for (const it of [...this.queue, ...(this.sending || [])]) {
+      if (it.done) continue;
+      if (it.to === id) n += it.amount;
+      if (it.from === id) n -= it.amount;
+    }
+    return fromUnits(n);
+  }
+
   view() {
     const accounts = this.root ? {
       bank: this.root, token: this.tokenId, treasury: this.subId('treasury'), deposits: this.subId('deposits'),
@@ -394,6 +405,7 @@ export class Bridge {
           this.txCount++;
           for (const c of chunk) for (const r of c.refs || []) this.noteRef(r, entry.hash);
           for (const c of chunk) { // keep the shown on-chain balances fresh between syncs
+            c.done = true;
             const v = fromUnits(c.amount);
             if (from in this.chainBalances) this.chainBalances[from] = Math.round((this.chainBalances[from] - v) * 100) / 100;
             if (c.to in this.chainBalances) this.chainBalances[c.to] = Math.round((this.chainBalances[c.to] + v) * 100) / 100;
@@ -437,7 +449,8 @@ export class Bridge {
       if (this.needReconcile) { await this.reconcile(); return; }
       if (!this.queue.length) return;
       const items = this.queue.splice(0);
-      await this.sendGroups(this.netQueue(items));
+      this.sending = this.netQueue(items);
+      try { await this.sendGroups(this.sending); } finally { this.sending = null; }
     } catch (e) {
       this.say('NEAR: ' + (e.message || e));
       if (this.status === 'ready') this.needReconcile = true;

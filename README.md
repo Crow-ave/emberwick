@@ -287,7 +287,15 @@ Then open the [treasury on NearBlocks](https://testnet.nearblocks.io/address/tre
 curl -s "HOST/api/state-record?day=5" -D - -o day5.json | grep -i x-record-sha256
 shasum -a 256 day5.json
 ```
-The treasury's 0.01 EMWK memo for that day reads `Emberwick village record day 5: sha256 <first 32 hex>`. The NEAR panel's System status shows the latest record, and also what the village bank holds for players next to the bank's EMWK balance on NEAR, marked when they match.
+The treasury's 0.01 EMWK memo for that day reads `Emberwick village record day 5: sha256 <first 32 hex>`. The NEAR panel's System status shows the latest record.
+
+A hash proves a record was not changed; it does not keep the record. The server keeps about 60 village days of records. To keep your own copy, independent of the server, run this now and then:
+```bash
+node tools/archive-records.mjs HOST my-records
+```
+It saves each day's exact JSON, checks its SHA-256 before saving, never overwrites a copy you already have, and warns if the server later sends a different record for a day you saved. Compare `my-records/index.json` with the memos on NEAR. If the server goes away, your copies and the hashes on NEAR are still there. (Storing the records themselves on decentralised storage is on the roadmap.)
+
+**2c. The village bank can pay what it owes.** The NEAR panel opens with *Village bank: is every coin covered?*: the EMWK the bank's account really holds on NEAR, plus or minus the transfers still on their way there, next to everything the game owes (to players, and to villagers and funds), and the cover in percent. `HOST/api/solvency` returns the same numbers. The treasury, the rent deposits and the craftsmen have NEAR accounts of their own and are not part of what the bank owes. Check the bank's balance yourself on NearBlocks (the panel links it). It is a reading, not a guarantee: the game still controls the bank's key, so a player cannot take their in-game EMWK out without the game (see *What is on chain and what is not*).
 
 **3. A real swap happened.** Each swap card links the wallet transaction, the deposit and delivery transactions and the [NEAR Intents explorer](https://explorer.near-intents.org) page for its deposit address. The swap is also written into the village book on NEAR testnet (`HOST/api/intents/real/book?depositAddress=...`).
 
@@ -437,6 +445,8 @@ The server is the single source of truth for the game state (`data/state.json`).
 | POST | `/api/ai/haggle` | Haggle at a counter |
 | GET | `/api/ai/plan?day=` | The exact JSON of a morning plan (its SHA-256 is on NEAR) |
 | GET | `/api/state-record?day=` | The exact public village state at the end of a day (its SHA-256 is on NEAR) |
+| GET | `/api/state-records` | All kept village records (about 60 days) with their hashes, for `tools/archive-records.mjs` |
+| GET | `/api/solvency` | The bank's EMWK on NEAR, transfers on the way, what the game owes, and the cover |
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
 | GET | `/api/ai/proof?day=N` | Signature check of that day's plan answer, with the exact request and response bytes |
 | POST | `/api/ai/swap` | Read a swap sentence into the swap form |
@@ -506,6 +516,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | `server/near.js` | NEAR bridge: account setup, token and deed contracts, batched transfers, balance sync |
 | `server/selftest.js`, `server/neartest.js`, `server/fakechain.js` | Tests and the in-memory chain used by them |
 | `tools/economy-report.mjs` | The reproducible 100-day economy report (`npm run report`) |
+| `tools/archive-records.mjs` | Keeps your own copy of the daily village records and checks each hash |
 | `public/app.js` | Panels, swap card, wallets, seal, judge tour |
 | `public/iso.js`, `public/scenes.js` | Isometric map and close-up scenes |
 | `public/i18n.js` | Six languages |
@@ -545,6 +556,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 
 - A governance contract for the council: votes cast and counted on chain
 - Business deeds: an NFT that gives a right to a shop's income and management, with a skill requirement to buy one
+- Village records stored on decentralised storage, not only their hashes on NEAR
 - Deed rights that follow the NFT: whoever holds the deed on chain owns the plot in the game, so deeds can trade on any NEAR marketplace
 - The village on mainnet: real universal checkout (pay for land or rent from any chain through a NEAR Intents deposit address)
 - Items as NEP-245 multi-tokens
