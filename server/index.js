@@ -9,7 +9,7 @@ import { markSeen, awaySummary, giveSeal, createState, ensureContracts, moneyHis
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
-import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
+import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, aiProof, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -586,7 +586,7 @@ async function aiMorning() {
   aiTry = { day, n: aiTry.day === day ? aiTry.n + 1 : 1, at: Date.now() };
   try {
     const plan = await planDay(aiBrief(state));
-    if (plan && applyAiPlan(state, plan, ai.model, { tee: !!ai.tee, signer: ai.attest && ai.attest.signer })) { state.aiPlannedDay = day; broadcast(); }
+    if (plan && applyAiPlan(state, plan, ai.model, { tee: !!ai.tee, signer: ai.attest && ai.attest.signer, proof: plan._proof || null })) { state.aiPlannedDay = day; broadcast(); }
   } catch (e) {
     ai.lastError = String(e.message || e).slice(0, 160);
     ai.planFailed = true; // the craftsmen keep their rule-based habits until a plan comes through
@@ -664,7 +664,7 @@ const server = http.createServer(async (req, res) => {
       network: c ? c.network : null, explorer: c ? c.explorer : null, status: c ? c.status : 'off',
       bank: c && c.accounts ? c.accounts.bank : null, bankNear: bal, gasMin: 0.5,
       lowGas: !!(c && c.lowGas), pending: c ? c.pending : 0, txCount: c ? c.txCount : 0,
-      ai: { status: a.status, provider: a.provider, model: a.model, tee: a.tee, attestAt: a.attest && a.attest.at || null, error: a.error },
+      ai: { status: a.status, provider: a.provider, model: a.model, tee: a.tee, attestAt: a.attest && a.attest.at || null, error: a.error, proof: a.proof, forced: a.forced },
       // what the village bank holds for others, next to what NEAR says the bank holds
       held: (() => { const b = state.balances, sum = (f) => Math.round(Object.entries(b).filter(([k]) => f(k)).reduce((a, [, v]) => a + v, 0) * 100) / 100;
         const players = sum((k) => k.startsWith('player:')), inBank = sum((k) => !(k === 'treasury' || k === 'deposits' || k.startsWith('npc:')));
@@ -853,6 +853,13 @@ const server = http.createServer(async (req, res) => {
     if (!rec) return sendJson(res, 404, { ok: false, error: 'no village record yet (the first is written at the end of a village day)' });
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Record-Sha256': rec.hash, 'X-Record-Day': String(rec.day) });
     return res.end(rec.json);
+  }
+  // one answer's signature check, with the exact request and response bytes so anyone can re-hash them
+  if (url.pathname === '/api/ai/proof') {
+    const d = Number(url.searchParams.get('day')), rec = d ? (state.aiLog || []).find((x) => x.day === d) : null;
+    const p = aiProof(url.searchParams.get('chat') || (rec && rec.proof && rec.proof.chatId) || null);
+    if (!p) return sendJson(res, 404, { ok: false, error: rec ? 'the proof for that day is no longer kept (the server keeps the last 5 answers since it started)' : 'no signed answer yet' });
+    return sendJson(res, 200, p);
   }
   if (url.pathname === '/api/ai/attestation') return sendJson(res, ai.attestFull ? 200 : 404, ai.attestFull || { ok: false, error: 'no attestation yet' });
 

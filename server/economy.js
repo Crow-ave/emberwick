@@ -1155,8 +1155,10 @@ function recordAiPlan(state, model, extra) {
   const hash = crypto.createHash('sha256').update(json).digest('hex');
   const short = Object.entries(plan).map(([id, x]) => id + ':' + [...Object.entries(x.want).filter(([, v]) => Math.abs(v - 1) >= 0.1).map(([g, v]) => g + (v > 1 ? '+' : '-')),
     ...Object.entries(x.price).filter(([, v]) => Math.abs(v - 1) >= 0.03).map(([g, v]) => g + '$' + (v > 1 ? '+' : '-'))].join(',')).filter((x) => !x.endsWith(':')).join(' ');
-  const memo = `Emberwick AI plan day ${state.day} by NEAR AI (${model || '?'})${extra.signer ? ' TEE ' + extra.signer.slice(0, 12) : ''}: sha256 ${hash.slice(0, 24)}. ${short}`.slice(0, 240);
-  state.aiLog = [{ day: state.day, model, hash, json, short, tee: !!extra.tee, signer: extra.signer || null }, ...(state.aiLog || []).filter((x) => x.day !== state.day)].slice(0, 10);
+  const pr = extra.proof || null, signed = pr ? (pr.ok ? ' answer signed in TEE' : ' signature not verified') : '';
+  const memo = `Emberwick AI plan day ${state.day} by NEAR AI (${model || '?'})${extra.tee && extra.signer ? ' TEE ' + extra.signer.slice(0, 12) : ' no TEE report'}${signed}: sha256 ${hash.slice(0, 24)}. ${short}`.slice(0, 240);
+  const proof = pr ? { ok: !!pr.ok, chatId: pr.chatId || null, signer: pr.signer || null, error: pr.error || null } : null;
+  state.aiLog = [{ day: state.day, model, hash, json, short, tee: !!extra.tee, signer: extra.signer || null, proof }, ...(state.aiLog || []).filter((x) => x.day !== state.day)].slice(0, 10);
   transfer(state, 'treasury', 'newcomerFund', 0.01, { memo, aiPlan: state.day });
 }
 

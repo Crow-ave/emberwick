@@ -57,9 +57,9 @@ near_mainnet:
   wallets: Meteor / MyNearWallet (NEAR), any Wallet Standard wallet such as Phantom (Solana), any EIP-6963 wallet such as MetaMask or Rabby (EVM)
   custody: none. The game never holds keys or player funds; the player signs every transfer in their own wallet.
 near_ai:
-  provider: NEAR AI Cloud (OpenAI-compatible), model chosen at startup among TEE-attested models
+  provider: NEAR AI Cloud (OpenAI-compatible), model chosen at startup among models with a TEE attestation report (NEARAI_MODEL can force one; then the panel says whether it has a report)
   uses: daily price/stock plan for every craftsman, answers to players with rule-checked action buttons, haggling lines, credit decisions, reading a swap sentence into the swap form
-  verifiability: TEE attestation report fetched with a fresh nonce (/api/ai/attestation); SHA-256 of each daily plan written to NEAR in a memo; exact plan JSON served at /api/ai/plan?day=N
+  verifiability: TEE attestation report fetched with a fresh nonce (/api/ai/attestation); each morning plan's answer signature checked against the attested key, with the exact request and response bytes served (/api/ai/proof?day=N); SHA-256 of each daily plan written to NEAR in a memo; exact plan JSON served at /api/ai/plan?day=N
 safety_limits:
   ai_can_only_nudge: stock target x0.7-1.4, sell price x0.9-1.1; every coin moves by the rules in server/economy.js
   real_swaps: 0.1-5 NEAR or $0.40-$20 per swap, 5 quotes per player per hour, refund to the player's own address
@@ -104,7 +104,7 @@ Screenshots are from a local run in English. The swap screens used a test RPC, s
 |---|---|---|---|
 | **NEP-141 token (EMWK)** | Every coin in the village is EMWK on NEAR testnet. Trades, wages, taxes, rent and rewards are queued, netted and sent as batched `ft_transfer` calls, signed by the account that pays (a craftsman signs its own transfers). Fixed supply of 25,000. | `server/near.js` (Bridge, batching, balance sync), `server/economy.js` (`transfer`) | NEAR panel → latest transfers with explorer links; [village bank on NearBlocks](https://testnet.nearblocks.io/address/emberwick-village.testnet) |
 | **AI agents with wallets** | Eight craftsmen, each with its own NEAR sub-account, buy, make and sell on their own and decide with NEAR AI. | `server/economy.js`, `server/pricing.js`, `server/ai.js` | e.g. [smithy.emberwick-village.testnet](https://testnet.nearblocks.io/address/smithy.emberwick-village.testnet) |
-| **NEAR AI Cloud (TEE)** | Daily plan per craftsman, answers to players with action buttons, haggling lines, credit decisions, and reading swap sentences. Only TEE-attested models are picked. | `server/ai.js` | `/api/ai/attestation`, `/api/ai/plan?day=N`, the shop panel's 🔒 and ⛓ lines |
+| **NEAR AI Cloud (TEE)** | Daily plan per craftsman, answers to players with action buttons, haggling lines, credit decisions, and reading swap sentences. Models with a TEE attestation report are picked first, and each morning plan's signature is checked against the attested key. | `server/ai.js` | `/api/ai/attestation`, `/api/ai/proof?day=N`, `/api/ai/plan?day=N`, the shop panel's 🔒, ✍️ and ⛓ lines |
 | **On-chain records (memos)** | AI plan SHA-256, signed job contracts, council results, and every real mainnet swap are written to NEAR testnet as 0.01 EMWK memo transfers. | `server/economy.js`, `server/index.js` | Memo text on the transfer in NearBlocks |
 | **NEP-171 NFTs (land deeds)** | Each plot of land is an NFT. The deed lets you build, sleep at home, rent out for daily income, and sell on the exchange with NFT escrow. | `server/near.js` (`setupDeeds`, `moveDeed`), `contracts/emwk_deeds.wasm` | [deeds contract](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet); deed card in game |
 | **NEP-413 wallet link** | A player proves ownership of a NEAR account by signing a message; the server checks it against the account's full-access key. Then EMWK can be cashed out to, or deposited from, that wallet. | `server/index.js` (`/api/near/*`), `public/vendor/near-wallet.js` | NEAR panel → wallet section |
@@ -136,7 +136,7 @@ Each feature lists what it does, how it works, and where it lives in the code.
 - **Memory and credit:** craftsmen remember the last lines of a conversation. A hungry player with almost no money can ask the baker or innkeeper for food on credit; the rules say what is possible, the model decides, and the debt is collected the next morning (3-day deadline).
 - **Orders:** bring your own materials and pay a work fee for the product (e.g. 3 wool → a coat).
 - **Haggling:** every counter row has a 🤝 button. The rules decide the outcome from stock, target and trading skill; NEAR AI only voices it in character. Lowballing twice ends haggling for the day.
-- **Verifiable:** each plan's SHA-256 is recorded on NEAR in a memo; `/api/ai/plan?day=N` serves the exact JSON to hash; `/api/ai/attestation` serves the TEE attestation (Intel TDX quote and enclave signing key, fetched with a fresh nonce).
+- **Verifiable:** each plan's SHA-256 is recorded on NEAR in a memo; `/api/ai/plan?day=N` serves the exact JSON to hash; `/api/ai/attestation` serves the TEE attestation (Intel TDX quote and enclave signing key, fetched with a fresh nonce); `/api/ai/proof?day=N` serves the check of that plan's answer signature against the attested key.
 - **Pays only when someone plays:** the morning plan is skipped while nobody has clicked, typed or scrolled for 30 minutes (a tab left open does not count), and made again as soon as a player is back (`EMBERWICK_IDLE_MIN`).
 - **Safe by design:** the model only nudges inside fixed limits (stock target ×0.7–1.4, sell price ×0.9–1.1); without a key, offline or past the daily limit (400 requests by default) the craftsmen fall back to the rule-based behaviour. Code: `server/ai.js`.
 
@@ -271,9 +271,13 @@ Nothing here needs to be taken on trust. Replace `HOST` with `https://emberwick-
 curl -s "HOST/api/ai/plan?day=5" -D - -o plan.json | grep -i x-plan-sha256   # the hash the server claims
 shasum -a 256 plan.json                                                       # the hash you compute from the exact bytes
 ```
-Then open the [treasury on NearBlocks](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) and find that day's 0.01 EMWK transfer to the newcomer fund. Its memo reads `Emberwick AI plan day 5 by NEAR AI (model) TEE <signer>: sha256 <first 24 hex>`. The first 24 characters must match. The server keeps the last 10 days of plans; the shop panel's ⛓ line links each record.
+Then open the [treasury on NearBlocks](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) and find that day's 0.01 EMWK transfer to the newcomer fund. Its memo reads `Emberwick AI plan day 5 by NEAR AI (model) TEE <signer> answer signed in TEE: sha256 <first 24 hex>`. The first 24 characters must match. The server keeps the last 10 days of plans; the shop panel's ⛓ line links each record.
 
-**2. The model runs in a TEE.** `HOST/api/ai/attestation` returns the NEAR AI Cloud attestation report the game fetched with its own fresh nonce: an Intel TDX quote, the NVIDIA GPU evidence and the enclave's signing key. Check it with NEAR's open-source [nearai-cloud-verifier](https://github.com/nearai/nearai-cloud-verifier), or paste the quote into the [TEE Attestation Explorer](https://proof.t16z.com/). The game checks that a report exists for the chosen model before using it; it does not yet verify each answer's signature against the attested key (see the roadmap).
+**2. The model runs in a TEE, and the plan was signed there.** These are two different proofs, and the game checks both.
+
+- *Attestation: an enclave runs this model.* `HOST/api/ai/attestation` returns the NEAR AI Cloud attestation report the game fetched with its own fresh nonce: an Intel TDX quote, the NVIDIA GPU evidence and the enclave's signing key. Check it with NEAR's open-source [nearai-cloud-verifier](https://github.com/nearai/nearai-cloud-verifier), or paste the quote into the [TEE Attestation Explorer](https://proof.t16z.com/). The game reads the signing keys from the report; it does not check the Intel and NVIDIA evidence itself (the verifier above does).
+- *Signature: this answer came from that enclave.* After every morning plan the game fetches the answer's signature (`/v1/signature/{chat_id}`) and checks three things: the signed text holds the SHA-256 of the exact request body it sent and of the exact response body it received; the ECDSA signature recovers to the signing address it names; and that address is one of the keys in the model's attestation report (if not, it fetches a fresh report once, since an enclave can restart with a new key). Only if all three hold does the plan count as signed in the TEE. `HOST/api/ai/proof?day=N` serves the result together with the exact request and response bytes, so anyone can re-hash them and check the signature with any Ethereum signature tool. The shop panel shows ✍️ and the memo on NEAR says `answer signed in TEE` or `signature not verified`. The server keeps the last 5 signed answers since it started.
+- *What is not signature-checked:* the shorter calls (a player's question, a haggling line, a credit decision, reading a swap sentence) go to the same attested model but are not checked one by one, to keep each answer fast. None of them moves money on its own: the rules check every suggested action and the player presses the button.
 
 **2b. The server did not rewrite the past.** At the end of every village day the public state (accounts, shops, stock, prices, land owners, council results) is hashed and the hash goes on NEAR the same way:
 ```bash
@@ -431,6 +435,7 @@ The server is the single source of truth for the game state (`data/state.json`).
 | GET | `/api/ai/plan?day=` | The exact JSON of a morning plan (its SHA-256 is on NEAR) |
 | GET | `/api/state-record?day=` | The exact public village state at the end of a day (its SHA-256 is on NEAR) |
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
+| GET | `/api/ai/proof?day=N` | Signature check of that day's plan answer, with the exact request and response bytes |
 | POST | `/api/ai/swap` | Read a swap sentence into the swap form |
 | GET | `/api/away?player=` | What changed for a player since they last played (shown once) |
 | GET | `/api/system` | Bank, gas, queue, NEAR AI and the last 50 log lines |
@@ -474,7 +479,7 @@ On first start the game creates its NEAR testnet accounts and keeps the keys in 
 | Setting | What it does |
 |---|---|
 | `NEARAI_API_KEY` or `~/.emberwick/nearai-key.txt` | NEAR AI Cloud key ([cloud.near.ai](https://cloud.near.ai)); without it the craftsmen use rules only |
-| `NEARAI_MODEL` | Force a model instead of picking a TEE-attested one |
+| `NEARAI_MODEL` | Force a model instead of picking one with a TEE attestation report. The game still asks for that model's report: if there is none, the system status says *no TEE report*, the plan memo says so, and plan signatures cannot be verified |
 | `NEARAI_DAILY_LIMIT` | NEAR AI requests per day (default 400) |
 | `EMBERWICK_AI=0` | Turn NEAR AI off |
 | `EMBERWICK_NEAR=0` | Run without the NEAR bridge |
@@ -516,7 +521,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 - **Players' funds:** the game never holds keys or player funds for real swaps. Every deposit is signed in the player's own wallet, which shows the amount and the address first. Refunds go to the player's own address.
 - **AI cannot move money:** NEAR AI suggests; the rules in `server/economy.js` decide. Suggested actions become buttons only after a rules check, and a swap sentence only fills the form.
 - **DAO safety:** a fixed menu of executable decisions (no free-form "send treasury money anywhere"), a proposal fee, quorum, caps per decision, and a locked reserve.
-- **Verifiable AI:** TEE attestation and on-chain plan hashes let anyone check what the model was asked and answered.
+- **Verifiable AI:** the TEE attestation, each plan's answer signature checked against the attested key, and the on-chain plan hashes let anyone check what the model was asked and answered, and where.
 
 ---
 
@@ -528,7 +533,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | **Unstoppable DeFi** | The exchange: player order book, NFT deed escrow, real NEAR Intents swaps across chains with cost transparency, one-approval split sends |
 | **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell with escrow |
 | **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other: they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
-| **Privacy & Private AI** | Every model call runs on NEAR AI Cloud in a TEE; the game picks only attested models, keeps the attestation report public (`/api/ai/attestation`), and hashes each day's plan onto NEAR |
+| **Privacy & Private AI** | Every model call goes to NEAR AI Cloud; the game picks a model with a TEE attestation report, keeps the report public (`/api/ai/attestation`), checks each morning plan's signature against the attested key (`/api/ai/proof`), and hashes each day's plan onto NEAR |
 | **Open Innovation** | Craftsmen that plan with NEAR AI Cloud (verifiable private inference) inside safe limits; a DAO where AI villagers vote with reasons, recorded on NEAR |
 
 ---

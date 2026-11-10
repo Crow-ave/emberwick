@@ -176,5 +176,24 @@ const decided = state.council.closed.length;
 console.log('Council: proposals', stats.proposals, 'votes', stats.votes, '| recent results', state.council.closed.map((x) => x.kind + ':' + x.result).join(', '), '| tax', state.taxRate ?? 'default');
 if (!stats.proposals || !stats.votes || !decided) fail('the council never decided anything');
 console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day', l.day, l.text));
+// NEAR AI answer signatures: a correct one passes; a changed answer, a wrong key, or a key outside the attestation report fail
+{
+  const crypto = await import('node:crypto');
+  const { secp256k1 } = await import('@noble/curves/secp256k1.js');
+  const { keccak_256 } = await import('@noble/hashes/sha3.js');
+  const { checkSignature } = await import('./ai.js');
+  const enc = new TextEncoder(), sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+  const addr = (sk) => '0x' + Buffer.from(keccak_256(secp256k1.getPublicKey(sk, false).slice(1)).slice(-20)).toString('hex');
+  const sign = (t, sk) => { const m = enc.encode(t); const r = secp256k1.sign(keccak_256(new Uint8Array([...enc.encode(`\x19Ethereum Signed Message:\n${m.length}`), ...m])), sk, { prehash: false, format: 'recovered' }); return '0x' + Buffer.from([...r.slice(1), r[0] + 27]).toString('hex'); };
+  const k1 = secp256k1.utils.randomSecretKey(), k2 = secp256k1.utils.randomSecretKey();
+  const call = { id: 'c1', model: 'm', sent: '{"q":1}', received: '{"a":2}' }, text = sha(call.sent) + ':' + sha(call.received);
+  const keys = new Set([addr(k1)]);
+  const good = checkSignature(call, { text, signature: sign(text, k1), signing_address: addr(k1) }, keys);
+  const changed = checkSignature({ ...call, received: '{"a":3}' }, { text, signature: sign(text, k1), signing_address: addr(k1) }, keys);
+  const wrongKey = checkSignature(call, { text, signature: sign(text, k2), signing_address: addr(k1) }, keys);
+  const notAttested = checkSignature(call, { text, signature: sign(text, k2), signing_address: addr(k2) }, keys);
+  console.log('AI answer signatures: good', good.ok, '| changed answer', changed.ok, '| wrong key', wrongKey.ok, '| key not attested', notAttested.ok);
+  if (!good.ok || changed.ok || wrongKey.ok || notAttested.ok) fail('the NEAR AI answer signature check is wrong');
+}
 console.log(problems ? `${problems} problem(s)` : 'All checks passed.');
 process.exit(problems ? 1 : 0);

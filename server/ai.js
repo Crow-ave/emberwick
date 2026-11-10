@@ -6,6 +6,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
+import crypto from 'node:crypto';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 
 const BASE = (process.env.NEARAI_BASE || 'https://cloud-api.near.ai/v1').replace(/\/$/, '');
 const MODE = process.env.EMBERWICK_AI || ''; // '0' = off, 'fake' = test replies without the network
@@ -38,28 +41,36 @@ function countCall() {
 let slowNet = false; // once the slow way worked, keep using it (no 10 s wait every time)
 // ms is how long to wait for the whole answer: a thinking model can take a minute or more for a plan.
 // Only a failed *connection* is retried the other way; a slow answer is not asked twice (that would cost twice)
-async function api(p, body, ms = 30000) {
-  if (slowNet) return viaHttps(p, body, ms);
-  try { return await viaFetch(p, body, ms); }
-  catch (e) {
-    if (!/fetch failed|ECONN|UND_ERR_CONNECT|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(String(e.message))) throw e;
-    const r = await viaHttps(p, body, ms);
-    if (!slowNet) { slowNet = true; console.log('[AI] slow connection to NEAR AI: using the longer-wait connection from now on.'); }
-    return r;
+async function api(p, body, ms = 30000) { return (await apiRaw(p, body, ms)).json; }
+// the exact bytes sent and received are kept: a chat answer's signature covers their SHA-256
+async function apiRaw(p, body, ms = 30000) {
+  const data = body ? JSON.stringify(body) : null;
+  let text;
+  if (slowNet) text = await viaHttps(p, data, ms);
+  else {
+    try { text = await viaFetch(p, data, ms); }
+    catch (e) {
+      if (!/fetch failed|ECONN|UND_ERR_CONNECT|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(String(e.message))) throw e;
+      text = await viaHttps(p, data, ms);
+      if (!slowNet) { slowNet = true; console.log('[AI] slow connection to NEAR AI: using the longer-wait connection from now on.'); }
+    }
   }
+  let json;
+  try { json = JSON.parse(text); } catch { throw new Error('bad reply'); }
+  return { json, text, sent: data };
 }
-async function viaFetch(p, body, ms) {
+async function viaFetch(p, data, ms) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
     const r = await fetch(BASE + p, {
-      method: body ? 'POST' : 'GET', signal: ctl.signal,
+      method: data ? 'POST' : 'GET', signal: ctl.signal,
       headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
+      body: data || undefined,
     });
     const text = await r.text();
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.slice(0, 140)}`);
-    return JSON.parse(text);
+    return text;
   } catch (e) {
     // "fetch failed" alone says nothing; the cause says why (no internet, DNS, certificate, timeout ...)
     const c = e.cause;
@@ -70,16 +81,16 @@ async function viaFetch(p, body, ms) {
 }
 // one connection kept open and reused: on a slow network setting up a new one can take 15-60 s
 const keepAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 4, family: 4 });
-function viaHttps(p, body, ms) {
+function viaHttps(p, data, ms) {
   return new Promise((resolve, reject) => {
-    const u = new URL(BASE + p), data = body ? JSON.stringify(body) : null;
+    const u = new URL(BASE + p);
     const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: data ? 'POST' : 'GET', agent: keepAgent, timeout: ms,
       headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json', ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
       let text = '';
       res.on('data', (c) => (text += c));
       res.on('end', () => {
         if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}: ${text.slice(0, 140)}`));
-        try { resolve(JSON.parse(text)); } catch { reject(new Error('bad reply')); }
+        resolve(text);
       });
     });
     let connected = false;
@@ -160,7 +171,9 @@ export async function startAi() {
 // and the answer is taken from content (or, if that is empty, from the end of the reasoning)
 async function chat(messages, maxTokens) {
   if (!countCall()) throw new Error('daily limit reached');
-  const r = await api('/chat/completions', { model: ai.model, messages, max_tokens: maxTokens, temperature: 0.7, ...(ai.extra || {}) }, maxTokens > 2000 ? 180000 : 90000);
+  const raw = await apiRaw('/chat/completions', { model: ai.model, messages, max_tokens: maxTokens, temperature: 0.7, ...(ai.extra || {}) }, maxTokens > 2000 ? 180000 : 90000);
+  const r = raw.json;
+  ai.lastCall = { id: r.id || null, model: ai.model, at: Date.now(), sent: raw.sent, received: raw.text };
   const c = r.choices && r.choices[0], msg = (c && c.message) || {};
   let text = String(msg.content || '').trim();
   if (!text) {
@@ -221,7 +234,7 @@ const SYSTEM_PLAN = 'You are the minds of the craftsmen of Emberwick, a small me
 // the morning plan for every craftsman, in one request
 export async function planDay(brief) {
   if (MODE === 'fake') {
-    return { craftsmen: brief.craftsmen.map((c) => ({ id: c.id, want: Object.fromEntries(Object.keys(c.goods).map((g) => [g, 1.2])), price: {}, why: `Test plan for ${c.id}.`, say: `Fresh goods today at the ${c.id}!` })) };
+    return { craftsmen: brief.craftsmen.map((c) => ({ id: c.id, want: Object.fromEntries(Object.keys(c.goods).map((g) => [g, 1.2])), price: {}, why: `Test plan for ${c.id}.`, say: `Fresh goods today at the ${c.id}!` })), _proof: { ok: true, test: true, chatId: null, signer: '0xtest0000000000' } };
   }
   if (ai.status !== 'ready') return null;
   const msgs = [{ role: 'system', content: SYSTEM_PLAN }, { role: 'user', content: JSON.stringify(brief) }];
@@ -235,6 +248,7 @@ export async function planDay(brief) {
   if (!plan || !Array.isArray(plan.craftsmen)) throw new Error('the model did not return a plan: ' + text.replace(/\s+/g, ' ').slice(0, 100));
   ai.lastPlanAt = Date.now(); ai.lastError = null; ai.planFailed = false;
   console.log(`[AI] morning plan received for ${plan.craftsmen.length} craftsmen.`);
+  plan._proof = await verifyAnswer(ai.lastCall);
   return plan;
 }
 
@@ -379,13 +393,69 @@ export async function fetchAttestation() {
     const g = r.gateway_attestation || {}, m = (r.model_attestations || [])[0] || {};
     ai.attestFull = r;
     ai.attest = { at: Date.now(), signer: m.signing_address || g.signing_address || null, algo: m.signing_algo || g.signing_algo || null, quote: !!(m.intel_quote || g.intel_quote), models: (r.model_attestations || []).length, nonce: g.request_nonce || nonce, gateway: g.signing_address || null, gatewayOnly: !(r.model_attestations || []).length };
-    if (ai.attest.models > 0) ai.tee = true;
+    ai.tee = ai.attest.models > 0; // a model without its own report (a forced NEARAI_MODEL, a proxied model) is shown as not TEE
     console.log(`[AI] TEE attestation received (${ai.attest.models} model report${ai.attest.models === 1 ? '' : 's'}).`);
   } catch (e) { ai.attest = { at: Date.now(), error: String(e.message || e).slice(0, 120) }; console.log('[AI] attestation not available:', ai.attest.error); }
   return ai.attest;
 }
 
-export const aiPublic = () => ({ status: ai.status, provider: ai.provider, model: ai.model, tee: !!ai.tee, attest: ai.attest || null, lastPlanAt: ai.lastPlanAt, planFailed: !!ai.planFailed, error: ai.lastError ? String(ai.lastError).slice(0, 120) : null });
+// ---------- proof that one answer came from the attested enclave ----------
+// The attestation report says "an enclave with signing key X runs this model". NEAR AI Cloud also signs every
+// chat answer: GET /signature/{chat_id} gives the text "sha256(request body):sha256(response body)" and an
+// Ethereum-style (EIP-191) ECDSA signature over it. We check three things: both hashes match the exact bytes
+// we sent and received, the signature recovers to the signing address it names, and that address is one of
+// the keys in the model's attestation report. Only then is the answer counted as signed by the TEE.
+const sha256hex = (t) => crypto.createHash('sha256').update(t, 'utf8').digest('hex');
+const enc = new TextEncoder();
+function recoverEip191(text, sigHex) {
+  const m = enc.encode(text), pre = enc.encode(`\x19Ethereum Signed Message:\n${m.length}`);
+  const h = keccak_256(new Uint8Array([...pre, ...m]));
+  const b = Buffer.from(String(sigHex).replace(/^0x/, ''), 'hex');
+  if (b.length !== 65) throw new Error('signature is not 65 bytes');
+  const v = b[64] >= 27 ? b[64] - 27 : b[64];
+  const pub = secp256k1.Signature.fromBytes(new Uint8Array([v, ...b.subarray(0, 64)]), 'recovered').recoverPublicKey(h).toBytes(false);
+  return '0x' + Buffer.from(keccak_256(pub.subarray(1)).subarray(-20)).toString('hex');
+}
+const attestedKeys = (r) => new Set(((r && r.model_attestations) || []).map((x) => String(x.signing_address || '').toLowerCase()).filter(Boolean));
+export function checkSignature(call, sig, keys) {
+  const reqHash = sha256hex(call.sent), respHash = sha256hex(call.received);
+  const parts = String(sig.text || '').split(':');
+  const signer = String(sig.signing_address || '').toLowerCase();
+  let recovered = null, sigErr = null;
+  try { recovered = recoverEip191(sig.text, sig.signature); } catch (e) { sigErr = String(e.message).slice(0, 80); }
+  const out = {
+    chatId: call.id, model: call.model, at: call.at, text: sig.text, signature: sig.signature, signer, algo: sig.signing_algo || 'ecdsa',
+    requestSha256: reqHash, responseSha256: respHash,
+    requestHashOk: parts.includes(reqHash), responseHashOk: parts.includes(respHash),
+    signatureOk: !!recovered && recovered === signer, recovered, attested: keys.has(signer), error: sigErr,
+  };
+  out.ok = out.requestHashOk && out.responseHashOk && out.signatureOk && out.attested;
+  if (!out.ok && !out.error) out.error = !out.signatureOk ? 'the signature does not match its key' : !out.attested ? 'the key is not in the attestation report' : !out.requestHashOk ? 'the request hash differs' : 'the answer hash differs';
+  return out;
+}
+export async function verifyAnswer(call) {
+  if (MODE === 'fake') return { ok: true, test: true, chatId: 'test', signer: '0xtest0000000000' };
+  if (!call || !call.id) return { ok: false, error: 'the answer had no chat id' };
+  let sig = null, err = null;
+  for (let k = 0; k < 3 && !sig; k++) { // the signature can take a moment to appear
+    try { sig = await api(`/signature/${encodeURIComponent(call.id)}?model=${encodeURIComponent(call.model)}&signing_algo=ecdsa`, null, 30000); }
+    catch (e) { err = String(e.message || e).slice(0, 120); await new Promise((r) => setTimeout(r, 2000)); }
+  }
+  if (!sig) { const out = { ok: false, chatId: call.id, error: 'no signature: ' + err }; console.log('[AI] answer signature not available:', err); return keep(out, call); }
+  let out = checkSignature(call, sig, attestedKeys(ai.attestFull));
+  if (!out.attested && out.signatureOk) { await fetchAttestation(); out = checkSignature(call, sig, attestedKeys(ai.attestFull)); } // the enclave may have restarted with a new key
+  console.log(`[AI] answer signature ${out.ok ? 'verified: signed inside the attested TEE' : 'NOT verified'} (request hash ${out.requestHashOk ? 'ok' : 'differs'}, response hash ${out.responseHashOk ? 'ok' : 'differs'}, signature ${out.signatureOk ? 'ok' : 'bad'}, key ${out.attested ? 'in the attestation report' : 'not in the report'}).`);
+  return keep(out, call);
+}
+// the last few proofs with the exact request and response bytes, so anyone can re-hash them
+function keep(out, call) {
+  ai.proofs = [{ ...out, request: call.sent, response: call.received }, ...(ai.proofs || [])].slice(0, 5);
+  ai.lastProof = out;
+  return out;
+}
+export const aiProof = (chatId) => (ai.proofs || []).find((x) => !chatId || x.chatId === chatId) || null;
+
+export const aiPublic = () => ({ status: ai.status, provider: ai.provider, model: ai.model, tee: !!ai.tee, attest: ai.attest || null, lastPlanAt: ai.lastPlanAt, planFailed: !!ai.planFailed, proof: ai.lastProof ? { ok: !!ai.lastProof.ok, chatId: ai.lastProof.chatId || null, at: ai.lastProof.at || null, error: ai.lastProof.error || null } : null, forced: !!process.env.NEARAI_MODEL, error: ai.lastError ? String(ai.lastError).slice(0, 120) : null });
 
 // ---------- a swap said in words: "send 0.3 NEAR to my Solana wallet as USDC" ----------
 // NEAR AI only reads the sentence into a form (direction, tokens, amount, addresses); the server checks every

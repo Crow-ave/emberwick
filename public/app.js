@@ -580,6 +580,8 @@ function aiProof(short) {
     h += `<p class="small ai-proof">⛓ ${t(chainOk() ? 'ai.onChain' : 'ai.planHash', { d: rec.day, h: rec.hash.slice(0, 10) })} · <a href="/api/ai/plan?day=${rec.day}" target="_blank" rel="noopener">${t('ai.planJson')}</a>${tx ? ' · ' + exLink('txns/' + tx, t('ai.planTx')) : chainOk() ? ` · <span class="muted">${t('job.contractWait')}</span>` : ''}</p>`;
   }
   if (at && at.signer) h += `<p class="small ai-proof">🔒 ${t(at.gatewayOnly ? 'ai.attestGw' : 'ai.attest', { s: esc(String(at.signer).slice(0, 10)) + '…', q: at.quote ? 'Intel TDX ✓' : '' })} · <a href="/api/ai/attestation" target="_blank" rel="noopener">${t('ai.attestLink')}</a></p>`;
+  const pr = rec && rec.proof;
+  if (pr) h += `<p class="small ai-proof">✍️ ${pr.ok ? t('ai.signOk', { s: esc(String(pr.signer || '').slice(0, 10)) + '…' }) : t('ai.signBad', { e: esc(String(pr.error || '?').slice(0, 60)) })}${pr.chatId ? ` · <a href="/api/ai/proof?day=${rec.day}" target="_blank" rel="noopener">${t('ai.signLink')}</a>` : ''}</p>`;
   return h;
 }
 
@@ -2401,7 +2403,7 @@ function sysBox() {
     `<tr><td>${t('sys.queue')}</td><td>${t('sys.queueVal', { p: s.pending || 0, n: s.txCount || 0 })}</td></tr>` +
     (s.held ? `<tr><td>${t('sys.held')}</td><td>${t('sys.heldVal', { n: s.held.players, c: s.held.playerCount })}${typeof s.held.chain === 'number' ? `<br><span class="small">${t('sys.bankChain', { chain: s.held.chain.toFixed(2), game: s.held.inBank.toFixed(2) })} ${Math.abs(s.held.chain - s.held.inBank) < 0.05 ? `<span class="syst st-ok">✓ ${t('sys.match')}</span>` : `<span class="syst st-off">${t(s.pending ? 'sys.syncing' : 'sys.differs')}</span>`}</span>` : ''}</td></tr>` : '') +
     (s.record ? `<tr><td>${t('sys.record')}</td><td>${t('sys.recordVal', { d: s.record.day })} <code>${esc(s.record.hash.slice(0, 16))}…</code> <a href="/api/state-record?day=${s.record.day}" target="_blank" rel="noopener">JSON ↗</a></td></tr>` : '') +
-    `<tr><td>${t('sys.ai')}</td><td><span class="syst st-${aiOk ? 'ok' : 'low'}">${aiOk ? esc(s.ai.model || '') : t('sys.aiOff')}</span>${aiOk && s.ai.tee ? ` · 🔒 TEE${s.ai.attestAt ? ' · ' + t('sys.attestAt', { time: time(s.ai.attestAt) }) : ''}` : ''}${!aiOk && s.ai && s.ai.error ? `<br><span class="muted small">${esc(s.ai.error)}</span>` : ''}</td></tr>` +
+    `<tr><td>${t('sys.ai')}</td><td><span class="syst st-${aiOk ? 'ok' : 'low'}">${aiOk ? esc(s.ai.model || '') : t('sys.aiOff')}</span>${aiOk && s.ai.tee ? ` · 🔒 TEE${s.ai.attestAt ? ' · ' + t('sys.attestAt', { time: time(s.ai.attestAt) }) : ''}` : aiOk ? ' · no TEE report' : ''}${aiOk && s.ai.proof ? ` · ✍️ ${s.ai.proof.ok ? '✓' : '✗'}` : ''}${!aiOk && s.ai && s.ai.error ? `<br><span class="muted small">${esc(s.ai.error)}</span>` : ''}</td></tr>` +
     `</table>`;
   if (gas === 'low') h += `<p class="small sysnote">${t('sys.lowHelp', { n: s.gasMin })}</p>`;
   h += `<p class="sub2">${t('sys.log')} <button class="linkbtn small" data-sysrefresh>↻ ${t('sys.refresh')}</button></p>`;
