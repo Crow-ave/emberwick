@@ -250,8 +250,9 @@ The village keeps living when you log off, and the game shows you what that mean
 2. Click the **Mine**, press the big button twice. → Ore in your bag; the guide points to the best buyer.
 3. Click the **Smithy**, type *What is expensive today?* in the blue NEAR AI box. → The smith answers in your language with action buttons; the panel shows today's plan, its hash on NEAR and the TEE attestation.
 4. Click **NEAR testnet · live** in the top bar. → System status, accounts and the latest on-chain transfers with NearBlocks links.
-5. Click **Neighbourhoods → Exchange quarter → Exchange → NEAR bridge → Real swap (mainnet)**. Connect a wallet, pick NEAR → SOL (Solana), 0.1 NEAR, **Get a real quote**, **Send with my wallet — one approval**. → Steps tick to Delivered and the village seal stamps with the proof link.
-6. Hang the **Village seal** from your bag on the council wall. → The exchange fee drops for everyone.
+5. Click **Neighbourhoods → Exchange quarter → Exchange → NEAR bridge**. On **Free quote**, pick 1 NEAR → SOL and ask. → A live NEAR Intents 1Click quote (dry run): no wallet, nothing sent, nothing spent. Then open the *Proof on chain* links below to see a real swap the game already made, from the wallet transaction to delivery.
+   - *Optional live proof (costs about 0.1 NEAR of your own):* switch to **Real swap (mainnet)**, connect a wallet, pick NEAR → SOL (Solana), 0.1 NEAR, **Get a real quote**, **Send with my wallet — one approval**. → Steps tick to Delivered and the village seal stamps with the proof link. Getting the quote alone spends nothing; only the wallet approval sends funds. Every step below works without this one.
+6. If you made the live swap: hang the **Village seal** from your bag on the council wall. → The exchange fee drops for everyone. (Without a swap, the council hall shows the wall and the seals hung so far.)
 7. At the **Council hall** propose **Build a watchtower**. → AI villagers vote with reasons; the result is recorded on NEAR.
 8. Press **⏩ 1 week**. → A week of village life in about a minute, then a summary.
 
