@@ -63,7 +63,7 @@ near_ai:
 safety_limits:
   ai_can_only_nudge: stock target x0.7-1.4, sell price x0.9-1.1; every coin moves by the rules in server/economy.js
   real_swaps: 0.1-5 NEAR or $0.40-$20 per swap, 5 quotes per player per hour, refund to the player's own address
-tests: npm test (100 simulated game days of economy invariants, then the NEAR bridge against an in-memory chain); npm run report (reproducible 100-day economy report); both run offline without keys
+tests: npm test (100 simulated game days of economy invariants, then the NEAR bridge against an in-memory chain); npm run report (reproducible 100-day economy report), npm run report -- --players (0 to 100 scripted players); both run offline without keys
 license: MIT
 ```
 
@@ -124,9 +124,11 @@ Each feature lists what it does, how it works, and where it lives in the code.
 - **Production chains:** wood → lumber → carts and beds; wheat → flour → bread → meals; ore + wood → swords and pickaxes; wool → winter coats; fish → meals.
 - **Prices nobody sets:** each shop compares its stock with the stock it wants and moves prices toward that level (`server/pricing.js`). Every price has an ⓘ tooltip with the reasoning. When everyone mines, ore gets cheap; a full store room stops buying. Craftsmen learn what sells and grow their workshop (up to level 3, paid to the carpenter).
 - **Twelve villager bots** move to the work that pays best each morning, so supply rebalances by itself. Travelling merchants buy surpluses; money keeps circulating and the total never changes (`npm test` checks this).
-- **Treasury and taxes:** a 3% market tax on shop trades (the council can set 1–6%), a 2% exchange fee (lowered by village seals), a profit tax on rich shops, and a small morning tax of 1% on holdings above 300 EMWK. The treasury keeps a locked 2,000 EMWK reserve, pays the guard, and helps a craftsman whose purse runs almost empty.
+- **Treasury and taxes:** a 3% market tax on shop trades (the council can set 1–6%), a 2% exchange fee (lowered by village seals), a profit tax on rich shops, and a morning tax on idle money: 2% of holdings above 200 EMWK, plus 3% of the part above 800. The treasury keeps a locked 2,000 EMWK reserve, pays the guard, and helps a craftsman whose purse runs almost empty.
+- **Public works:** when the treasury holds more than 8,000 EMWK, it spends a quarter of the surplus each morning back into the village: it keeps the newcomer fund able to pay starting money, orders finished goods from the shops, and pays wages to the villagers with the thinnest purses. Taxes therefore do not pile up; they come back as customers and work.
+- **Daily food:** each morning a player who played the day before eats 2 bread, from the bag or bought at the bakery. With no money the baker gives it on credit (usual credit rules); without food the player's max energy is 3 lower that day. Players who are away are not charged. The baker and the miller keep more in stock as more players eat.
 - **Events:** droughts halve the wheat harvest, winter comes 2 days in every 8 (snow, no harvest, coats needed), and Dragon peak turns red before an attack. Readiness (swords and bread at the tower, watchtowers) decides the outcome.
-- **Day and night:** shops close at night, villagers walk home, and the player sleeps in a rented home, their own house or a paid inn bed (5 EMWK). A night outside costs energy the next day.
+- **Day and night:** shops close at night, villagers walk home, and the player sleeps in a rented home, their own house or a paid inn bed (5 EMWK; the inn opens one more room for every 5 players active that day). A night outside costs energy the next day.
 - **Fast-forward:** **⏩ 1 week** runs a week of village life in about a minute with nobody touching prices, then shows a summary of price moves, winners and losers among the craftsmen, upgrades and council decisions.
 
 ### 2. AI craftsmen with NEAR AI Cloud
@@ -337,45 +339,98 @@ Emberwick economy report: 100 village days, seed 42, no players, no NEAR AI, nob
 | Measure | Result |
 |---|---|
 | Money supply (EMWK) | 25000 at the start, 25000 at the end; largest drift during the run 0 |
-| Money moved | 108627 EMWK in 16750 transfers (1086 EMWK a day) |
-| Treasury | 9600 → 8889 EMWK; in: morning village tax 2407 · market tax 595 · profit tax 430; out: guard salary 2225 · council payout to villagers 816 · council decisions 600 · build a watchtower 500 · daily village record on NEAR 1 |
-| Villagers (12 bots), average purse | 125 → 591 EMWK (richest 1000, poorest 366) |
-| Village events | 36 council proposals · 2 workshop upgrades · 2 watchtowers built · 12 winters · 8 dragon warnings · 5 droughts · 8 dragon attacks repelled |
+| Money moved | 136263 EMWK in 19767 transfers (1363 EMWK a day) |
+| Treasury | 9600 → 8222 EMWK; in: morning village tax 7765 · profit tax 585 · market tax 571; out: public works 3331 · public works wage 2502 · guard salary 2250 · council payout to villagers 864 · build a watchtower 750 |
+| Villagers (12 bots), average purse | 125 → 608 EMWK (richest 772, poorest 407) |
+| Village events | 38 council proposals · 3 watchtowers built · 9 droughts · 12 winters · 7 dragon warnings · 7 dragon attacks repelled · 2 workshop upgrades |
 
 | Shop | Wallet start → end (EMWK) | Lowest point | Workshop level |
 |---|---|---|---|
-| woodcutter | 400 → 385 | 343 | 1 |
-| mill | 400 → 544 | 379 | 1 |
-| bakery | 450 → 692 | 424 | 1 |
-| smithy | 600 → 720 | 298 | 2 |
-| carpenter | 450 → 500 | 400 | 1 |
-| inn | 500 → 523 | 451 | 2 |
-| tailor | 400 → 409 | 228 | 1 |
-| tower (guard; paid daily by the treasury, spends it on swords and bread) | 700 → 46 | 1 | 1 |
+| woodcutter | 400 → 526 | 335 | 1 |
+| mill | 400 → 598 | 379 | 2 |
+| bakery | 450 → 714 | 424 | 1 |
+| smithy | 600 → 584 | 501 | 1 |
+| carpenter | 450 → 561 | 400 | 1 |
+| inn | 500 → 541 | 397 | 2 |
+| tailor | 400 → 411 | 305 | 1 |
+| tower (guard; paid daily by the treasury, spends it on swords and bread) | 700 → 204 | 1 | 1 |
 
 | Price (EMWK) | Start | End | Low | High |
 |---|---|---|---|---|
-| bread (bakery sells) | 6 | 5 | 4 | 23 |
+| bread (bakery sells) | 6 | 4 | 4 | 23 |
 | flour (mill sells) | 6 | 5 | 4 | 24 |
-| sword (smithy sells) | 45 | 53 | 27 | 101 |
-| coat (tailor sells) | 26 | 13 | 13 | 26 |
-| wheat (mill pays) | 3 | 2 | 2 | 12 |
-| ore (smithy pays) | 6 | 24 | 2 | 24 |
-| wood (woodcutter pays) | 3 | 2 | 2 | 5 |
+| sword (smithy sells) | 45 | 33 | 28 | 67 |
+| coat (tailor sells) | 26 | 13 | 13 | 34 |
+| wheat (mill pays) | 3 | 12 | 2 | 12 |
+| ore (smithy pays) | 6 | 2 | 2 | 24 |
+| wood (woodcutter pays) | 3 | 2 | 2 | 12 |
 | wool (tailor pays) | 3 | 2 | 1 | 12 |
 
 What it shows:
-- **The money supply never changes:** 25,000 EMWK at every tick, with more than 100,000 EMWK changing hands.
-- **No shop goes broke on its own,** and the treasury never had to rescue one. The guard tower is not a business: the treasury pays it a daily salary and it spends it on swords and bread, which is why its purse runs low; all 8 dragon attacks were repelled.
-- **Prices follow supply and demand by themselves:** with no players mining, ore becomes scarce and the smith's price for it rises; coats get cheaper as wool piles up.
-- **The villagers earn from work:** their average purse grows from 125 to 591 EMWK.
-- **Honest limit:** without players the treasury runs a small deficit (guard salary and council payouts are larger than taxes), about 7 EMWK a day against a balance of almost 9,000. Player trading adds market tax.
+- **The money supply never changes:** 25,000 EMWK at every tick, with more than 130,000 EMWK changing hands.
+- **No shop goes broke on its own,** and the treasury never had to rescue one. The guard tower is not a business: the treasury pays it a daily salary and it spends it on swords and bread, which is why its purse runs low; every dragon attack was repelled.
+- **Prices follow supply and demand by themselves:** with no players gathering, wheat becomes scarce and the miller's price for it rises; ore and coats get cheaper as they pile up.
+- **The villagers earn from work:** their average purse grows from 125 to about 600 EMWK.
+- **The treasury holds steady:** it settles near 8,000 EMWK, the line above which public works spend the surplus back into the village.
+
+### With players: 0 to 100 (reproducible)
+
+`npm run report -- --players` runs the same village with 0, 10, 30 and 100 scripted players, each from 5 seeds, for 100 village days (about 30 seconds, no key, no network). The scripted players work all day with their tool, sell to the best buyer, eat, sleep at the inn when they can, buy a coat in winter, replace broken tools, and apprentices look for a job. They are not real people: they play far more than a person would, and they never haggle, buy land, rent homes or use the exchange, so they put more pressure on the village than real players.
+
+**What the first run found, and what we changed.** We added this test after a review asked how the economy behaves with players. The first run showed a real problem: players earned by selling raw goods but spent almost nothing, so money piled up with them. The villagers lost their market to the players and went broke (their average purse fell from about 600 to 1–35 EMWK with 10 or more players), shops lost their customers and needed rescues (32–46 rescues with 30 players), and the treasury fell to its locked reserve with 30–100 players. Raising the tax alone fixed the treasury but not the villagers or the shops (we measured that too): the money also had to come back as demand. So in version 1.7.0 we added three rules, all described in *Features*: **daily food** (players are customers of the bread chain every day, and the bakery and mill grow with them), **public works** (the treasury's surplus comes back as orders to the shops and wages for villagers), and a **stronger tax on idle money** (2% above 200 EMWK, 3% above 800). The inn also grows with the number of players.
+
+Before (1.6.9) → after (1.7.0), range over 5 seeds:
+
+| Measure | 10 players | 30 players | 100 players |
+|---|---|---|---|
+| Treasury at the end (started at 9,600) | 7,658–8,243 → 8,280–8,393 | 2,521–3,463 → 8,188–8,394 | 2,079–2,110 → 6,781–7,842 |
+| Treasury rescues of a shop | 2–11 → 0–2 | 32–46 → 6–15 | 30–33 → 15–27 |
+| Shops' combined profit (EMWK) | −648 to −385 → 538 to 864 | −1,539 to −1,184 → −26 to 685 | −2,111 to −1,939 → −458 to 168 |
+| Villagers' average purse at the end | 7–35 → 160–321 | 1 → 19–132 | 1–2 → 51–223 |
+
+The full result with the new rules:
+
+Emberwick with scripted players: 100 village days, seeds 42 to 46 for each size, no NEAR AI. Ranges are over the 5 seeds.
+
+| Measure | 0 players | 10 players | 30 players | 100 players |
+|---|---|---|---|---|
+| Treasury at the end (EMWK, started at 9600) | 8222 to 8345 | 8280 to 8393 | 8188 to 8394 | 6781 to 7842 |
+| Shops whose wallet fell below 25 EMWK (of 7) | 0 | 0 | 0 to 1 | 0 to 1 |
+| Treasury: biggest flows (seed 42) | in: morning village tax 7765 · profit tax 585 · market tax 571; out: public works 3331 · public works wage 2502 · guard salary 2250 | in: morning village tax 6934 · profit tax 2111 · market tax 801; out: public works 3185 · public works wage 2445 · guard salary 2175 | in: morning village tax 8023 · profit tax 4386 · market tax 1073; out: public works 3813 · council payout to villagers 3240 · public works wage 2909 | in: morning village tax 10087 · profit tax 8989 · market tax 1463; out: council payout to villagers 6768 · public works 3823 · reward for defending the village 3500 |
+| Treasury rescues of a shop | 0 to 3 | 0 to 2 | 6 to 15 | 15 to 27 |
+| Shops' combined profit (EMWK) | 581 to 736 | 538 to 864 | -26 to 685 | -458 to 168 |
+| Price swings (watched goods) | 2994% to 3463% | 1898% to 2365% | 1561% to 1763% | 1423% to 1739% |
+| Bread price at the end (bakery sells) | 4 to 5 | 5 to 5 | 5 to 5 | 3 to 5 |
+| Ore price at the end (smith pays) | 2 to 5 | 3 to 6 | 2 to 3 | 2 to 2 |
+| Wood price at the end (woodcutter pays) | 2 to 2 | 1 to 2 | 1 | 1 |
+| Villagers' (12 bots) average purse at the end | 601 to 631 | 160 to 321 | 19 to 132 | 51 to 223 |
+| Players who got their full starting money | – | 100% | 100% | 87% |
+| Player's average coins: start → end | – | 56 → 390 to 581 | 57 → 267 to 317 | 50 → 102 to 118 |
+| Richest / poorest player at the end | – | 1042 to 1139 / 3 to 274 | 1097 to 1298 / 0 to 3 | 1133 to 1341 / 0 to 0 |
+| Share of all player coins held by the richest 10% | – | 20% to 29% | 36% to 41% | 69% to 86% |
+| Players who ended with less than they started with | – | 0% to 20% | 23% to 37% | 64% to 73% |
+| Player-days with a hungry moment (tired, no bread, no money, no credit) | – | 0% to 1% | 0% to 1% | 1% to 2% |
+| Mornings without the day's food (2 bread): bakery sold out | – | 0% to 1% | 0% to 1% | 2% to 3% |
+| Mornings without the day's food: no money | – | 0% to 4% | 14% to 28% | 57% to 68% |
+| Player-days fed on credit | – | 0% to 1% | 0% to 0% | 0% to 0% |
+| Nights in an inn bed (the rest sleep outside) | – | 45% to 46% | 24% to 26% | 17% to 19% |
+| Nights a player could pay but the inn was full | – | 46% to 54% | 44% to 60% | 14% to 27% |
+| Work turns with nothing worth gathering (shops already full of it) | – | 83% to 88% | 88% to 90% | 92% to 93% |
+| Player-days without a tool and no money to buy one | – | 0% to 1% | 6% to 13% | 25% to 46% |
+
+Scripted players: they gather with their tool, sell to the best buyer, eat when tired, sleep at the inn when they can, buy a coat in winter and replace broken tools; apprentices look for a job. They do not haggle, trade land, rent homes or use the exchange.
+
+What we read from it:
+
+- **Up to about 30 always-on players the village holds:** the treasury stays near 8,000, no shop goes broke, the villagers keep earning, and players grow their purse (10 players: from 56 to 390–581 EMWK on average).
+- **With 100 always-on players the work runs out.** The shops buy only what they need, so most work turns find nothing worth gathering. The treasury, shops and villagers are no longer in danger, but most players end poorer than they started, many cannot always pay for food, and the richest tenth holds most of the players' coins. Demand for raw goods does not yet grow enough with the number of players; more jobs, more craftsmen and player-to-player trade are on the roadmap.
+- We stopped there on purpose: three rules that close the money loop, not tuning for a nicer table.
 
 ### Rules only vs NEAR AI
 
 `npm run report -- --ai` runs the same village twice from the same seed: once on the craftsmen's rules alone, and once with a NEAR AI morning plan every village day (the exact call the game makes). It then compares the shops' profit, their income from customers, how long their shelves stood empty, how much prices swung, the treasury and the villagers' purses. The only difference between the two runs is the AI plan. It needs a NEAR AI key and makes one request per village day (100 requests, about $0.25); `npm run report -- --ai 50` runs 50 days. `npm run report -- 50 --spread` runs the rules-only village from 10 seeds to show the natural range.
 
-**Result (50 village days, seed 42, model `deepseek/deepseek-v3.2`).** We ran it three times. The last column shows how much the rules-only village varies by chance alone, over 10 different seeds (`npm run report -- 50 --spread`, no key needed).
+**Result (50 village days, seed 42, model `deepseek/deepseek-v3.2`), measured with the 1.6.3 rules,** before the economy update in 1.7.0 (daily food, public works, the new tax). All columns in this table use those rules, including the natural range over 10 seeds. With the 1.7.0 rules the rules-only village is different (`npm run report -- 50 --spread` now gives a profit of 498 to 981 for the 7 shops), so these AI numbers will be measured again with the new rules.
 
 | Measure (7 shops, tower left out) | Rules only | NEAR AI, first prompt | NEAR AI with profit and margin in the brief | Rules only, 10 seeds (natural range) |
 |---|---|---|---|---|
@@ -544,7 +599,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 
 | Track | What in Emberwick |
 |---|---|
-| **Games With Real Economies** | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token, and real swaps that lower the village's market fee |
+| **Games With Real Economies** | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token, and real swaps that lower the village's market fee; the economy is tested with 0 to 100 scripted players (`npm run report -- --players`) |
 | **Unstoppable DeFi** | The exchange: player order book, NFT deed escrow, real NEAR Intents swaps across chains with cost transparency, one-approval split sends |
 | **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell with escrow |
 | **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other: they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |

@@ -95,8 +95,10 @@ for (let t = 0; t < RULES.ticksPerDay * 100; t++) {
   const tax0 = state.players[me].stats.taxes || 0;
   const lease = playerAction(state, t1, { type: 'leaseHome', plot: owner.plot });
   for (let i = 0; i < RULES.ticksPerDay; i++) tick(state);
-  // the morning village tax is taken from the owner too; add it back to see the rent itself
-  const got = Math.round((state.balances['player:' + me] - ob + (state.players[me].stats.taxes || 0) - tax0) * 100) / 100;
+  // the morning village tax is taken from the owner too; add it back to see the rent itself,
+  // and the day's food the owner ate (bought at the bakery)
+  const food = (state.players[me].food && state.players[me].food.paid) || 0;
+  const got = Math.round((state.balances['player:' + me] - ob + (state.players[me].stats.taxes || 0) - tax0 + food) * 100) / 100;
   console.log('Home: sleep without bed', noBed.code, '| bed bought', bed.ok, 'installed', bed.installed, '| listed', list.ok, '| leased', lease.ok, '| owner got', got);
   if (noBed.code !== 'err.noBedYet' || !bed.installed || !list.ok || !lease.ok || got < 16) fail('beds or renting out a home did not work');
   const before = state.districts.length;
@@ -176,6 +178,25 @@ const decided = state.council.closed.length;
 console.log('Council: proposals', stats.proposals, 'votes', stats.votes, '| recent results', state.council.closed.map((x) => x.kind + ':' + x.result).join(', '), '| tax', state.taxRate ?? 'default');
 if (!stats.proposals || !stats.votes || !decided) fail('the council never decided anything');
 console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day', l.day, l.text));
+// daily food: an active player eats 2 bread each morning (bag first, then the bakery); without money they wake up hungry
+{
+  const fed = joinPlayer(state, 'Eater', 'farmer').id, broke = joinPlayer(state, 'Broke', 'farmer').id;
+  state.players[fed].inv.bread = 1;
+  const bb = state.balances['player:' + broke]; state.balances['player:' + broke] = 0; state.balances.newcomerFund += bb;
+  state.npcs.bakery.stock.bread = Math.max(5, state.npcs.bakery.stock.bread || 0);
+  for (const id of [fed, broke]) state.players[id].seenAt = state.tick;
+  while ((state.tick % RULES.ticksPerDay) !== RULES.ticksPerDay - 1) tick(state);
+  tick(state);
+  const f1 = state.players[fed].food, f2 = state.players[broke].food;
+  console.log('Daily food: fed', JSON.stringify(f1), '| no money', JSON.stringify(f2));
+  // a player with no money gets the bread on credit from the baker (the usual credit rules); with bad credit they go hungry
+  if (!f1 || f1.fromBag !== 1 || f1.bought !== 1 || f1.missing !== 0 || !f2 || f2.credit !== 2 || state.players[broke].hungry) fail('the daily food rule did not work');
+  const bp = state.players[broke]; bp.badCredit = { bakery: true }; delete (bp.debts || {}).bakery; bp.seenAt = state.tick;
+  for (let i = 0; i < RULES.ticksPerDay; i++) tick(state);
+  console.log('Daily food, no money and no credit: hungry', bp.hungry, JSON.stringify(bp.food));
+  if (!bp.hungry || bp.food.missing !== 2) fail('a player with no money and no credit was not hungry');
+  if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with daily food');
+}
 // NEAR AI answer signatures: a correct one passes; a changed answer, a wrong key, or a key outside the attestation report fail
 {
   const crypto = await import('node:crypto');

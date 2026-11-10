@@ -253,9 +253,14 @@ export function threatLevel(state) {
 }
 
 // rooms at the inn: travellers take some, players the rest
+// the inn grows with the village: one more room for every few players active today
+export function innRooms(state) {
+  const active = Object.values(state.players).filter((p) => p.seenAt !== undefined && state.tick - p.seenAt < RULES.ticksPerDay).length;
+  return RULES.innRooms + Math.floor(active / RULES.innRoomsPerPlayers);
+}
 export function innFree(state) {
   const players = Object.values(state.players).filter((p) => p.sleep && p.sleep.day === state.day && p.sleep.place === 'inn').length;
-  return Math.max(0, RULES.innRooms - (state.innGuests || 0) - players);
+  return Math.max(0, innRooms(state) - (state.innGuests || 0) - players);
 }
 
 function rng(state) {
@@ -299,7 +304,7 @@ export function maxEnergy(p) {
   if (!p.xp) return RULES.energyMax;
   const total = SKILLS.reduce((a, s) => a + skillLevel(p, s), 0);
   const base = Math.min(RULES.energyCap, RULES.energyMax + total - SKILLS.length);
-  return p.cold ? Math.max(4, base - RULES.coldMaxEnergy) : base;
+  return Math.max(4, base - (p.cold ? RULES.coldMaxEnergy : 0) - (p.hungry ? RULES.hungryMaxEnergy : 0));
 }
 // ---------- land: prices by distance, districts, levels ----------
 const PLOT_DEFS = BUILDINGS.filter((b) => b.type === 'plot');
@@ -366,6 +371,7 @@ function gainXp(p, skill, n = 1) {
   return after > before ? { skill, level: after } : null;
 }
 
+const FOOD_CHAIN = { bakery: ['bread', 'flour', 'wood'], mill: ['wheat', 'flour'] };
 function targetFor(state, npcId, good) {
   const def = CRAFTSMEN.find((c) => c.id === npcId);
   let t = def.target[good] || 0;
@@ -375,6 +381,8 @@ function targetFor(state, npcId, good) {
     if (npc.level > 1) t *= 1 + 0.2 * (npc.level - 1);        // a bigger workshop keeps more in stock
     if (npc.ai && npc.ai.day >= state.day - 1 && npc.ai.want[good]) t *= npc.ai.want[good]; // today's NEAR AI plan
   }
+  // more mouths to feed: the bread chain keeps more in stock for every player who eats in the village
+  if (FOOD_CHAIN[npcId] && FOOD_CHAIN[npcId].includes(good) && state.activePlayers) t *= 1 + state.activePlayers / RULES.foodChainPerPlayers;
   if (state.events.dragon > 0) {
     if (npcId === 'tower' && good === 'sword') t *= 3;
     if (npcId === 'smithy' && good === 'ore') t *= 2;
@@ -1185,6 +1193,48 @@ export function applyAiPlan(state, plan, model, extra = {}) {
   return used;
 }
 
+// Public works: taxes would otherwise pile up in the treasury while the shops lack customers and the
+// villagers lack work (players earn by selling raw goods but spend little). When the treasury holds
+// more than publicWorksAbove, it spends a share of the surplus each morning: it orders finished goods
+// from the shops (used for repairs, the guard and newcomer families, so they leave the market) and pays
+// wages to the poorest villagers for the work. Every payment is an ordinary transfer, on NEAR like all.
+function publicWorks(state) {
+  const surplus = balance(state, 'treasury') - Math.max(RULES.publicWorksAbove, lockedFunds(state));
+  if (surplus < 20) return;
+  let budget = r2(surplus * RULES.publicWorksShare);
+  const spent = { goods: 0, wages: 0, n: 0 };
+  // newcomers first: keep the newcomer fund able to give starting money
+  const fund = balance(state, 'newcomerFund');
+  if (fund < 1000) { const top = r2(Math.min(budget * 0.3, 1000 - fund)); if (top >= 1 && transfer(state, 'treasury', 'newcomerFund', top, { why: 'public works: newcomer fund' })) budget = r2(budget - top); }
+  // orders from the shops: finished goods they have on the shelf, a few at a time, cheapest first
+  let goodsBudget = r2(budget * 0.6);
+  const offers = [];
+  for (const def of CRAFTSMEN) {
+    if (def.id === 'tower') continue;
+    const npc = state.npcs[def.id];
+    if (!npc || npc.damagedUntil > state.day) continue;
+    for (const g of Object.keys(npc.sells)) if (GOODS[g] && GOODS[g].kind !== 'tool' && g !== 'meal' && (npc.stock[g] || 0) >= 1) offers.push([def.id, g, npc.sells[g]]);
+  }
+  for (let round = 0; round < 3 && goodsBudget > 0; round++) {
+    for (const [id, g, unit0] of offers) {
+      const npc = state.npcs[id], unit = price(npc.sells[g] || unit0);
+      if ((npc.stock[g] || 0) < 1 || unit > goodsBudget) continue;
+      if (!transfer(state, 'treasury', npcAcct(id), unit, { why: `public works: bought ${g}` })) continue;
+      npc.stock[g] -= 1; npc.soldToday = npc.soldToday || {}; npc.soldToday[g] = (npc.soldToday[g] || 0) + 1;
+      goodsBudget = r2(goodsBudget - unit); spent.goods = r2(spent.goods + unit); spent.n++;
+    }
+  }
+  // wages: the rest goes to the villagers with the thinnest purses
+  const wages = r2(budget - spent.goods - (budget * 0.6 - spent.goods > 0 ? 0 : 0));
+  const poor = Object.keys(state.balances).filter((k) => k.startsWith('bot:')).sort((a, b) => balance(state, a) - balance(state, b)).slice(0, 6);
+  if (poor.length && wages >= poor.length) {
+    const each = Math.floor((wages / poor.length) * 100) / 100;
+    for (const k of poor) if (transfer(state, 'treasury', k, each, { why: 'public works wage' })) spent.wages = r2(spent.wages + each);
+  }
+  state.publicWorks = { day: state.day, ...spent };
+  if (spent.goods + spent.wages >= 1 && state.day % 7 === 0) addLog(state, `Public works this week: the treasury ordered goods from the shops and paid villagers' wages.`, 'info', 'log.publicWorks', {});
+}
+
 function updateReadiness(state) {
   const tower = state.npcs.tower;
   const swords = tower.stock.sword || 0, bread = tower.stock.bread || 0;
@@ -1221,13 +1271,39 @@ function startNewDay(state) {
   if (ev.winter && !wasWinter) addLog(state, 'Winter arrives. Firewood is in demand.', 'warn', 'log.winter');
 
   // morning: who slept in a bed, who spent the night outside; coats wear out in winter
+  state.activePlayers = Object.values(state.players).filter((p) => p.seenAt !== undefined && state.tick - p.seenAt < RULES.ticksPerDay * 1.5).length;
   for (const p of Object.values(state.players)) {
     const active = p.seenAt !== undefined && state.tick - p.seenAt < RULES.ticksPerDay * 1.5;
     const slept = p.sleep && p.sleep.day === state.day - 1;
     const outside = (p.nightOut || 0) >= RULES.ticksPerDay * 0.1; // more than half the night outside
     p.cold = !!(active && !slept && outside);
     p.nightOut = 0;
-    if (p.cold) p.energy = Math.min(p.energy, maxEnergy(p));
+    // the day's food: bread from the bag first, the rest bought at the bakery. Only players who
+    // played yesterday eat (and pay); someone who was away is not charged.
+    p.hungry = false;
+    if (active) {
+      let need = RULES.dailyBread, fromBag = 0, bought = 0, paid = 0;
+      const own = Math.min(need, inv(p, 'bread'));
+      if (own > 0) { addInv(p, 'bread', -own); need -= own; fromBag = own; }
+      if (need > 0) {
+        p.foodWhy = null;
+        while (need > 0) {
+          const res = buyFromNpc(state, { acct: 'player:' + p.id, holder: p }, 'bakery', 'bread', 1);
+          if (!res.ok) { p.foodWhy = res.code === 'err.noMoney' ? 'money' : 'stock'; break; }
+          addInv(p, 'bread', -1); bought++; paid = r2(paid + res.total); need--;
+          p.stats = p.stats || {}; p.stats.spent = r2((p.stats.spent || 0) + res.total);
+        }
+      }
+      // no money: the baker gives bread on credit if the usual credit rules allow it (paid back within 3 days)
+      let credit = 0;
+      if (need > 0 && p.foodWhy === 'money') {
+        const c = giveCredit(state, p.id, 'bakery', need);
+        if (c && c.good === 'bread') { const eat = Math.min(need, inv(p, 'bread')); addInv(p, 'bread', -eat); need -= eat; credit = eat; }
+      }
+      p.hungry = need > 0;
+      p.food = { day: state.day, fromBag, bought, paid, credit, missing: need, why: need > 0 ? p.foodWhy || 'stock' : null };
+    }
+    if (p.cold || p.hungry) p.energy = Math.min(p.energy, maxEnergy(p));
     if (ev.winter && hasCoat(p)) {
       p.wear = p.wear || {};
       p.wear.coat = (p.wear.coat || 0) + 1;
@@ -1306,6 +1382,7 @@ function startNewDay(state) {
     const acct = npcAcct(def.id), bal = balance(state, acct);
     if (bal > RULES.profitTaxAbove) transfer(state, acct, 'treasury', (bal - RULES.profitTaxAbove) * RULES.profitTaxRate, { why: 'profit tax' });
   }
+  publicWorks(state);
   // council reserves are released when their time is up
   if ((state.reserveHolds || []).length) {
     const done = state.reserveHolds.filter((h) => h.until <= state.day);
@@ -1317,8 +1394,8 @@ function startNewDay(state) {
   let villageTax = 0;
   for (const k of Object.keys(state.balances)) {
     if (!k.startsWith('player:') && !k.startsWith('bot:')) continue;
-    const extra = balance(state, k) - RULES.villageTaxAbove;
-    const due = Math.floor(extra * RULES.villageTaxRate * 100) / 100;
+    const bal = balance(state, k), extra = bal - RULES.villageTaxAbove;
+    const due = Math.floor((extra * RULES.villageTaxRate + Math.max(0, bal - RULES.richTaxAbove) * RULES.richTaxRate) * 100) / 100;
     if (due >= 0.01 && transfer(state, k, 'treasury', due, { memo: 'Emberwick: morning village tax' })) {
       villageTax += due;
       if (k.startsWith('player:')) { const pl = state.players[k.slice(7)]; if (pl) { pl.stats = pl.stats || {}; pl.stats.taxes = r2((pl.stats.taxes || 0) + due); pl.lastTax = { day: state.day, amount: due }; } }
@@ -2202,7 +2279,7 @@ function playerView(state, p) {
     home: p.home ? { id: p.home, ...HOUSES[p.home], restedToday: p.restedDay === state.day } : null,
     restedToday: p.restedDay === state.day,
     asleep: !!(p.sleep && p.sleep.day === state.day && isNight(state)), sleepPlace: p.sleep && p.sleep.day === state.day ? p.sleep.place : null,
-    cold: !!p.cold, freezing: freezing(state, p), coatLeft: hasCoat(p) ? RULES.coatWinterDays - ((p.wear && p.wear.coat) || 0) : 0,
+    cold: !!p.cold, hungry: !!p.hungry, food: p.food && p.food.day === state.day ? p.food : null, freezing: freezing(state, p), coatLeft: hasCoat(p) ? RULES.coatWinterDays - ((p.wear && p.wear.coat) || 0) : 0,
     innBed: RULES.innBed, level: playerLevel(p), deal: p.deal && p.deal.day === state.day && state.tick - p.deal.tick <= 24 ? p.deal : null, debts: p.debts || {},
     application: (() => { for (const [npc, list] of Object.entries(state.applications || {})) { const i = list.findIndex((x) => x.pid === p.id); if (i >= 0) return { npc, others: list.length - 1, next: nextInterview(state) }; } return null; })(),
     appResult: p.appResult || null,
@@ -2251,7 +2328,7 @@ export function publicView(state, playerId) {
     day: state.day,
     dayProgress: (state.tick % RULES.ticksPerDay) / RULES.ticksPerDay,
     night: isNight(state),
-    inn: { rooms: RULES.innRooms, free: innFree(state) },
+    inn: { rooms: innRooms(state), free: innFree(state) },
     nightStart: NIGHT_START,
     threat: threatLevel(state),
     watchtowers: state.watchtowers || [],

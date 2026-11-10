@@ -214,8 +214,16 @@ export const RULES = {
   profitTaxRate: 0.2,
   emwkPerNear: 100,      // the village's own exchange rate, used to price EMWK in NEAR for live NEAR Intents quotes
   oracle: { min: 0.85, max: 1.2 }, // travellers pay with NEAR: their prices follow the live NEAR price within these bounds
-  villageTaxAbove: 300,  // villagers holding more than this pay a small morning tax on the extra
-  villageTaxRate: 0.01,  // 1% of the extra, every morning (keeps the treasury from slowly running dry)
+  villageTaxAbove: 200,  // villagers holding more than this pay a small morning tax on the extra
+  villageTaxRate: 0.02,  // 2% of the extra, every morning (money kept idle flows back to the village)
+  richTaxAbove: 800,     // a second, higher band: holdings above this pay richTaxRate on the part above it
+  richTaxRate: 0.03,     // so money that piles up with a few players flows back to the village
+  publicWorksAbove: 8000, // a treasury richer than this spends part of the surplus back into the village each morning
+  publicWorksShare: 0.25, // share of the surplus spent per morning: orders from the shops and wages for villagers
+  innRoomsPerPlayers: 5,
+  dailyBread: 2,         // every morning a player who played yesterday eats this much bread (from the bag, or bought at the bakery)
+  hungryMaxEnergy: 3,
+  foodChainPerPlayers: 8, // the baker and the miller keep 1/8 more bread, flour, wheat and wood in stock for every active player    // without the day's food, max energy is this much lower until the next morning // the inn opens one more room for every this many players active today
   minPrice: 1,
   // nights and winter
   innBed: 5,             // a bed for the night at the inn, paid to the innkeeper

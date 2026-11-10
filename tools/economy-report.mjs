@@ -6,8 +6,8 @@
 // call the game makes), and compares the two. It needs a NEAR AI key (NEARAI_API_KEY or
 // ~/.emberwick/nearai-key.txt) and makes one request per village day (100 requests).
 import { EventEmitter } from 'node:events';
-import { createState, tick, totalMoney, balance, aiBrief, applyAiPlan } from '../server/economy.js';
-import { TOKEN, RULES, CRAFTSMEN } from '../server/world.js';
+import { createState, tick, totalMoney, balance, aiBrief, applyAiPlan, joinPlayer, playerAction, isNight, innFree, sellQuote } from '../server/economy.js';
+import { TOKEN, RULES, CRAFTSMEN, GATHER_SPOTS } from '../server/world.js';
 
 EventEmitter.defaultMaxListeners = 50; // many requests in a row over one connection: not a leak
 const args = process.argv.slice(2);
@@ -16,6 +16,8 @@ const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
 const DAYS = nums[0] || 100;
 let SEED = nums[1] || 42;
 const SPREAD = args.includes('--spread');
+const CROWD = args.includes('--players');
+let PLAYERS = 0;
 const r2 = (n) => Math.round(n * 100) / 100;
 const WATCH = [['bakery', 'bread', 'sells'], ['mill', 'flour', 'sells'], ['smithy', 'sword', 'sells'], ['tailor', 'coat', 'sells'],
   ['mill', 'wheat', 'buys'], ['smithy', 'ore', 'buys'], ['woodcutter', 'wood', 'buys'], ['tailor', 'wool', 'buys']];
@@ -43,7 +45,9 @@ async function run(plan) {
   let moved = 0, transfers = 0, lastLedger = state.ledgerSeq || 0, maxDrift = 0, plans = 0, planFails = 0;
   const treasuryIn = {}, treasuryOut = {}, events = {};
   let lastLog = state.log[0];
+  const crowd = PLAYERS ? newCrowd(state, PLAYERS) : null;
   for (let t = 0; t < RULES.ticksPerDay * DAYS; t++) {
+    if (crowd) crowd.step(t);
     if (plan && t % RULES.ticksPerDay === 0) { // a village morning: the same NEAR AI plan the game asks for
       try { const p = await plan(state); if (p && applyAiPlan(state, p.plan, p.model, p.extra)) plans++; else planFails++; } catch { planFails++; }
     }
@@ -72,7 +76,116 @@ async function run(plan) {
   }
   const botEnd = Object.entries(state.balances).filter(([k]) => k.startsWith('bot:')).map(([, v]) => v);
   for (const id of shopIds) shops[id].end = r2(balance(state, 'npc:' + id));
-  return { state, prices, priceOf, shops, shopIds, treasuryStart, treasuryEnd: r2(balance(state, 'treasury')), treasuryIn, treasuryOut, botStart, botEnd, moved, transfers, maxDrift, events, plans, planFails };
+  return { state, crowd: crowd && crowd.result(), prices, priceOf, shops, shopIds, treasuryStart, treasuryEnd: r2(balance(state, 'treasury')), treasuryIn, treasuryOut, botStart, botEnd, moved, transfers, maxDrift, events, plans, planFails };
+}
+
+// ---------- scripted players (npm run report -- --players) ----------
+// They play the way a simple, careful player would: work with their tool, sell to the best buyer,
+// eat when tired, sleep at the inn when they can afford it, buy a coat in winter, replace a broken
+// tool, and apprentices look for a job. They are not real people: they never haggle, trade land,
+// rent homes or use the exchange, so the results show the village's basic loop under load.
+const TOOL_SHOP = { pickaxe: 'smithy', axe: 'woodcutter', plow: 'mill', shears: 'tailor', rod: 'carpenter' };
+const TOOL_SPOT = { pickaxe: 'mine', axe: 'forest', plow: 'fields', shears: 'pasture', rod: 'pond' };
+const PATHS = ['miner', 'woodcutter', 'farmer', 'apprentice'];
+const START_COINS = { miner: 50, woodcutter: 50, farmer: 50, apprentice: 80 };
+function mulberry(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function newCrowd(state, n) {
+  const rnd = mulberry(SEED * 7919 + n);
+  const ids = [], start = {}, joinTick = [];
+  const m = { mornings: 0, unfed: 0, unfedMoney: 0, playerDays: 0, hungryDays: 0, creditDays: 0, nights: 0, innNights: 0, toolsBought: 0, toolless: 0, workTries: 0, noDemand: 0, innFull: 0, actions: 0 };
+  const days = {}; // per player and day: { hungry, credit }
+  for (let k = 0; k < n; k++) joinTick.push(Math.floor(rnd() * RULES.ticksPerDay * Math.min(10, DAYS / 2))); // they arrive over the first days
+  const coins = (id) => balance(state, 'player:' + id);
+  const inv = (p, g) => (p.inv && p.inv[g]) || 0;
+  const act = (id, a) => { m.actions++; return playerAction(state, id, a); };
+  const dayOf = (id) => { const k = id + ':' + state.day; if (!days[k]) { days[k] = {}; m.playerDays++; } return days[k]; };
+  const RAW = Object.values(GATHER_SPOTS).map((x) => x.good);
+  const buyersOf = (g) => Object.values(state.npcs).filter((x) => x.buys && x.buys[g] !== undefined && sellQuote(state, x.id, g, 1).qty > 0).sort((a, b) => b.buys[g] - a.buys[g]);
+  const bestPrice = (g) => { const b = buyersOf(g)[0]; return b ? b.buys[g] : 0; };
+  function feed(id, p) {
+    if (inv(p, 'bread') > 0 && act(id, { type: 'eat' }).ok) return true;
+    const price = state.npcs.bakery.sells.bread;
+    if (coins(id) >= price + 1 && act(id, { type: 'buy', npc: 'bakery', good: 'bread', qty: 1 }).ok && act(id, { type: 'eat' }).ok) return true;
+    if (act(id, { type: 'credit', npc: 'bakery', qty: 1 }).ok) { const d = dayOf(id); if (!d.credit) { d.credit = 1; m.creditDays++; } return act(id, { type: 'eat' }).ok; }
+    return false;
+  }
+  function day(id, p) {
+    const d = dayOf(id);
+    if (p.path === 'apprentice' && !p.job) {
+      for (const o of Object.values(state.jobOffers || {})) if (act(id, { type: 'apply', npc: o.npc }).ok) break;
+    }
+    if (p.job) {
+      const r = act(id, { type: 'shift' });
+      if (!r.ok && r.code === 'err.tired' && !feed(id, p) && !d.hungry) { d.hungry = 1; m.hungryDays++; }
+      if (r.ok || r.code !== 'err.shiftDone') return;
+    }
+    // winter: a coat keeps outdoor work cheap
+    if (state.events.winter && !inv(p, 'coat') && coins(id) > state.npcs.tailor.sells.coat + 20) act(id, { type: 'buy', npc: 'tailor', good: 'coat', qty: 1 });
+    const tool = Object.keys(TOOL_SPOT).find((t) => inv(p, t) > 0 && !(state.events.winter && TOOL_SPOT[t] === 'fields'));
+    if (!tool) {
+      // a broken or missing tool: buy the one that pays best today, if affordable
+      const opts = Object.keys(TOOL_SPOT).filter((t) => state.npcs[TOOL_SHOP[t]] && state.npcs[TOOL_SHOP[t]].sells[t] && (state.npcs[TOOL_SHOP[t]].stock[t] || 0) > 0 && coins(id) >= state.npcs[TOOL_SHOP[t]].sells[t] + 3)
+        .filter((t) => !(state.events.winter && TOOL_SPOT[t] === 'fields'))
+        .filter((t) => buyersOf(GATHER_SPOTS[TOOL_SPOT[t]].good).length)
+        .sort((a, b) => state.npcs[TOOL_SHOP[a]].sells[a] - state.npcs[TOOL_SHOP[b]].sells[b]);
+      if (opts.length && act(id, { type: 'buy', npc: TOOL_SHOP[opts[0]], good: opts[0], qty: 1 }).ok) m.toolsBought++;
+      else { if (!d.toolless) { d.toolless = 1; m.toolless++; } if (!p.job) for (const o of Object.values(state.jobOffers || {})) if (act(id, { type: 'apply', npc: o.npc }).ok) break; return; }
+    }
+    // sell what they carry to whoever still wants it, best price first
+    for (const g of RAW) {
+      let have = inv(p, g);
+      if (!have) continue;
+      for (const b of buyersOf(g)) { if (have < 1) break; const r = act(id, { type: 'sell', npc: b.id, good: g, qty: have }); if (r.ok) have = inv(p, g); }
+    }
+    // work with a tool whose good someone still buys; carrying a pile nobody wants is pointless
+    const usable = Object.keys(TOOL_SPOT).filter((t) => inv(p, t) > 0 && !(state.events.winter && TOOL_SPOT[t] === 'fields'))
+      .map((t) => ({ t, spot: TOOL_SPOT[t], good: GATHER_SPOTS[TOOL_SPOT[t]].good }))
+      .filter((x) => inv(p, x.good) < 6 && buyersOf(x.good).length)
+      .sort((a, b) => bestPrice(b.good) * (GATHER_SPOTS[b.spot].base + 0.5) / GATHER_SPOTS[b.spot].energy - bestPrice(a.good) * (GATHER_SPOTS[a.spot].base + 0.5) / GATHER_SPOTS[a.spot].energy);
+    m.workTries++;
+    if (!usable.length) { m.noDemand++; return; }
+    const spot = usable[0].spot;
+    const r = act(id, { type: 'gather', spot });
+    if (!r.ok && r.code === 'err.tired') {
+      if (feed(id, p)) act(id, { type: 'gather', spot });
+      else if (!d.hungry) { d.hungry = 1; m.hungryDays++; }
+    }
+  }
+  function night(id, p) {
+    if (p.sleep && p.sleep.day === state.day) return;
+    const d = dayOf(id);
+    if (d.nightDone) return;
+    d.nightDone = 1; m.nights++;
+    if (coins(id) < RULES.innBed + 3) return;
+    if (innFree(state) < 1) { m.innFull++; return; }
+    if (act(id, { type: 'sleep', place: 'inn' }).ok) m.innNights++;
+  }
+  return {
+    step(t) {
+      if (t % RULES.ticksPerDay === 1) for (const id of ids) { const f = id && state.players[id].food; if (f && f.day === state.day) { m.mornings++; if (f.missing > 0) { m.unfed++; if (f.why === 'money') m.unfedMoney++; } } }
+      for (let k = ids.length; k < n && joinTick[k] <= t; k++) {
+        const r = joinPlayer(state, 'Sim' + k, PATHS[k % PATHS.length]);
+        if (r.ok) { ids.push(r.id); start[r.id] = coins(r.id); } else ids.push(null);
+      }
+      const dark = isNight(state);
+      for (const id of ids) {
+        if (!id) continue;
+        const p = state.players[id];
+        if (dark) { if (rnd() < 0.5) night(id, p); continue; }
+        if (rnd() < (Number(process.env.CROWD_ACTIVE) || 0.3)) day(id, p); // nobody plays every minute
+      }
+    },
+    result() {
+      const live = ids.filter(Boolean);
+      const end = live.map((id) => coins(id)), gain = live.map((id) => coins(id) - start[id]);
+      const sorted = [...end].sort((a, b) => a - b);
+      const top10 = sorted.slice(-Math.max(1, Math.round(sorted.length / 10))).reduce((a, b) => a + b, 0), total = sorted.reduce((a, b) => a + b, 0);
+      return { n: live.length, wanted: n, startAvg: avg(live.map((id) => start[id])), endAvg: avg(end), gainAvg: avg(gain), richest: sorted[sorted.length - 1] || 0, poorest: sorted[0] || 0,
+        fullStart: live.filter((id) => start[id] >= START_COINS[state.players[id].path] - 0.01).length,
+        losers: gain.filter((g) => g < 0).length, top10Share: total > 0 ? top10 / total : 0, ...m,
+        debug: process.env.CROWD_DEBUG ? live.map((id) => { const p = state.players[id]; return `${p.path} c${Math.round(coins(id))} job:${p.job ? p.job.npc : '-'} inv:${JSON.stringify(p.inv)} e${p.energy}`; }) : null };
+    },
+  };
 }
 
 const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
@@ -116,6 +229,59 @@ function compare(a, b, model) {
   return out.join('\n') + '\n\nSame seed for both runs: the only difference is the NEAR AI morning plan.';
 }
 
+// --players: the same village with 0, 10, 30 and 100 scripted players, each from 5 seeds
+if (CROWD) {
+  const sizes = nums.length > 1 ? nums.slice(1) : [0, 10, 30, 100];
+  const seeds = [42, 43, 44, 45, 46];
+  const pct = (x) => `${Math.round(x * 100)}%`, span = (v, f = (x) => Math.round(x)) => (Math.min(...v) === Math.max(...v) ? `${f(v[0])}` : `${f(Math.min(...v))} to ${f(Math.max(...v))}`);
+  const res = {};
+  for (const n of sizes) {
+    PLAYERS = n; res[n] = [];
+    for (const sd of seeds) {
+      SEED = sd;
+      const r = await run(null), shops7 = r.shopIds.filter((id) => id !== 'tower');
+      res[n].push({ r, shops7, profit: shops7.reduce((a, id) => a + r.shops[id].end - r.shops[id].start, 0), broke: shops7.filter((id) => r.shops[id].min < 25).length,
+        rescues: r.events['treasury rescues of a shop'] || 0, swing: avg(WATCH.map(([a, g, s]) => r.prices[`${a}.${g}.${s}`].moves)) * 100,
+        bread: r.priceOf('bakery', 'bread', 'sells'), ore: r.priceOf('smithy', 'ore', 'buys'), wood: r.priceOf('woodcutter', 'wood', 'buys'), purse: avg(r.botEnd) });
+      console.error(`  ${n} players, seed ${sd} done`);
+    }
+  }
+  const out = [];
+  out.push(`Emberwick with scripted players: ${DAYS} village days, seeds 42 to 46 for each size, no NEAR AI. Ranges are over the 5 seeds.`, '');
+  out.push(`| Measure | ${sizes.map((n) => `${n} players`).join(' | ')} |`, `|---|${sizes.map(() => '---').join('|')}|`);
+  const line = (name, f) => out.push(row(name, ...sizes.map((n) => f(res[n]))));
+  const C = (x) => x.r.crowd;
+  line('Treasury at the end (EMWK, started at 9600)', (a) => span(a.map((x) => x.r.treasuryEnd)));
+  line('Shops whose wallet fell below 25 EMWK (of 7)', (a) => span(a.map((x) => x.broke)));
+  line('Treasury: biggest flows (seed 42)', (a) => `in: ${top(a[0].r.treasuryIn).split(' · ').slice(0, 3).join(' · ')}; out: ${top(a[0].r.treasuryOut).split(' · ').slice(0, 3).join(' · ')}`);
+  line('Treasury rescues of a shop', (a) => span(a.map((x) => x.rescues)));
+  line('Shops\' combined profit (EMWK)', (a) => span(a.map((x) => x.profit)));
+  line('Price swings (watched goods)', (a) => span(a.map((x) => x.swing), (v) => `${Math.round(v)}%`));
+  line('Bread price at the end (bakery sells)', (a) => span(a.map((x) => x.bread)));
+  line('Ore price at the end (smith pays)', (a) => span(a.map((x) => x.ore)));
+  line('Wood price at the end (woodcutter pays)', (a) => span(a.map((x) => x.wood)));
+  line('Villagers\' (12 bots) average purse at the end', (a) => span(a.map((x) => x.purse)));
+  if (sizes.some((n) => n > 0)) {
+    const P = (f) => (a) => (C(a[0]) && C(a[0]).n ? f(a) : '–');
+    line('Players who got their full starting money', P((a) => span(a.map((x) => C(x).fullStart / C(x).n), pct)));
+    line('Player\'s average coins: start → end', P((a) => `${Math.round(avg(a.map((x) => C(x).startAvg)))} → ${span(a.map((x) => C(x).endAvg))}`));
+    line('Richest / poorest player at the end', P((a) => `${span(a.map((x) => C(x).richest))} / ${span(a.map((x) => C(x).poorest))}`));
+    line('Share of all player coins held by the richest 10%', P((a) => span(a.map((x) => C(x).top10Share), pct)));
+    line('Players who ended with less than they started with', P((a) => span(a.map((x) => C(x).losers / C(x).n), pct)));
+    line('Player-days with a hungry moment (tired, no bread, no money, no credit)', P((a) => span(a.map((x) => C(x).hungryDays / Math.max(1, C(x).playerDays)), pct)));
+    line('Mornings without the day\'s food (2 bread): bakery sold out', P((a) => span(a.map((x) => (C(x).unfed - C(x).unfedMoney) / Math.max(1, C(x).mornings)), pct)));
+    line('Mornings without the day\'s food: no money', P((a) => span(a.map((x) => C(x).unfedMoney / Math.max(1, C(x).mornings)), pct)));
+    line('Player-days fed on credit', P((a) => span(a.map((x) => C(x).creditDays / Math.max(1, C(x).playerDays)), pct)));
+    line('Nights in an inn bed (the rest sleep outside)', P((a) => span(a.map((x) => C(x).innNights / Math.max(1, C(x).nights)), pct)));
+    line('Nights a player could pay but the inn was full', P((a) => span(a.map((x) => C(x).innFull / Math.max(1, C(x).nights)), pct)));
+    line('Work turns with nothing worth gathering (shops already full of it)', P((a) => span(a.map((x) => C(x).noDemand / Math.max(1, C(x).workTries)), pct)));
+    line('Player-days without a tool and no money to buy one', P((a) => span(a.map((x) => C(x).toolless / Math.max(1, C(x).playerDays)), pct)));
+  }
+  if (process.env.CROWD_DEBUG) for (const n of sizes) console.log(res[n][0].r.crowd && res[n][0].r.crowd.debug && res[n][0].r.crowd.debug.join('\n'));
+  console.log(out.join('\n'));
+  console.log('\nScripted players: they gather with their tool, sell to the best buyer, eat when tired, sleep at the inn when they can, buy a coat in winter and replace broken tools; apprentices look for a job. They do not haggle, trade land, rent homes or use the exchange.');
+  process.exit(0);
+}
 // --spread: the same rules-only village from 10 different seeds, to show how much results vary by chance
 if (SPREAD) {
   const rows = [];
