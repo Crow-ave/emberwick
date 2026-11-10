@@ -355,6 +355,12 @@ What it shows:
 - **The villagers earn from work:** their average purse grows from 125 to 591 EMWK.
 - **Honest limit:** without players the treasury runs a small deficit (guard salary and council payouts are larger than taxes), about 7 EMWK a day against a balance of almost 9,000. Player trading adds market tax.
 
+### Rules only vs NEAR AI
+
+`npm run report -- --ai` runs the same village twice from the same seed: once on the craftsmen's rules alone, and once with a NEAR AI morning plan every village day (the exact call the game makes). It then compares the shops' profit, their income from customers, how long their shelves stood empty, how much prices swung, the treasury and the villagers' purses. The only difference between the two runs is the AI plan. It needs a NEAR AI key and makes one request per village day (100 requests, about $0.25); `npm run report -- --ai 50` runs 50 days.
+
+The simulation has no players, so it measures only the planning. What NEAR AI adds for players (answers with action buttons, credit decisions, haggling, reading a swap sentence) is outside it.
+
 ---
 
 ## Architecture
