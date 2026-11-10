@@ -861,7 +861,11 @@ const server = http.createServer(async (req, res) => {
     if (!p) return sendJson(res, 404, { ok: false, error: rec ? 'the proof for that day is no longer kept (the server keeps the last 5 answers since it started)' : 'no signed answer yet' });
     return sendJson(res, 200, p);
   }
-  if (url.pathname === '/api/ai/attestation') return sendJson(res, ai.attestFull ? 200 : 404, ai.attestFull || { ok: false, error: 'no attestation yet' });
+  if (url.pathname === '/api/ai/attestation') {
+    // ?signer=1: the report of the enclave that signed the last plan, when that was a different node of the same model
+    const r = url.searchParams.get('signer') && ai.signerReport ? ai.signerReport : ai.attestFull;
+    return sendJson(res, r ? 200 : 404, r || { ok: false, error: 'no attestation yet' });
+  }
 
   // haggling: the village rules decide, NEAR AI says it in the craftsman's voice
   if (req.method === 'POST' && url.pathname === '/api/ai/haggle') {

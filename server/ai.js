@@ -416,7 +416,18 @@ function recoverEip191(text, sigHex) {
   const pub = secp256k1.Signature.fromBytes(new Uint8Array([v, ...b.subarray(0, 64)]), 'recovered').recoverPublicKey(h).toBytes(false);
   return '0x' + Buffer.from(keccak_256(pub.subarray(1)).subarray(-20)).toString('hex');
 }
-const attestedKeys = (r) => new Set(((r && r.model_attestations) || []).map((x) => String(x.signing_address || '').toLowerCase()).filter(Boolean));
+// every signing key in an attestation report, with where it stands: a model enclave (one per node that
+// serves the model) or the NEAR AI gateway, which also runs in a TEE and has its own report
+function attestedKeys(r, into = new Map()) {
+  const walk = (o, kind) => {
+    if (!o || typeof o !== 'object') return;
+    if (Array.isArray(o)) return o.forEach((x) => walk(x, kind));
+    if (typeof o.signing_address === 'string' && o.signing_address) { const k = o.signing_address.toLowerCase(); if (!into.has(k) || kind === 'model') into.set(k, kind); }
+    for (const [name, v] of Object.entries(o)) if (v && typeof v === 'object') walk(v, /gateway/i.test(name) ? 'gateway' : kind);
+  };
+  walk(r, 'model');
+  return into;
+}
 export function checkSignature(call, sig, keys) {
   const reqHash = sha256hex(call.sent), respHash = sha256hex(call.received);
   const parts = String(sig.text || '').split(':');
@@ -427,7 +438,7 @@ export function checkSignature(call, sig, keys) {
     chatId: call.id, model: call.model, at: call.at, text: sig.text, signature: sig.signature, signer, algo: sig.signing_algo || 'ecdsa',
     requestSha256: reqHash, responseSha256: respHash,
     requestHashOk: parts.includes(reqHash), responseHashOk: parts.includes(respHash),
-    signatureOk: !!recovered && recovered === signer, recovered, attested: keys.has(signer), error: sigErr,
+    signatureOk: !!recovered && recovered === signer, recovered, attested: keys.has(signer), signedBy: keys.get ? keys.get(signer) || null : keys.has(signer) ? 'model' : null, error: sigErr,
   };
   out.ok = out.requestHashOk && out.responseHashOk && out.signatureOk && out.attested;
   if (!out.ok && !out.error) out.error = !out.signatureOk ? 'the signature does not match its key' : !out.attested ? 'the key is not in the attestation report' : !out.requestHashOk ? 'the request hash differs' : 'the answer hash differs';
@@ -443,8 +454,19 @@ export async function verifyAnswer(call) {
   }
   if (!sig) { const out = { ok: false, chatId: call.id, error: 'no signature: ' + err }; console.log('[AI] answer signature not available:', err); return keep(out, call); }
   let out = checkSignature(call, sig, attestedKeys(ai.attestFull));
-  if (!out.attested && out.signatureOk) { await fetchAttestation(); out = checkSignature(call, sig, attestedKeys(ai.attestFull)); } // the enclave may have restarted with a new key
-  console.log(`[AI] answer signature ${out.ok ? 'verified: signed inside the attested TEE' : 'NOT verified'} (request hash ${out.requestHashOk ? 'ok' : 'differs'}, response hash ${out.responseHashOk ? 'ok' : 'differs'}, signature ${out.signatureOk ? 'ok' : 'bad'}, key ${out.attested ? 'in the attestation report' : 'not in the report'}).`);
+  if (!out.attested && out.signatureOk) {
+    // a model can run on several enclaves, each with its own key: ask for the report of the one that signed
+    // (with a fresh nonce), and count only a report that really names that key
+    const keys = attestedKeys(ai.attestFull);
+    const nonce = crypto.randomBytes(32).toString('hex');
+    for (const q of [`model=${encodeURIComponent(call.model)}&signing_address=${out.signer}&nonce=${nonce}`, `model=${encodeURIComponent(call.model)}&nonce=${nonce}`]) {
+      try { const r = await api(`/attestation/report?${q}&signing_algo=ecdsa`, null, 30000); attestedKeys(r, keys); if (attestedKeys(r).has(out.signer)) { ai.signerReport = r; break; } } catch (e) { err = String(e.message || e).slice(0, 100); }
+    }
+    out = checkSignature(call, sig, keys);
+    if (!out.attested) console.log(`[AI] signer ${out.signer.slice(0, 12)}… is not among the ${keys.size} attested key(s): ${[...keys].map(([k, v]) => k.slice(0, 12) + '… (' + v + ')').join(', ') || 'none'}${err ? '; last error: ' + err : ''}`);
+  }
+  const where = out.signedBy === 'gateway' ? 'the attested NEAR AI gateway TEE' : 'the attested model TEE';
+  console.log(`[AI] answer signature ${out.ok ? 'verified: signed inside ' + where : 'NOT verified'} (request hash ${out.requestHashOk ? 'ok' : 'differs'}, response hash ${out.responseHashOk ? 'ok' : 'differs'}, signature ${out.signatureOk ? 'ok' : 'bad'}, key ${out.attested ? 'in the attestation report' : 'not in the report'}).`);
   return keep(out, call);
 }
 // the last few proofs with the exact request and response bytes, so anyone can re-hash them

@@ -187,7 +187,7 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   const sign = (t, sk) => { const m = enc.encode(t); const r = secp256k1.sign(keccak_256(new Uint8Array([...enc.encode(`\x19Ethereum Signed Message:\n${m.length}`), ...m])), sk, { prehash: false, format: 'recovered' }); return '0x' + Buffer.from([...r.slice(1), r[0] + 27]).toString('hex'); };
   const k1 = secp256k1.utils.randomSecretKey(), k2 = secp256k1.utils.randomSecretKey();
   const call = { id: 'c1', model: 'm', sent: '{"q":1}', received: '{"a":2}' }, text = sha(call.sent) + ':' + sha(call.received);
-  const keys = new Set([addr(k1)]);
+  const keys = new Map([[addr(k1), 'model']]);
   const good = checkSignature(call, { text, signature: sign(text, k1), signing_address: addr(k1) }, keys);
   const changed = checkSignature({ ...call, received: '{"a":3}' }, { text, signature: sign(text, k1), signing_address: addr(k1) }, keys);
   const wrongKey = checkSignature(call, { text, signature: sign(text, k2), signing_address: addr(k1) }, keys);
