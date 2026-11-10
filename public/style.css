@@ -926,7 +926,8 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .sysbox{border:1px solid #e3d6bf;border-radius:10px;padding:6px 10px;margin:8px 0;background:#fffaf2}
 .sysbox summary{cursor:pointer;font-weight:600}
 .systab{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
-.systab td{padding:3px 4px;border-bottom:1px solid #f0e6d4;vertical-align:top;word-break:break-all}
+.systab td{padding:3px 4px;border-bottom:1px solid #f0e6d4;vertical-align:top;overflow-wrap:anywhere}
+.systab a,.systab code{white-space:nowrap}
 .systab td:first-child{color:#7a6a55;white-space:nowrap;width:1%;padding-right:10px;word-break:normal}
 .syst{display:inline-block;padding:1px 7px;border-radius:9px;font-size:12px;font-weight:600}
 .syst.st-ok{background:#e1f3e3;color:#21653a}.syst.st-low{background:#fde4dc;color:#a3331a}.syst.st-off{background:#eee;color:#666}

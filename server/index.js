@@ -665,6 +665,12 @@ const server = http.createServer(async (req, res) => {
       bank: c && c.accounts ? c.accounts.bank : null, bankNear: bal, gasMin: 0.5,
       lowGas: !!(c && c.lowGas), pending: c ? c.pending : 0, txCount: c ? c.txCount : 0,
       ai: { status: a.status, provider: a.provider, model: a.model, tee: a.tee, attestAt: a.attest && a.attest.at || null, error: a.error },
+      // what the village bank holds for others, next to what NEAR says the bank holds
+      held: (() => { const b = state.balances, sum = (f) => Math.round(Object.entries(b).filter(([k]) => f(k)).reduce((a, [, v]) => a + v, 0) * 100) / 100;
+        const players = sum((k) => k.startsWith('player:')), inBank = sum((k) => !(k === 'treasury' || k === 'deposits' || k.startsWith('npc:')));
+        const chain = c && c.balances && c.accounts && c.accounts.bank in c.balances ? c.balances[c.accounts.bank] : null;
+        return { players, playerCount: Object.keys(state.players).length, inBank, chain, token: c && c.accounts ? c.accounts.token : null }; })(),
+      record: (state.dayLog || [])[0] ? { day: state.dayLog[0].day, hash: state.dayLog[0].hash } : null,
       uptime: Math.round(process.uptime()), log: sysLog.slice(0, 50),
     });
   }
@@ -840,6 +846,12 @@ const server = http.createServer(async (req, res) => {
     const d = Number(url.searchParams.get('day')), rec = (state.aiLog || []).find((x) => x.day === d) || (state.aiLog || [])[0];
     if (!rec) return sendJson(res, 404, { ok: false, error: 'no plan yet' });
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Plan-Sha256': rec.hash });
+    return res.end(rec.json);
+  }
+  if (url.pathname === '/api/state-record') {
+    const d = Number(url.searchParams.get('day')), rec = (state.dayLog || []).find((x) => x.day === d) || (state.dayLog || [])[0];
+    if (!rec) return sendJson(res, 404, { ok: false, error: 'no village record yet (the first is written at the end of a village day)' });
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Record-Sha256': rec.hash, 'X-Record-Day': String(rec.day) });
     return res.end(rec.json);
   }
   if (url.pathname === '/api/ai/attestation') return sendJson(res, ai.attestFull ? 200 : 404, ai.attestFull || { ok: false, error: 'no attestation yet' });

@@ -49,7 +49,7 @@ near_testnet:
   token: NEP-141 "EMWK", fixed supply 25,000       # token.emberwick-village.testnet (online demo: emwk.emberwick-village-2.testnet)
   land_deeds: NEP-171 NFT contract                 # deeds.emberwick-village.testnet
   sub_accounts: treasury, deposits, and one account per AI craftsman (8), e.g. smithy.emberwick-village.testnet
-  on_chain_records: every trade/wage/tax as batched ft_transfer; job contracts, council results, AI plan hashes and real-swap records as memo transfers
+  on_chain_records: every trade/wage/tax as batched ft_transfer; job contracts, council results, AI plan hashes, a daily hash of the public village state and real-swap records as memo transfers
 near_mainnet:
   near_intents: 1Click API (quote dry:false, deposit/submit, status, tokens)
   swaps: any token on any chain NEAR Intents supports (NEAR, Solana, Base, Ethereum, Arbitrum, Optimism, Polygon, BNB, Bitcoin, Tron, ...)
@@ -67,6 +67,18 @@ license: MIT
 ```
 
 **The core loop in one paragraph.** A player joins with 50 EMWK and a starter tool, gathers wood, wheat, ore, wool or fish, and sells to eight AI craftsmen whose prices follow their own stock. Craftsmen turn raw goods into lumber, flour, bread, swords, tools, coats and meals. Players take apprentice jobs, rent or buy homes, sleep at night, pay taxes and vote in the council. A dragon threatens the village; readiness depends on swords and bread at the guard tower and on watchtowers the council builds. Every coin is a real EMWK token on NEAR testnet, and the exchange connects the village to real assets on mainnet through NEAR Intents.
+
+
+### How Emberwick fits Games With Real Economies
+
+NEAR described the track in four lines. Each one is a working part of Emberwick:
+
+| NEAR asks for | In Emberwick |
+|---|---|
+| **NPCs with wallets** | Eight AI craftsmen, each with its own NEAR sub-account, buy, make and sell with their own money and sign their own transfers. |
+| **Player-owned markets** | Players list goods at their own prices on the exchange, trade land deeds (NFTs) with escrow, and rent their own houses to other players for daily rent. |
+| **Economies that evolve without dev patches** | Prices follow stock, craftsmen plan each morning with NEAR AI, the council (players, villagers and craftsmen) changes taxes and builds watchtowers, and droughts, winter and the dragon shift demand. **⏩ 1 week** shows a week of it in a minute with nobody touching prices. |
+| **Players should never notice the chain** | You play with coins: no wallet, no gas, no crypto needed. The village bank pays the gas and transfers are batched in the background. A wallet is only needed to cash out or make a real swap, and the chain links are there for anyone who wants the proof. |
 
 ---
 
@@ -262,6 +274,13 @@ Then open the [treasury on NearBlocks](https://testnet.nearblocks.io/address/tre
 
 **2. The model runs in a TEE.** `HOST/api/ai/attestation` returns the NEAR AI Cloud attestation report the game fetched with its own fresh nonce: an Intel TDX quote, the NVIDIA GPU evidence and the enclave's signing key. Check it with NEAR's open-source [nearai-cloud-verifier](https://github.com/nearai/nearai-cloud-verifier), or paste the quote into the [TEE Attestation Explorer](https://proof.t16z.com/). The game checks that a report exists for the chosen model before using it; it does not yet verify each answer's signature against the attested key (see the roadmap).
 
+**2b. The server did not rewrite the past.** At the end of every village day the public state (accounts, shops, stock, prices, land owners, council results) is hashed and the hash goes on NEAR the same way:
+```bash
+curl -s "HOST/api/state-record?day=5" -D - -o day5.json | grep -i x-record-sha256
+shasum -a 256 day5.json
+```
+The treasury's 0.01 EMWK memo for that day reads `Emberwick village record day 5: sha256 <first 32 hex>`. The NEAR panel's System status shows the latest record, and also what the village bank holds for players next to the bank's EMWK balance on NEAR, marked when they match.
+
 **3. A real swap happened.** Each swap card links the wallet transaction, the deposit and delivery transactions and the [NEAR Intents explorer](https://explorer.near-intents.org) page for its deposit address. The swap is also written into the village book on NEAR testnet (`HOST/api/intents/real/book?depositAddress=...`).
 
 **4. Coins are tokens.** In the NEAR panel every transfer links to its NEAR transaction or says why none was needed (netted with another transfer in the same batch, or a sync). Totals match the chain: `npm test` cashes EMWK out to a wallet and back on an in-memory chain and checks both sides after every step.
@@ -282,8 +301,8 @@ Emberwick is a **blockchain-backed game run by a server**, not a fully on-chain 
 | Craftsmen's and treasury money | Their own NEAR sub-accounts | Stays on chain |
 | Land deeds | NEP-171 NFTs; in the player's verified wallet, or held by the bank until the player verifies | NFTs in wallets stay with their owners |
 | Real NEAR Intents swaps | Mainnet, from the player's own wallet to the player's own address | Already settled; the game never held the funds |
-| Records (AI plan hashes, job contracts, council results, swap records) | Memos on NEAR testnet transfers | Stay readable forever |
-| Prices, stock, jobs, homes, votes in progress, chat | `data/state.json` on the server | Lost with the server |
+| Records (AI plan hashes, daily village-state hashes, job contracts, council results, swap records) | Memos on NEAR testnet transfers | Stay readable forever, and prove what the state was each day |
+| Prices, stock, jobs, homes, votes in progress, chat | `data/state.json` on the server | Lost with the server; the public part of each day can be checked against its hash on NEAR |
 
 **AI: what it changes and what it cannot.** NEAR AI decides, within fixed limits, how much each craftsman wants to keep in stock (×0.7–1.4 of the rule-based target) and how it prices each good (×0.9–1.1); the rule-based prices then follow that stock. It also decides who gets food on credit, which actions to suggest to a player, how a haggle is voiced, and how a swap sentence is read. It cannot move coins, create money, change the rules or send a swap: every transfer goes through `transfer()` in `server/economy.js`, and every suggested action is checked by the rules before it becomes a button the player presses. With NEAR AI off, the same economy runs on rules alone; the AI makes the craftsmen plan ahead and talk to players, and its plans are recorded so anyone can see what it decided.
 
@@ -340,6 +359,7 @@ The server is the single source of truth for the game state (`data/state.json`).
 | POST | `/api/ai/ask` | Ask a craftsman (NEAR AI) |
 | POST | `/api/ai/haggle` | Haggle at a counter |
 | GET | `/api/ai/plan?day=` | The exact JSON of a morning plan (its SHA-256 is on NEAR) |
+| GET | `/api/state-record?day=` | The exact public village state at the end of a day (its SHA-256 is on NEAR) |
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
 | POST | `/api/ai/swap` | Read a swap sentence into the swap form |
 | GET | `/api/away?player=` | What changed for a player since they last played (shown once) |

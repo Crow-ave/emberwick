@@ -1111,6 +1111,30 @@ export function shopCard(state, id) {
   const r = def.recipe, recipe = r ? `from ${Object.entries(r.in || {}).map(([g, q]) => q + ' ' + g).join(' + ')} you make ${Object.entries(r.out || {}).map(([g, q]) => q + ' ' + g).join(' + ')} (amounts, not prices)` : null;
   return { id, name: def.name, priceList, wallet: Math.round(balance(state, npcAcct(id))), workshopLevel: n.level || 1, recipe, goods };
 }
+// ---------- the village's daily record on NEAR ----------
+// At the end of every village day the public state (no chat, no private data) is hashed and the
+// SHA-256 goes on NEAR in a 0.01 EMWK memo, so the server cannot quietly rewrite the past.
+// The exact JSON is served at /api/state-record?day=N; anyone can hash it and compare with the memo.
+export function dayStateRecord(state) {
+  const sum = (pre) => r2(Object.entries(state.balances).filter(([k]) => k.startsWith(pre)).reduce((a, [, v]) => a + v, 0));
+  const funds = Object.fromEntries(Object.entries(state.balances).filter(([k]) => !k.startsWith('player:') && !k.startsWith('bot:')).map(([k, v]) => [k, r2(v)]).sort());
+  return {
+    day: state.day, supply: TOKEN.totalSupply,
+    accounts: funds, players: { count: Object.keys(state.players).length, holding: sum('player:') }, villagers: sum('bot:'),
+    shops: Object.fromEntries(Object.entries(state.npcs).map(([id, n]) => [id, { level: n.level || 1, stock: Object.fromEntries(Object.entries(n.stock || {}).map(([g, v]) => [g, r2(v)]).sort()), buys: n.buys, sells: n.sells }])),
+    land: Object.fromEntries(Object.entries(state.plots || {}).map(([id, x]) => [id, { owner: x.owner ? (state.players[x.owner] ? state.players[x.owner].name : x.owner) : null, house: !!x.house }])),
+    council: (state.council && state.council.closed || []).slice(0, 8).map((x) => ({ id: x.id, kind: x.kind, result: x.result || x.status || null })),
+    readiness: state.readiness, ledger: state.ledgerSeq || 0,
+  };
+}
+function recordDayState(state) {
+  if (!state.day) return;
+  const json = JSON.stringify(dayStateRecord(state));
+  const hash = crypto.createHash('sha256').update(json).digest('hex');
+  state.dayLog = [{ day: state.day, hash, json }, ...(state.dayLog || []).filter((x) => x.day !== state.day)].slice(0, 10);
+  transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick village record day ${state.day}: sha256 ${hash.slice(0, 32)} (public state at the end of the day)`, dayRecord: state.day });
+}
+
 // the morning plan goes on NEAR: a 0.01 EMWK record from the treasury carries a SHA-256 of the exact plan
 // (served at /api/ai/plan?day=N so anyone can check it) and a short summary in the memo
 export function aiPlanRecord(state) {
@@ -1171,6 +1195,7 @@ function recordHistory(state) {
 }
 
 function startNewDay(state) {
+  recordDayState(state); // the day that just ended goes on NEAR before anything of the new day happens
   state.day++;
   ensureContracts(state);
   settleContracts(state);

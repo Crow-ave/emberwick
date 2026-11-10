@@ -2399,6 +2399,8 @@ function sysBox() {
     `<tr><td>${t('sys.balance')}</td><td>${bal}</td></tr>` +
     `<tr><td>${t('sys.gas')}</td><td><span class="syst st-${gas}">${t('sys.gas.' + gas, { n: s.gasMin })}</span></td></tr>` +
     `<tr><td>${t('sys.queue')}</td><td>${t('sys.queueVal', { p: s.pending || 0, n: s.txCount || 0 })}</td></tr>` +
+    (s.held ? `<tr><td>${t('sys.held')}</td><td>${t('sys.heldVal', { n: s.held.players, c: s.held.playerCount })}${typeof s.held.chain === 'number' ? `<br><span class="small">${t('sys.bankChain', { chain: s.held.chain.toFixed(2), game: s.held.inBank.toFixed(2) })} ${Math.abs(s.held.chain - s.held.inBank) < 0.05 ? `<span class="syst st-ok">✓ ${t('sys.match')}</span>` : `<span class="syst st-off">${t(s.pending ? 'sys.syncing' : 'sys.differs')}</span>`}</span>` : ''}</td></tr>` : '') +
+    (s.record ? `<tr><td>${t('sys.record')}</td><td>${t('sys.recordVal', { d: s.record.day })} <code>${esc(s.record.hash.slice(0, 16))}…</code> <a href="/api/state-record?day=${s.record.day}" target="_blank" rel="noopener">JSON ↗</a></td></tr>` : '') +
     `<tr><td>${t('sys.ai')}</td><td><span class="syst st-${aiOk ? 'ok' : 'low'}">${aiOk ? esc(s.ai.model || '') : t('sys.aiOff')}</span>${aiOk && s.ai.tee ? ` · 🔒 TEE${s.ai.attestAt ? ' · ' + t('sys.attestAt', { time: time(s.ai.attestAt) }) : ''}` : ''}${!aiOk && s.ai && s.ai.error ? `<br><span class="muted small">${esc(s.ai.error)}</span>` : ''}</td></tr>` +
     `</table>`;
   if (gas === 'low') h += `<p class="small sysnote">${t('sys.lowHelp', { n: s.gasMin })}</p>`;
