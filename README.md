@@ -430,22 +430,25 @@ What we read from it:
 
 `npm run report -- --ai` runs the same village twice from the same seed: once on the craftsmen's rules alone, and once with a NEAR AI morning plan every village day (the exact call the game makes). It then compares the shops' profit, their income from customers, how long their shelves stood empty, how much prices swung, the treasury and the villagers' purses. The only difference between the two runs is the AI plan. It needs a NEAR AI key and makes one request per village day (100 requests, about $0.25); `npm run report -- --ai 50` runs 50 days. `npm run report -- 50 --spread` runs the rules-only village from 10 seeds to show the natural range.
 
-**Result (50 village days, seed 42, model `deepseek/deepseek-v3.2`), measured with the 1.6.3 rules,** before the economy update in 1.7.0 (daily food, public works, the new tax). All columns in this table use those rules, including the natural range over 10 seeds. With the 1.7.0 rules the rules-only village is different (`npm run report -- 50 --spread` now gives a profit of 498 to 981 for the 7 shops), so these AI numbers will be measured again with the new rules.
+**Result with the current rules (1.7.0): 50 village days, seed 42, model `deepseek/deepseek-v3.2`.** All 50 morning plans came back, and all 50 answer signatures were verified against the attested NEAR AI TEE key during the run. The last column shows how much the rules-only village varies by chance alone, over 10 different seeds (`npm run report -- 50 --spread`, no key needed).
 
-| Measure (7 shops, tower left out) | Rules only | NEAR AI, first prompt | NEAR AI with profit and margin in the brief | Rules only, 10 seeds (natural range) |
-|---|---|---|---|---|
-| Shops' combined profit (EMWK) | 692 | 174 | 491 | 427 to 693 |
-| Sales income from customers (EMWK) | 26,725 | 23,787 | 26,412 | 25,340 to 28,254 |
-| Empty-shelf time (village hours) | 225 | 221 | 207 | 178 to 303 |
-| Biggest price swing | 1477% | 1820% | 1484% | |
-| Villagers' average purse at the end (EMWK) | 544 | 608 | 578 | 544 to 576 |
+| Measure (7 shops, tower left out) | Rules only | With NEAR AI | Rules only, 10 seeds (natural range) |
+|---|---|---|---|
+| Shops' combined profit (EMWK) | 799 | 645 | 498 to 981 |
+| Sales income from customers (EMWK) | 27,556 | 27,495 | 27,032 to 28,549 |
+| Empty-shelf time (village hours) | 294 | 294 | 242 to 334 |
+| Biggest price swing | 1883% | 2228% | |
+| Villagers' average purse at the end (EMWK) | 602 | 618 | 584 to 622 |
+| Treasury at the end (EMWK) | 8,337 | 8,324 | |
+
+Per shop (profit, rules → AI): woodcutter 75 → 40, mill 169 → 40, bakery 217 → 288, smithy 130 → 25, carpenter 65 → 106, inn 59 → 53, tailor 83 → 95.
 
 What we read from it:
 
-- **The first prompt hurt the shops.** Profit fell far below the natural range: the AI stocked up on raw materials without seeing whether a shop made money.
-- **We found the cause and fixed it.** The morning brief now gives every craftsman yesterday's profit and the cost and sale value of one batch, and the prompt asks for profit without empty shelves and for values left at 1.0 unless there is a reason (`server/ai.js`, `server/economy.js` `aiBrief`).
-- **With the fix, profit and sales are back inside the natural range, and shelves stand empty a little less.** The bakery's shelf never ran empty (10 hours with rules only) and the smithy's only 4 hours (25). The price for this is some profit, mostly at the carpenter (186 → 74).
-- We do **not** claim that the AI makes shops richer. On this seed it trades a little profit for fuller shelves, and the difference is within what chance alone produces. We stopped tuning here on purpose: more tuning on one seed would only fit that seed.
+- **With the AI plan every measure stays inside the range chance alone produces.** Profit, sales, empty shelves and the villagers' purses all land within the natural range; prices swing somewhat more.
+- **The AI changes which shop does well,** not how well the village does: the bakery, carpenter and tailor earn more, the mill and smithy less.
+- **How we got here.** An earlier run (with the 1.6.3 rules) used a first prompt that hurt the shops: profit fell from 692 to 174, far below the natural range, because the AI stocked up on raw materials without seeing whether a shop made money. We gave the AI each craftsman's profit from yesterday and the cost and sale value of one batch, and asked for profit without empty shelves and for values left at 1.0 unless there is a reason (`server/ai.js`, `server/economy.js` `aiBrief`). With that fix the results came back inside the natural range, and they stay there with the 1.7.0 rules.
+- We do **not** claim that the AI makes the village richer. On this seed it is neither better nor worse than chance. We stopped tuning on purpose: more tuning on one seed would only fit that seed.
 
 The simulation has no players, so it measures only the planning. What NEAR AI adds for players (answers with action buttons, credit decisions, haggling, reading a swap sentence) is outside it.
 
