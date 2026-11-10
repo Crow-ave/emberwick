@@ -1109,7 +1109,15 @@ export function shopCard(state, id) {
   // the price list in plain words, so a model never mistakes a recipe amount for a price
   const priceList = Object.entries(goods).map(([g, x]) => [x.sellsAt !== undefined ? `you sell ${g} at ${x.sellsAt} EMWK each` : null, x.buysAt !== undefined ? `you buy ${g} at ${x.buysAt} EMWK each` : null].filter(Boolean).join(', ')).join('; ');
   const r = def.recipe, recipe = r ? `from ${Object.entries(r.in || {}).map(([g, q]) => q + ' ' + g).join(' + ')} you make ${Object.entries(r.out || {}).map(([g, q]) => q + ' ' + g).join(' + ')} (amounts, not prices)` : null;
-  return { id, name: def.name, priceList, wallet: Math.round(balance(state, npcAcct(id))), workshopLevel: n.level || 1, recipe, goods };
+  // what one batch costs to make at today's buying prices and what it sells for, and yesterday's profit
+  let margin = null;
+  if (r && r.in && r.out) {
+    const cost = Object.entries(r.in).reduce((a, [g, q]) => a + q * (n.buys[g] !== undefined ? n.buys[g] : 0), 0);
+    const revenue = Object.entries(r.out).reduce((a, [g, q]) => a + q * (n.sells[g] !== undefined ? n.sells[g] : 0), 0);
+    margin = { costPerBatch: Math.round(cost * 10) / 10, sellsForPerBatch: Math.round(revenue * 10) / 10, profitPerBatch: Math.round((revenue - cost) * 10) / 10 };
+  }
+  const profitYesterday = n.walletStart !== undefined && n.walletPrev !== undefined ? Math.round((n.walletStart - n.walletPrev) * 10) / 10 : null;
+  return { id, name: def.name, priceList, wallet: Math.round(balance(state, npcAcct(id))), profitYesterday, margin, workshopLevel: n.level || 1, recipe, goods };
 }
 // ---------- the village's daily record on NEAR ----------
 // At the end of every village day the public state (no chat, no private data) is hashed and the
@@ -1197,6 +1205,7 @@ function recordHistory(state) {
 function startNewDay(state) {
   recordDayState(state); // the day that just ended goes on NEAR before anything of the new day happens
   state.day++;
+  for (const [id, n] of Object.entries(state.npcs)) { n.walletPrev = n.walletStart; n.walletStart = Math.round(balance(state, npcAcct(id)) * 100) / 100; }
   ensureContracts(state);
   settleContracts(state);
   collectDebts(state);

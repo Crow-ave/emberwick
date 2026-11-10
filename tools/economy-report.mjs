@@ -5,13 +5,17 @@
 // craftsmen's rules alone, once with a NEAR AI morning plan every village day (exactly the
 // call the game makes), and compares the two. It needs a NEAR AI key (NEARAI_API_KEY or
 // ~/.emberwick/nearai-key.txt) and makes one request per village day (100 requests).
+import { EventEmitter } from 'node:events';
 import { createState, tick, totalMoney, balance, aiBrief, applyAiPlan } from '../server/economy.js';
 import { TOKEN, RULES, CRAFTSMEN } from '../server/world.js';
 
+EventEmitter.defaultMaxListeners = 50; // many requests in a row over one connection: not a leak
 const args = process.argv.slice(2);
 const WITH_AI = args.includes('--ai');
 const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
-const DAYS = nums[0] || 100, SEED = nums[1] || 42;
+const DAYS = nums[0] || 100;
+let SEED = nums[1] || 42;
+const SPREAD = args.includes('--spread');
 const r2 = (n) => Math.round(n * 100) / 100;
 const WATCH = [['bakery', 'bread', 'sells'], ['mill', 'flour', 'sells'], ['smithy', 'sword', 'sells'], ['tailor', 'coat', 'sells'],
   ['mill', 'wheat', 'buys'], ['smithy', 'ore', 'buys'], ['woodcutter', 'wood', 'buys'], ['tailor', 'wool', 'buys']];
@@ -112,6 +116,23 @@ function compare(a, b, model) {
   return out.join('\n') + '\n\nSame seed for both runs: the only difference is the NEAR AI morning plan.';
 }
 
+// --spread: the same rules-only village from 10 different seeds, to show how much results vary by chance
+if (SPREAD) {
+  const rows = [];
+  for (let k = 0; k < 10; k++) {
+    SEED = 42 + k;
+    const r = await run(null), shops7 = r.shopIds.filter((id) => id !== 'tower');
+    rows.push({ seed: SEED, profit: shops7.reduce((a, id) => a + r.shops[id].end - r.shops[id].start, 0), sales: shops7.reduce((a, id) => a + r.shops[id].sales, 0), empty: hours(shops7.reduce((a, id) => a + r.shops[id].empty, 0)), purse: avg(r.botEnd) });
+  }
+  const stat = (k) => { const v = rows.map((x) => x[k]); return `${Math.round(Math.min(...v))} to ${Math.round(Math.max(...v))} (average ${Math.round(avg(v))})`; };
+  console.log(`Emberwick: rules only, ${DAYS} village days, seeds 42 to 51, no players. How much the results vary by chance:\n`);
+  console.log('| Measure (7 shops, tower left out) | Range over 10 seeds |\n|---|---|');
+  console.log(row('Shops\' combined profit (EMWK)', stat('profit')));
+  console.log(row('Sales income from customers (EMWK)', stat('sales')));
+  console.log(row('Empty-shelf time (village hours)', stat('empty')));
+  console.log(row('Villagers\' average purse at the end (EMWK)', stat('purse')));
+  process.exit(0);
+}
 const rules = await run(null);
 if (!WITH_AI) { console.log(single(rules)); process.exit(0); }
 
