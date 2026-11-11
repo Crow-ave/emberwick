@@ -43,7 +43,7 @@ async function run(plan) {
   const treasuryStart = r2(balance(state, 'treasury'));
   const botStart = Object.entries(state.balances).filter(([k]) => k.startsWith('bot:')).map(([, v]) => v);
   let moved = 0, transfers = 0, lastLedger = state.ledgerSeq || 0, maxDrift = 0, plans = 0, planFails = 0;
-  const treasuryIn = {}, treasuryOut = {}, events = {};
+  const treasuryIn = {}, treasuryOut = {}, events = {}, agentTrade = { amount: 0, n: 0, pairs: {} };
   let lastLog = state.log[0];
   const crowd = PLAYERS ? newCrowd(state, PLAYERS) : null;
   for (let t = 0; t < RULES.ticksPerDay * DAYS; t++) {
@@ -55,6 +55,7 @@ async function run(plan) {
     for (const e of state.ledger) {
       if (e.id <= lastLedger) continue;
       moved += e.amount; transfers++;
+      if (e.from.startsWith('npc:') && e.to.startsWith('npc:')) { agentTrade.amount += e.amount; agentTrade.n++; const k = `${e.from.slice(4)} → ${e.to.slice(4)}`; agentTrade.pairs[k] = (agentTrade.pairs[k] || 0) + e.amount; }
       if (e.to === 'treasury') treasuryIn[kind(e.why)] = (treasuryIn[kind(e.why)] || 0) + e.amount;
       if (e.from === 'treasury') treasuryOut[kind(e.why)] = (treasuryOut[kind(e.why)] || 0) + e.amount;
       const shop = e.to.startsWith('npc:') && shops[e.to.slice(4)];
@@ -76,7 +77,7 @@ async function run(plan) {
   }
   const botEnd = Object.entries(state.balances).filter(([k]) => k.startsWith('bot:')).map(([, v]) => v);
   for (const id of shopIds) shops[id].end = r2(balance(state, 'npc:' + id));
-  return { state, crowd: crowd && crowd.result(), prices, priceOf, shops, shopIds, treasuryStart, treasuryEnd: r2(balance(state, 'treasury')), treasuryIn, treasuryOut, botStart, botEnd, moved, transfers, maxDrift, events, plans, planFails };
+  return { agentTrade, state, crowd: crowd && crowd.result(), prices, priceOf, shops, shopIds, treasuryStart, treasuryEnd: r2(balance(state, 'treasury')), treasuryIn, treasuryOut, botStart, botEnd, moved, transfers, maxDrift, events, plans, planFails };
 }
 
 // ---------- scripted players (npm run report -- --players) ----------
@@ -200,6 +201,7 @@ function single(r) {
   out.push('| Measure | Result |', '|---|---|');
   out.push(row('Money supply (EMWK)', `${TOKEN.totalSupply} at the start, ${r2(totalMoney(r.state))} at the end; largest drift during the run ${r2(r.maxDrift)}`));
   out.push(row('Money moved', `${Math.round(r.moved)} EMWK in ${r.transfers} transfers (${Math.round(r.moved / DAYS)} EMWK a day)`));
+  out.push(row('Craftsman-to-craftsman trade (agent to agent, each a transfer between their own NEAR accounts)', `${Math.round(r.agentTrade.amount)} EMWK in ${r.agentTrade.n} transfers; biggest: ${top(r.agentTrade.pairs).split(' · ').slice(0, 4).join(' · ')}`));
   out.push(row('Treasury', `${Math.round(r.treasuryStart)} → ${Math.round(r.treasuryEnd)} EMWK; in: ${top(r.treasuryIn)}; out: ${top(r.treasuryOut)}`));
   out.push(row('Villagers (12 bots), average purse', `${Math.round(avg(r.botStart))} → ${Math.round(avg(r.botEnd))} EMWK (richest ${Math.round(Math.max(...r.botEnd))}, poorest ${Math.round(Math.min(...r.botEnd))})`));
   out.push(row('Village events', Object.entries(r.events).map(([k, v]) => `${v} ${k}`).join(' · ') || 'none'));

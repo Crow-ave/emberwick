@@ -145,7 +145,8 @@ const BOOT = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 function solvency() {
   const c = bridge ? bridge.view() : null;
   const b = state.balances, sum = (f) => Math.round(Object.entries(b).filter(([k]) => f(k)).reduce((a, [, v]) => a + v, 0) * 100) / 100;
-  const owed = sum((k) => !(k === 'treasury' || k === 'deposits' || k.startsWith('npc:'))), players = sum((k) => k.startsWith('player:'));
+  // 'withdrawn' is EMWK players cashed out to their own wallets: already paid, not owed by the bank
+  const owed = sum((k) => !(k === 'treasury' || k === 'deposits' || k === 'withdrawn' || k.startsWith('npc:'))), players = sum((k) => k.startsWith('player:'));
   const chain = c && c.balances && c.accounts && c.accounts.bank in c.balances ? c.balances[c.accounts.bank] : null;
   // transfers still queued for NEAR: once they land the bank's balance changes by this much
   const onWay = chain === null || !bridge.inFlight ? 0 : Math.round(bridge.inFlight(c.accounts.bank) * 100) / 100;
@@ -680,7 +681,7 @@ const server = http.createServer(async (req, res) => {
       ai: { status: a.status, provider: a.provider, model: a.model, tee: a.tee, attestAt: a.attest && a.attest.at || null, error: a.error, proof: a.proof, forced: a.forced },
       // what the village bank holds for others, next to what NEAR says the bank holds
       held: (() => { const b = state.balances, sum = (f) => Math.round(Object.entries(b).filter(([k]) => f(k)).reduce((a, [, v]) => a + v, 0) * 100) / 100;
-        const players = sum((k) => k.startsWith('player:')), inBank = sum((k) => !(k === 'treasury' || k === 'deposits' || k.startsWith('npc:')));
+        const players = sum((k) => k.startsWith('player:')), inBank = sum((k) => !(k === 'treasury' || k === 'deposits' || k === 'withdrawn' || k.startsWith('npc:')));
         const chain = c && c.balances && c.accounts && c.accounts.bank in c.balances ? c.balances[c.accounts.bank] : null;
         return { players, playerCount: Object.keys(state.players).length, inBank, chain, token: c && c.accounts ? c.accounts.token : null }; })(),
       record: (state.dayLog || [])[0] ? { day: state.dayLog[0].day, hash: state.dayLog[0].hash } : null,

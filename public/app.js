@@ -2979,12 +2979,17 @@ $('elder-ok').addEventListener('click', async () => {
 });
 // ---------- judge tour: the NEAR parts of Emberwick in about two minutes ----------
 const NB = 'https://testnet.nearblocks.io/address/';
+function villageAccounts() {
+  const c = (view && view.chain) || {}, a = c.accounts || {}, bank = a.bank || 'emberwick-village.testnet';
+  return { bank, token: a.token || 'token.' + bank, treasury: a.treasury || 'treasury.' + bank, deeds: (c.deeds && c.deeds.contract) || 'deeds.' + bank };
+}
 const TOUR = [
   { k: 'start' },
   { k: 'ai', go: () => select('bakery'), links: [['ai.attestLink', '/api/ai/attestation'], ['ai.planJson', '/api/ai/plan']] },
   { k: 'haggle', go: () => select('inn') },
-  { k: 'token', go: () => select('treasury'), links: [['tour.l.token', NB + 'token.emberwick-village.testnet'], ['tour.l.bank', NB + 'emberwick-village.testnet'], ['tour.l.treasury', NB + 'treasury.emberwick-village.testnet']] },
-  { k: 'land', go: () => { ui.selected = 'lands'; ui.district = 0; render(); }, links: [['tour.l.deeds', NB + 'deeds.emberwick-village.testnet']] },
+  // the links point at the accounts of the village this server runs (the online demo has its own)
+  { k: 'token', go: () => select('treasury'), links: () => { const a = villageAccounts(); return [['tour.l.token', NB + a.token], ['tour.l.bank', NB + a.bank], ['tour.l.treasury', NB + a.treasury], ['tour.l.agent', NB + 'bakery.' + a.bank]]; } },
+  { k: 'land', go: () => { ui.selected = 'lands'; ui.district = 0; render(); }, links: () => [['tour.l.deeds', NB + villageAccounts().deeds]] },
   { k: 'intents', go: () => { ui.exTab = 'change'; select('go-d3'); } },
   { k: 'council', go: () => { ui.district = 0; select('council'); } },
   { k: 'week' },
@@ -2994,7 +2999,7 @@ function renderTour() {
   const box = $('tour');
   if (ui.tour === undefined || ui.tour === null) { box.hidden = true; return; }
   const i = ui.tour, st = TOUR[i];
-  const links = (st.links || []).map(([k, u]) => `<a href="${u}" target="_blank" rel="noopener">${t(k)} ↗</a>`).join(' · ');
+  const links = (typeof st.links === 'function' ? st.links() : st.links || []).map(([k, u]) => `<a href="${u}" target="_blank" rel="noopener">${t(k)} ↗</a>`).join(' · ');
   box.innerHTML = `<div class="tour-head"><b>🧭 ${t('tour.title')} · ${i + 1}/${TOUR.length}</b><button class="linkbtn" data-tourclose="1">✕</button></div>` +
     `<h3>${t('tour.' + st.k + '.t')}</h3><p>${t('tour.' + st.k + '.b')}</p>${links ? `<p class="small">${links}</p>` : ''}` +
     `<div class="tour-nav">${i > 0 ? `<button data-tour="${i - 1}">← ${t('tour.back')}</button>` : '<span></span>'}` +

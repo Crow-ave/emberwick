@@ -8,11 +8,18 @@ Built from scratch during the NEAR hackathon: the first commit is from 2 Novembe
 
 ![The village of Emberwick: an isometric map with shops, fields, a mine, the council hall and Dragon peak](docs/img/village.jpg)
 
+### In one minute
+
+- **What it is:** a multiplayer village economy. Eight AI craftsmen with their own NEAR accounts buy, produce, price and sell; players work, trade, own land and vote; every coin is EMWK, a fixed-supply NEP-141 token on NEAR testnet.
+- **Where NEAR is real:** every coin movement is batched to NEAR testnet; land deeds are NEP-171 NFTs; the craftsmen plan with NEAR AI Cloud, and every plan's signature is checked against the attested TEE key; the exchange makes real cross-chain swaps on mainnet through NEAR Intents from the player's own wallet.
+- **How to check it:** the [Judge tour](#try-it-as-a-judge-do-x-see-y) needs no wallet and no money; [Verify it yourself](#verify-it-yourself) gives commands for every claim; `npm test` and `npm run report` run offline.
+- **Known limits (stated, not hidden):** a server runs the game and holds the in-game balances in the village bank's NEAR account (a player cannot take them out without the game, and whoever holds the server's keys controls the bank); the daily hashes on NEAR prove a record was not changed afterwards, but they cannot stop a dishonest server from cheating at the moment it plays; the council is in-game governance with results recorded on NEAR, not a DAO contract; deed rights follow the game's record, not yet the NFT holder; in our scripted-player simulation the village is healthy with 10 always-on players and holds, though tightly, with 30, while at 100 the work runs out and most players end poorer ([details](#with-players-0-to-100-reproducible)); NEAR AI changes which shop does well but not, measurably, how well the village does.
+
 ---
 
 ## Contents
 
-1. [Fact sheet (for AI reviewers and quick readers)](#fact-sheet-for-ai-reviewers-and-quick-readers)
+1. [Fact sheet](#fact-sheet)
 2. [Screenshots](#screenshots)
 3. [How NEAR is used](#how-near-is-used)
 4. [Features in detail](#features-in-detail)
@@ -31,7 +38,7 @@ Built from scratch during the NEAR hackathon: the first commit is from 2 Novembe
 
 ---
 
-## Fact sheet (for AI reviewers and quick readers)
+## Fact sheet
 
 Everything below is implemented and running in this repository and in the online demo.
 
@@ -263,7 +270,7 @@ The village keeps living when you log off, and the game shows you what that mean
 ## Proof on chain
 
 - **Real cross-chain swap made from the game:** 0.005 SOL on Solana → 0.1205 NEAR on `emberwick.near`: [NEAR Intents explorer](https://explorer.near-intents.org/transactions/8pbsZb3giBZLihUSarvtvQDR4gNbz5Td7WP4gdCyRMDC) · [delivery on NearBlocks](https://nearblocks.io/txns/CuxvRFFyGCpXyvQh8kB5QnpN3FdhSLfv4pxW7ScT6Ad6). Total cost about 1%.
-- **Village accounts on NEAR testnet:** [village bank](https://testnet.nearblocks.io/address/emberwick-village.testnet) · [EMWK token](https://testnet.nearblocks.io/address/token.emberwick-village.testnet) · [land deeds](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet) · [treasury](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) · [the tailor's own account](https://testnet.nearblocks.io/address/tailor.emberwick-village.testnet).
+- **Village accounts on NEAR testnet (the author's own village, the one in the screenshots):** [village bank](https://testnet.nearblocks.io/address/emberwick-village.testnet) · [EMWK token](https://testnet.nearblocks.io/address/token.emberwick-village.testnet) · [land deeds](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet) · [treasury](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) · [the tailor's own account](https://testnet.nearblocks.io/address/tailor.emberwick-village.testnet) · [the baker's own account](https://testnet.nearblocks.io/address/bakery.emberwick-village.testnet) (agent-to-agent trade: its payments to the miller, and the innkeeper's payments for bread).
 - **Online demo village:** [emberwick-village-2.testnet](https://testnet.nearblocks.io/address/emberwick-village-2.testnet) with token [emwk.emberwick-village-2.testnet](https://testnet.nearblocks.io/address/emwk.emberwick-village-2.testnet). Free hosting: the first visit after a quiet spell can take about a minute, and the online village restarts from day 1 after a redeploy.
 
 ---
@@ -277,7 +284,7 @@ Nothing here needs to be taken on trust. Replace `HOST` with `https://emberwick-
 curl -s "HOST/api/ai/plan?day=5" -D - -o plan.json | grep -i x-plan-sha256   # the hash the server claims
 shasum -a 256 plan.json                                                       # the hash you compute from the exact bytes
 ```
-Then open the [treasury on NearBlocks](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) and find that day's 0.01 EMWK transfer to the newcomer fund. Its memo reads `Emberwick AI plan day 5 by NEAR AI (model) TEE <signer> answer signed in TEE: sha256 <first 24 hex>`. The first 24 characters must match. The server keeps the last 10 days of plans; the shop panel's ⛓ line links each record.
+Then open the village's treasury on NearBlocks ([treasury.emberwick-village.testnet](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet); for the online demo, [treasury.emberwick-village-2.testnet](https://testnet.nearblocks.io/address/treasury.emberwick-village-2.testnet)) and find that day's 0.01 EMWK transfer to the newcomer fund. Its memo reads `Emberwick AI plan day 5 by NEAR AI (model) TEE <signer> answer signed in TEE: sha256 <first 24 hex>`. The first 24 characters must match. The server keeps the last 10 days of plans; the shop panel's ⛓ line links each record.
 
 **2. The model runs in a TEE, and the plan was signed there.** These are two different proofs, and the game checks both.
 
@@ -323,6 +330,10 @@ Emberwick is a **blockchain-backed game run by a server**, not a fully on-chain 
 | Records (AI plan hashes, daily village-state hashes, job contracts, council results, swap records) | Memos on NEAR testnet transfers | Stay readable forever, and prove what the state was each day |
 | Prices, stock, jobs, homes, council proposals and votes, chat | `data/state.json` on the server | Lost with the server; the public part of each day can be checked against its hash on NEAR |
 
+**Where the 25,000 EMWK are.** The token contract minted 25,000 EMWK once. They sit in NEAR accounts: the treasury, the rent-deposit account and each craftsman have their own account; everything else the game keeps for someone (players, villagers, the newcomer and traveller funds) sits in the village bank's account; EMWK a player cashed out sits in that player's wallet. The game's ledger mirrors exactly this: its accounts add up to 25,000 at every step (`npm test` checks it), and the bank's NEAR balance should equal the sum of the game accounts it holds. That sum is "what the game owes" on the solvency card (2c in *Verify it yourself*).
+
+**Why NEAR AI, if it does not make the village richer?** The morning plan is one of several jobs. The others are where players meet the AI: a craftsman answers a question in its own voice and offers only actions the rules allow, haggles, decides whether to give credit, and reads a sentence such as "send 0.1 NEAR to Solana" into the swap form. The morning plan's job is not to beat the rules but to give each shop a character within safe limits, and to do it verifiably: the plan is signed inside attested TEE hardware and its hash is on NEAR, so nobody, including the game's operator, can swap in a different plan unnoticed. Our measurements show the plans stay within the range chance alone produces, which is what safe limits are meant to ensure.
+
 **AI: what it changes and what it cannot.** NEAR AI decides, within fixed limits, how much each craftsman wants to keep in stock (×0.7–1.4 of the rule-based target) and how it prices each good (×0.9–1.1); the rule-based prices then follow that stock. It also decides who gets food on credit, which actions to suggest to a player, how a haggle is voiced, and how a swap sentence is read. It cannot move coins, create money, change the rules or send a swap: every transfer goes through `transfer()` in `server/economy.js`, and every suggested action is checked by the rules before it becomes a button the player presses. With NEAR AI off, the same economy runs on rules alone; the AI makes the craftsmen plan ahead and talk to players, and its plans are recorded so anyone can see what it decided.
 
 **Contracts.** The token and the deed contracts are the standard NEP-141 and NEP-171 examples of near-sdk-rs 4.0, deployed unchanged on testnet. They have not had a separate audit; no mainnet value sits in them.
@@ -340,6 +351,7 @@ Emberwick economy report: 100 village days, seed 42, no players, no NEAR AI, nob
 |---|---|
 | Money supply (EMWK) | 25000 at the start, 25000 at the end; largest drift during the run 0 |
 | Money moved | 136263 EMWK in 19767 transfers (1363 EMWK a day) |
+| Craftsman-to-craftsman trade (agent to agent, each a transfer between their own NEAR accounts) | 18277 EMWK in 1777 transfers; biggest: bakery → mill 9056 · inn → bakery 4541 · tower → smithy 2823 · carpenter → woodcutter 860 |
 | Treasury | 9600 → 8222 EMWK; in: morning village tax 7765 · profit tax 585 · market tax 571; out: public works 3331 · public works wage 2502 · guard salary 2250 · council payout to villagers 864 · build a watchtower 750 |
 | Villagers (12 bots), average purse | 125 → 608 EMWK (richest 772, poorest 407) |
 | Village events | 38 council proposals · 3 watchtowers built · 9 droughts · 12 winters · 7 dragon warnings · 7 dragon attacks repelled · 2 workshop upgrades |
@@ -368,8 +380,9 @@ Emberwick economy report: 100 village days, seed 42, no players, no NEAR AI, nob
 
 What it shows:
 - **The money supply never changes:** 25,000 EMWK at every tick, with more than 130,000 EMWK changing hands.
+- **The agents trade with each other:** about 18,000 EMWK moves between craftsmen (the baker buys flour from the miller, the innkeeper buys bread from the baker, the guard captain buys swords from the smith, the carpenter buys from the woodcutter), each payment a transfer between their own NEAR accounts.
 - **No shop goes broke on its own,** and the treasury never had to rescue one. The guard tower is not a business: the treasury pays it a daily salary and it spends it on swords and bread, which is why its purse runs low; every dragon attack was repelled.
-- **Prices follow supply and demand by themselves:** with no players gathering, wheat becomes scarce and the miller's price for it rises; ore and coats get cheaper as they pile up.
+- **Prices follow supply and demand by themselves.** At each step a price moves 6% of the way toward the level its stock calls for, so a player sees gradual changes rather than jumps; the *Price* table shows each good's start, end, lowest and highest price. (The *price swings* figure in the tables below is different: it adds up every small step over the whole run, so even a figure in the thousands of percent over 100 days means prices that kept moving in small steps, not prices that jumped.) With no players gathering, wheat becomes scarce and the miller's price for it rises; ore and coats get cheaper as they pile up.
 - **The villagers earn from work:** their average purse grows from 125 to about 600 EMWK.
 - **The treasury holds steady:** it settles near 8,000 EMWK, the line above which public works spend the surplus back into the village.
 
@@ -422,7 +435,8 @@ Scripted players: they gather with their tool, sell to the best buyer, eat when 
 
 What we read from it:
 
-- **Up to about 30 always-on players the village holds:** the treasury stays near 8,000, no shop goes broke, the villagers keep earning, and players grow their purse (10 players: from 56 to 390–581 EMWK on average).
+- **In this scripted-player model, with 10 always-on players the village is healthy:** the treasury stays near 8,300, shops make a profit, almost no rescues are needed, villagers keep 160–321 EMWK, and players grow their purse from 56 to 390–581 EMWK on average.
+- **With 30 the village holds, but it is tight:** the treasury still stays near 8,300 and no shop goes broke, but the treasury rescues a shop 6–15 times, shop profit ranges from −26 to +685, and the villagers' purses fall to 19–132 EMWK because the players take much of their market.
 - **With 100 always-on players the work runs out.** The shops buy only what they need, so most work turns find nothing worth gathering. The treasury, shops and villagers are no longer in danger, but most players end poorer than they started, many cannot always pay for food, and the richest tenth holds most of the players' coins. Demand for raw goods does not yet grow enough with the number of players; more jobs, more craftsmen and player-to-player trade are on the roadmap.
 - We stopped there on purpose: three rules that close the money loop, not tuning for a nicer table.
 
@@ -437,7 +451,7 @@ What we read from it:
 | Shops' combined profit (EMWK) | 799 | 645 | 498 to 981 |
 | Sales income from customers (EMWK) | 27,556 | 27,495 | 27,032 to 28,549 |
 | Empty-shelf time (village hours) | 294 | 294 | 242 to 334 |
-| Biggest price swing | 1883% | 2228% | |
+| Price swings (sum of all steps, watched goods) | 1883% | 2228% | |
 | Villagers' average purse at the end (EMWK) | 602 | 618 | 584 to 622 |
 | Treasury at the end (EMWK) | 8,337 | 8,324 | |
 
@@ -605,7 +619,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | **Games With Real Economies** | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token, and real swaps that lower the village's market fee; the economy is tested with 0 to 100 scripted players (`npm run report -- --players`) |
 | **Unstoppable DeFi** | The exchange: player order book, NFT deed escrow, real NEAR Intents swaps across chains with cost transparency, one-approval split sends |
 | **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell with escrow |
-| **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other: they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
+| **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other (about 18,000 EMWK agent-to-agent in the 100-day report): they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
 | **Privacy & Private AI** | Every model call goes to NEAR AI Cloud; the game picks a model with a TEE attestation report, keeps the report public (`/api/ai/attestation`), checks each morning plan's signature against the attested key (`/api/ai/proof`), and hashes each day's plan onto NEAR |
 | **Open Innovation** | Craftsmen that plan with NEAR AI Cloud (verifiable private inference) inside safe limits; a village council where AI villagers vote with reasons, with every result recorded on NEAR |
 
