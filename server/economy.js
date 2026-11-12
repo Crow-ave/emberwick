@@ -232,6 +232,8 @@ export function withdraw(state, playerId, amount) {
   const p = state.players[playerId];
   if (!p) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };
   if (!p.near) return { ok: false, error: 'Link a NEAR wallet first.', code: 'err.noWallet' };
+  // coins only go to a wallet the player proved is theirs (signed with it, NEP-413)
+  if (!p.nearVerified) return { ok: false, error: 'Confirm the wallet is yours by signing with it first.', code: 'err.verifyWallet' };
   amount = Math.floor(Number(amount) * 100) / 100;
   if (!(amount >= 1)) return { ok: false, error: 'Cash out at least 1 EMWK.', code: 'err.minWithdraw' };
   if (balance(state, 'player:' + playerId) + 1e-9 < amount) return { ok: false, error: 'You do not have that much.', code: 'err.noMoney' };

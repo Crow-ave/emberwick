@@ -49,7 +49,7 @@ async function run(faucetWorks) {
   compare('after 400 ticks of trading, chain balances still match');
   check(chain.txs < 400, `transfers are batched (${chain.txs} transactions)`);
 
-  check(linkWallet(state, j.id, 'emberwick.testnet').ok, 'player links emberwick.testnet');
+  check(linkWallet(state, j.id, 'emberwick.testnet', true).ok, 'player links emberwick.testnet (signed)');
   check(!linkWallet(state, j.id, 'not a wallet!').ok, 'rejects a bad account name');
   const before = state.balances['player:' + j.id];
   const w = withdraw(state, j.id, 5);

@@ -650,7 +650,26 @@ function sendJson(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
+// ---------- who is this player? ----------
+// A player id (p1, p2 ...) is not a secret, so it cannot prove who is asking. On joining, the server gives the
+// browser a random key; every request that acts for a player must carry it. Keys are kept apart from the
+// game state that is shown to anyone (state.playerKeys holds only their SHA-256).
+const keyHash = (k) => crypto.createHash('sha256').update(String(k)).digest('hex');
+function newPlayerKey(pid) {
+  const k = crypto.randomBytes(24).toString('hex');
+  state.playerKeys = state.playerKeys || {};
+  state.playerKeys[pid] = keyHash(k);
+  return k;
+}
+function keyOk(pid, k) {
+  const h = state.playerKeys && state.playerKeys[pid];
+  if (!h || typeof k !== 'string' || !k) return false;
+  const a = Buffer.from(h, 'hex'), b = Buffer.from(keyHash(k), 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function readBody(req) {
+  if (req._body) return Promise.resolve(req._body);
   return new Promise((resolve) => {
     let data = '';
     req.on('data', (c) => { data += c; if (data.length > 10000) req.destroy(); });
@@ -659,6 +678,21 @@ function readBody(req) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // every POST that names a player must carry that player's key (see keyOk above)
+  if (req.method === 'POST') {
+    const body = req._body = await new Promise((resolve) => {
+      let data = '';
+      req.on('data', (c) => { data += c; if (data.length > 10000) req.destroy(); });
+      req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch { resolve({}); } });
+    });
+    const path0 = new URL(req.url, 'http://x').pathname;
+    const pid = body && typeof body.player === 'string' ? body.player : null;
+    if (pid && path0 !== '/api/claim' && state.players[pid] && !keyOk(pid, body.key)) {
+      // a player from before keys existed gets one the first time their browser asks (/api/claim)
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, code: 'err.notYou', error: 'This browser is not signed in as that villager.' }));
+    }
+  }
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'POST') lastHere = Date.now(); // someone is really playing
   if (req.method === 'POST' && url.pathname === '/api/here') { res.writeHead(204); return res.end(); }
@@ -702,8 +736,17 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/join') {
     const body = await readBody(req);
     const r = joinPlayer(state, body.name, body.path);
-    if (r.ok) { save(); broadcast(); }
+    if (r.ok) { r.key = newPlayerKey(r.id); save(); broadcast(); }
     return sendJson(res, r.ok ? 200 : 400, r);
+  }
+
+  // a villager who joined before player keys existed: the first browser to ask gets the key, once
+  if (req.method === 'POST' && url.pathname === '/api/claim') {
+    const body = await readBody(req), pid = String(body.player || '');
+    if (!state.players[pid]) return sendJson(res, 404, { ok: false, code: 'err.unknownPlayer' });
+    if (state.playerKeys && state.playerKeys[pid]) return sendJson(res, keyOk(pid, body.key) ? 200 : 403, keyOk(pid, body.key) ? { ok: true } : { ok: false, code: 'err.notYou' });
+    const key = newPlayerKey(pid); save();
+    return sendJson(res, 200, { ok: true, key });
   }
 
   // ask a craftsman a question; NEAR AI answers in character (words only, it never moves money)

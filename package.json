@@ -1,6 +1,6 @@
 {
   "name": "emberwick",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "A living village economy on NEAR",
   "main": "server/index.js",
   "type": "module",
@@ -8,7 +8,7 @@
     "start": "node server/index.js",
     "demo": "EMBERWICK_DEMO=1 node server/index.js",
     "online-bank": "EMBERWICK_KEYS=$HOME/.emberwick/online-keys.json EMBERWICK_SAVE=$HOME/.emberwick/online-state.json EMBERWICK_AI=0 PORT=3001 node server/index.js",
-    "test": "node server/selftest.js && node server/neartest.js",
+    "test": "node server/selftest.js && node server/neartest.js && node server/httptest.js",
     "report": "node tools/economy-report.mjs"
   },
   "dependencies": {
@@ -16,6 +16,6 @@
     "@noble/hashes": "2.2.0",
     "near-api-js": "7.4.0"
   },
-  "engines": { "node": ">=22" },
+  "engines": { "node": ">=22.22.2" },
   "license": "MIT"
 }

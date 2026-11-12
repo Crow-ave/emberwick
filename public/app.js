@@ -10,6 +10,9 @@ const ui = { selected: null, hover: null, target: null, scene: null, nameOf: (id
 const store = {
   get() { try { return localStorage.getItem('emberwick-player'); } catch { return null; } },
   set(v) { try { localStorage.setItem('emberwick-player', v); } catch { /* storage unavailable */ } },
+  // the secret the server gave this browser for its villager: every action carries it
+  key() { try { return localStorage.getItem('emberwick-key') || ''; } catch { return ''; } },
+  setKey(v) { try { if (v) localStorage.setItem('emberwick-key', v); else localStorage.removeItem('emberwick-key'); } catch { /* storage unavailable */ } },
 };
 
 const PATH_LOOK = {
@@ -2485,7 +2488,7 @@ function panelNear() {
     if (!me.nearVerified && meteor) h += `<button data-act="near-meteor" class="${ui.challenge ? 'primary' : ''}">${ui.challenge ? t('near.signStep', { id: esc(ui.challenge.account) }) : t('near.verifyBtn')}</button>`;
     h += `<p class="muted small">${t('near.cashHelp', { n: me.coins })}</p>`;
     if (me.withdrawn) h += `<p class="muted small">${t('near.withdrawn', { n: me.withdrawn })}</p>`;
-    h += chainOk()
+    h += !me.nearVerified ? `<p class="muted small">${t('err.verifyWallet')}</p>` : chainOk()
       ? `<p class="muted small">${t('near.canOut', { n: Math.floor(me.withdrawable || 0), s: me.startCoins || 0 })}</p><div class="row"><input id="near-amount" type="number" min="1" step="1" max="${Math.floor(me.withdrawable || 0)}" value="${Math.min(10, Math.floor(me.withdrawable || 0))}"><button class="primary" data-act="near-withdraw" ${(me.withdrawable || 0) < 1 ? 'disabled' : ''}>${t('near.cashout')}</button></div>`
       : `<p class="muted small">${t('near.needReady')}</p>`;
     if ((me.nearVerified || ui.meteorAccount === me.near) && meteor) {
@@ -2831,8 +2834,26 @@ async function takeDeal() {
 }
 
 async function post(url, body) {
+  if (body && body.player && !body.key) body = { ...body, key: store.key() };
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  return r.json();
+  const j = await r.json();
+  if (r.status === 403 && j && j.code === 'err.notYou' && body && body.player === playerId) signedOut();
+  return j;
+}
+// this browser lost its villager's key (or another browser claimed it): start again at the gate
+function signedOut() {
+  playerId = null; store.set(''); store.setKey('');
+  try { toast(t('err.notYou'), 'bad'); } catch { /* not ready yet */ }
+  try { render(); } catch { /* not ready yet */ }
+}
+// a villager from before player keys: ask the server for this villager's key once
+async function claimKey() {
+  if (!playerId || store.key()) return;
+  try {
+    const r = await (await fetch('/api/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player: playerId }) })).json();
+    if (r && r.ok && r.key) store.setKey(r.key);
+    else if (r && r.code === 'err.notYou') signedOut();
+  } catch { /* offline: try again next time */ }
 }
 
 const pendingActs = new Set(); // a one-time action (buying land, building) cannot be sent twice while the server answers
@@ -3320,7 +3341,7 @@ $('join-form').addEventListener('submit', async (e) => {
   const r = await post('/api/join', { name, path: pathChoice });
   if (!r.ok) { $('join-error').textContent = errText(r); return; }
   playerId = r.id;
-  store.set(playerId);
+  store.set(playerId); store.setKey(r.key || '');
   $('join').hidden = true;
   view = await (await fetch(`/api/state?player=${playerId}`)).json();
   makeYou();
@@ -3580,8 +3601,9 @@ function connect() {
   setupMap($('map'));
   setupTouchMap();
   playerId = store.get();
+  if (playerId) await claimKey();
   view = await (await fetch('/api/state' + (playerId ? `?player=${playerId}` : ''))).json();
-  if (!view.player) { playerId = null; showJoin(); } else makeYou();
+  if (!view.player) { playerId = null; store.setKey(''); showJoin(); } else makeYou();
   setupWalkers();
   render();
   connect();

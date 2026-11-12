@@ -48,7 +48,7 @@ kind: browser game (multiplayer village economy simulation)
 one_line: AI shopkeepers with NEAR wallets, a NEP-141 token economy on NEAR testnet, NFT land deeds, a village council (in-game governance with on-chain records), and real NEAR Intents cross-chain swaps on mainnet
 live_demo: https://emberwick-xcf8.onrender.com
 stack:
-  server: Node.js 22+, no framework (server/*.js), state saved to data/state.json, live updates over Server-Sent Events
+  server: Node.js 22.22.2+, no framework (server/*.js), state saved to data/state.json, live updates over Server-Sent Events
   client: plain JavaScript modules, SVG isometric map (public/*.js), no build step
   near_libs: near-api-js 7.4 (server), NEAR Wallet Selector 10 + @near-js/transactions (browser bundle), @solana/web3.js, Wallet Standard, EIP-6963
   languages_in_game: [English, Turkish, French, German, Russian, Chinese]
@@ -338,7 +338,7 @@ Emberwick is a **blockchain-backed game run by a server**, not a fully on-chain 
 
 **AI: what it changes and what it cannot.** NEAR AI decides, within fixed limits, how much each craftsman wants to keep in stock (×0.7–1.4 of the rule-based target) and how it prices each good (×0.9–1.1); the rule-based prices then follow that stock. It also decides who gets food on credit, which actions to suggest to a player, how a haggle is voiced, and how a swap sentence is read. It cannot move coins, create money, change the rules or send a swap: every transfer goes through `transfer()` in `server/economy.js`, and every suggested action is checked by the rules before it becomes a button the player presses. With NEAR AI off, the same economy runs on rules alone; the AI makes the craftsmen plan ahead and talk to players, and its plans are recorded so anyone can see what it decided.
 
-**Contracts.** The token and the deed contracts are the standard NEP-141 and NEP-171 examples of near-sdk-rs 4.0, deployed unchanged on testnet. They have not had a separate audit; no mainnet value sits in them.
+**Contracts.** The token and the deed contracts are the standard NEP-141 and NEP-171 examples of near-sdk-rs 4.0, deployed unchanged on testnet. They have not had a separate audit; no mainnet value sits in them. [`contracts/README.md`](contracts/README.md) gives their source and the code hash to compare with the one NEAR reports for the deployed accounts.
 
 
 ---
@@ -543,7 +543,7 @@ The server is the single source of truth for the game state (`data/state.json`).
 
 ## Run it
 
-You need [Node.js](https://nodejs.org) 22 or newer.
+You need [Node.js](https://nodejs.org) 22.22.2 or newer (near-api-js 7.4 requires it).
 
 **Quick check, no keys and no network needed:**
 ```bash
@@ -608,6 +608,9 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 
 - **Game keys** live in `~/.emberwick/` on the server machine (or a host's secret variable), never in the repository and never printed in logs.
 - **Players' funds:** the game never holds keys or player funds for real swaps. Every deposit is signed in the player's own wallet, which shows the amount and the address first. Refunds go to the player's own address.
+- **Player keys:** a player id (`p1`, `p2` ...) is not a secret, so it is not what proves who is asking. On joining, the server gives the browser a random 192-bit key; every request that acts for a player (actions, questions, wallet linking, cash-out) must carry it, or the server answers `403 err.notYou`. The server stores only the key's SHA-256, compares it in constant time, and never puts it in any shared view. A villager from before keys existed gets one the first time their browser asks (`/api/claim`), and only once. `node server/httptest.js` (part of `npm test`) starts a throwaway server and tries the attacks: acting, linking a wallet or cashing out with only an id or with another player's key are all refused.
+- **Cash-out:** coins go only to a wallet the player proved is theirs with a NEP-413 signature; only what they earned above their starting money can leave; one wallet links to one character.
+- **Not done yet:** there is no per-address rate limit on the API apart from the AI's per-player and daily limits; the game is a testnet demo, and a mainnet launch would add one.
 - **AI cannot move money:** NEAR AI suggests; the rules in `server/economy.js` decide. Suggested actions become buttons only after a rules check, and a swap sentence only fills the form.
 - **Council safety:** a fixed menu of executable decisions (no free-form "send treasury money anywhere"), a proposal fee, quorum, caps per decision, and a locked reserve.
 - **Verifiable AI:** the TEE attestation, each plan's answer signature checked against the attested key, and the on-chain plan hashes let anyone check what the model was asked and answered, and where.

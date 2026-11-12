@@ -189,7 +189,7 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
 // cash-out: the starting money stays in the village, and one NEAR wallet links to one character only
 {
   const a = joinPlayer(state, 'Saver', 'miner').id, b = joinPlayer(state, 'Twin', 'miner').id;
-  const l1 = linkWallet(state, a, 'saver.testnet'), l2 = linkWallet(state, b, 'saver.testnet');
+  const l1 = linkWallet(state, a, 'saver.testnet', true), l2 = linkWallet(state, b, 'saver.testnet', true);
   const start = state.players[a].startCoins;
   const early = withdraw(state, a, 1);
   state.balances['player:' + a] += 30; state.balances.newcomerFund -= 30; // as if earned
