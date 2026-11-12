@@ -203,7 +203,9 @@ NEAR Intents has no testnet, so this part uses real money in small amounts. The 
 Every pair NEAR Intents supports: NEAR, Solana, Base, Ethereum, Arbitrum, Optimism, Polygon, BNB Chain, Bitcoin, Tron and more. NEAR does not have to be on either side: Base → Solana works, and NEAR Intents still settles it on NEAR. Every token shows its contract with an explorer link to check it is genuine.
 
 #### 8.3 What a swap really costs
-Before approving, the quote shows what you send, what arrives, and the total cost (fees and price difference together), with both sides valued at an independent market price (CoinGecko) next to NEAR Intents' own figures, plus the wallet's network fee and the time estimate. **Other routes** are checked live for comparison: Omni Bridge's fee (it only moves the token) and LI.FI's quote for routes that do not touch NEAR (LI.FI does not list NEAR). The swap itself always goes through NEAR Intents.
+Before approving, the quote shows what you send, what arrives, and the total cost (fees and price difference together), with both sides valued at an independent market price (CoinGecko) next to NEAR Intents' own figures, plus the wallet's network fee and the time estimate. **Other routes** are checked live for comparison: Omni Bridge's fee (it only moves the token) and LI.FI's quote for routes that do not touch NEAR (LI.FI does not list NEAR). Above the folded comparison, one line says the outcome for this quote: NEAR Intents delivers more (and by how much), both deliver about the same, the other route would deliver more (shown honestly), or only NEAR Intents can do this route in one step. The swap itself always goes through NEAR Intents.
+
+**No commission.** Emberwick takes nothing from real swaps: it does not use NEAR Intents' app-fee option, and no part of a swap goes to the game, its operator or the village. The cost the quote shows goes to the NEAR Intents solvers (the difference between what is sent and what arrives) and to the sending network's gas, paid from the player's own wallet. The quote card says this too. The game never touching real money is the point: the village's own fees are in-game EMWK only (the 2% exchange fee on player trades, which goes to the treasury).
 
 #### 8.4 Say it to NEAR AI
 Type a sentence such as "Send 0.3 NEAR to my Solana wallet as USDC". NEAR AI (in a TEE) reads it into the swap form; the server checks every value against the token list and the limits, and takes addresses only from the sentence or from wallets connected in this browser. The AI never moves money; the player still approves in the wallet.
@@ -647,6 +649,7 @@ What the simulation shows at 100 always-on players (see [With players: 0 to 100]
 - Business deeds: an NFT that gives a right to a shop's income and management, with a skill requirement to buy one
 - Village records stored on decentralised storage, not only their hashes on NEAR
 - Deed rights that follow the NFT: whoever holds the deed on chain owns the plot in the game, so deeds can trade on any NEAR marketplace
+- On mainnet, an optional small swap fee in real tokens for the village treasury, to fund public works (no EMWK is minted; the 25,000 supply stays fixed)
 - The village on mainnet: real universal checkout (pay for land or rent from any chain through a NEAR Intents deposit address)
 - Items as NEP-245 multi-tokens
 - Swarm-for-Hire: the council posts a job, players fund AI apprentices with NEAR to pay for inference, the council reviews the work before payment

@@ -1108,7 +1108,7 @@ function feeBox(list) {
     `<tr><td>${t('fee.arrives')}</td><td class="n"><b>${outTxt}</b> <span class="muted">≈ ${money(vout)}</span></td></tr>` +
     `<tr class="fee-cost ${level}"><td>${t(cost < 0 ? 'fee.gain' : 'fee.cost')}</td><td class="n"><b>${money(Math.abs(cost))}</b>${pct != null ? ` (${getLang() === 'tr' ? '%' + Math.abs(pct).toFixed(1) : Math.abs(pct).toFixed(1) + '%'})` : ''}</td></tr></table>` +
     `<p class="small muted">${mk ? t('fee.costNoteMarket') : t('fee.costNoteIntents')}${mk ? ` ${t('fee.intentsSays', { a: money(usdIn), b: money(usdOut) })}` : ''}</p>` +
-    `<p class="small muted">⛽ ${gas}${time ? ` · ⏱ ${t('fee.time', { n: time })}` : ''}</p>` + (list.length === 1 ? altBox(x0, cost) : '') + `</div>`;
+    `<p class="small muted">⛽ ${gas}${time ? ` · ⏱ ${t('fee.time', { n: time })}` : ''}</p>` + `<p class="small nocut">✋ ${t('fee.noCut')}</p>` + (list.length === 1 ? altBox(x0, cost) : '') + `</div>`;
 }
 // other ways to do this swap, checked live when the quote was taken (only to compare; the swap uses NEAR Intents)
 function altBox(sw, cost) {
@@ -1121,7 +1121,17 @@ function altBox(sw, cost) {
   const lifiTxt = lq ? (lq.ok ? `<b>${esc(String(lq.toAmount))} ${esc(outSym)}</b>${lq.usdOut ? ` ≈ ${money(lq.usdOut)}` : ''} <span class="muted">· ${t('alt.lifiVia', { tool: esc(lq.tool) })}${lq.feeUsd || lq.gasUsd ? ` · ${t('alt.lifiCosts', { f: money(lq.feeUsd), g: money(lq.gasUsd) })}` : ''}</span><br><b>${Number(lq.toAmount) > Number(sw.amountOut) ? t('alt.lifiBetter') : t('alt.intentsBetter')}</b>` : `<span class="muted">${t('alt.lifiNoQuote')}</span>`)
     : !l.checked ? `<span class="muted">${t('alt.lifiFail')}</span>` : l.near ? t('alt.lifiYes') : `<span class="muted">${t('alt.lifiNo', { n: l.chains })}</span>`;
   const sum = `${t('alt.title')}: Omni ${o.ok ? money(o.usd) : '—'} · LI.FI ${lq ? (lq.ok ? `${esc(String(lq.toAmount))} ${esc(outSym)}` : '—') : l.checked ? (l.near ? '✓' : t('alt.noNear')) : '?'}`;
-  return `<details class="altbox" data-keep="alt"${keepOpen('alt')}><summary>🔎 ${sum}</summary><table>` +
+  // the comparison in one line, outside the folded box: who delivers more of the same token on this quote
+  const mine = Number(String(amt(sw.amountOut)).replace(/[^0-9.]/g, '')), theirs = lq && lq.ok ? Number(String(lq.toAmount).replace(/[^0-9.]/g, '')) : NaN;
+  let win = '';
+  if (Number.isFinite(mine) && Number.isFinite(theirs) && mine > 0 && theirs > 0) {
+    const d = Math.abs(mine - theirs), rel = d / Math.max(mine, theirs), usd = lq.usdOut && theirs ? (Number(String(lq.usdOut).replace(/[^0-9.]/g, '')) / theirs) * d : null;
+    const more = `${nice(d)} ${esc(outSym)}${usd ? ` ≈ ${money(usd)}` : ''}`;
+    win = rel < 0.002 ? `<p class="altwin even">⚖️ ${t('alt.winEven')}</p>`
+      : mine > theirs ? `<p class="altwin best">🏆 ${t('alt.winIntents', { more })}</p>`
+      : `<p class="altwin other">ℹ️ ${t('alt.winOther', { more, tool: esc(lq.tool) })}</p>`;
+  } else if (!lq && l.checked && !l.near) win = `<p class="altwin best">🏆 ${t('alt.winOnly')}</p>`;
+  return win + `<details class="altbox" data-keep="alt"${keepOpen('alt')}><summary>🔎 ${sum}</summary><table>` +
     `<tr><td><b>NEAR Intents</b></td><td>${lq && lq.ok ? `<b>${esc(String(amt(sw.amountOut)))} ${esc(outSym)}</b> · ` : ''}<b>${money(cost)}</b> ${t('alt.intentsNote')} ✓</td></tr>` +
     `<tr><td><b>Omni Bridge</b><br><span class="muted small">${t('alt.omniWho')}</span></td><td>${omniTxt}</td></tr>` +
     `<tr><td><b>LI.FI / Jumper</b><br><span class="muted small">${t('alt.lifiWho')}</span></td><td>${lifiTxt}</td></tr></table>` +

@@ -995,3 +995,9 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .solvbox{border:1px solid var(--line,#d9cdb4);border-radius:8px;padding:6px 10px;margin:8px 0;background:rgba(255,255,255,.35)}
 .solvbox .sub2{margin:2px 0 4px}
 .solvbox .systab td:first-child{white-space:normal;width:40%}
+
+.altwin{margin:6px 0 4px;padding:6px 9px;border-radius:6px;font-size:13px;line-height:1.35}
+.altwin.best{background:#e5f4e3;border:1px solid #7bb87a;color:#1f4d1e;font-weight:600}
+.altwin.even{background:#f2efe6;border:1px solid #d8cfb7}
+.altwin.other{background:#f6f1e4;border:1px solid #d8cfb7;color:#5b4a2a}
+.nocut{color:#3d5a2c;margin:4px 0}
