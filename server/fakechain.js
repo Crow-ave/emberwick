@@ -42,7 +42,7 @@ export function fakeChain({ faucetWorks }) {
     async verifySigned() { return true; },
     async readFtTransfer(hash) { const t = this.userTx.get(hash); if (!t) throw new Error('unknown transaction'); return t; },
     async ftTransfers(from, _t, items, wallets) {
-      if (need(from).near < 0.001) throw new Error(`Sender ${from} does not have enough balance ${need(from).near} for operation costing 0.001`);
+      if (need(from).near < 0.001) throw new Error(`Not enough balance for ${from} (balance: ${Math.round(need(from).near * 1e6)}000000000000000000, cost: 1000000000000000000000)`);
       for (const w of wallets) if (!ft.has(w)) ft.set(w, 0n);
       // all-or-nothing, like one NEAR transaction failing on its first bad action
       const next = new Map(ft);

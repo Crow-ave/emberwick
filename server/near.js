@@ -32,7 +32,8 @@ const ROOT_NAMES = ['emberwick-village', 'emberwick-village-2', 'emberwick-villa
 const SUB_NEAR = 0.2;      // NEAR given to each craftsman / treasury account for gas
 const TOKEN_NEAR = 2.5;    // NEAR for the token contract storage (~220 KB)
 const ROOT_MIN_SETUP = 4.5; // root needs at least this before it creates everything
-const LOW_GAS = 0.1;       // a craftsman account below this gets SUB_NEAR more from the bank for gas
+const LOW_GAS = 0.25;      // a craftsman/treasury account below this gets TOPUP_NEAR more from the bank for gas
+const TOPUP_NEAR = 0.5;    // a batch of 15 transfers needs about 0.13 NEAR of prepaid gas up front (most of it comes back)
 const ROOT_MIN = 0.5;        // below this the bank pauses sending and asks for testnet NEAR       // top an account up below this
 const MAX_ACTIONS = 15;     // ft_transfer actions per transaction
 const FT_GAS = 15n * 10n ** 12n;
@@ -358,7 +359,7 @@ export class Bridge {
     }
     // gas top-ups for accounts that are running low
     for (const id of this.subAccounts()) {
-      if ((await A.nearBalance(id)) < LOW_GAS) await A.sendNear(this.root, id, SUB_NEAR);
+      if ((await A.nearBalance(id)) < LOW_GAS && (await A.nearBalance(this.root)) >= ROOT_MIN + TOPUP_NEAR) await A.sendNear(this.root, id, TOPUP_NEAR);
     }
     await this.sendGroups(fixes);
     for (const id of [this.root, ...this.subAccounts()]) this.chainBalances[id] = fromUnits(await A.ftBalance(this.tokenId, id));
@@ -416,15 +417,15 @@ export class Bridge {
           // the village bank has no NEAR left for gas: stop and wait for a top-up instead of failing over and over
           // "Sender X does not have enough balance ... for operation costing ..." means no NEAR for gas. The token
           // contract's "The account doesn't have enough balance" is about EMWK, not gas: a sync fixes that, no pause.
-          if (/does not have enough balance|for operation costing|NotEnoughBalance|LackBalanceForState/i.test(String(e.message || e))) {
+          if (/does not have enough balance|for operation costing|Not enough balance for|NotEnoughBalance|LackBalanceForState/i.test(String(e.message || e))) {
             // which account ran short? a craftsman's own account gets a gas top-up from the bank right away;
             // only the bank itself running short pauses sending until someone sends it testnet NEAR
             const msg = String(e.message || e), poor = (msg.match(/[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.testnet/g) || []).find((a) => a !== this.root && this.subAccounts().includes(a));
             if (poor && from === poor) {
               try {
-                if ((await this.adapter.nearBalance(this.root)) >= ROOT_MIN + SUB_NEAR) {
-                  await this.adapter.sendNear(this.root, poor, SUB_NEAR);
-                  this.say(`NEAR: ${poor} was low on gas; the bank sent it ${SUB_NEAR} testnet NEAR.`);
+                if ((await this.adapter.nearBalance(this.root)) >= ROOT_MIN + TOPUP_NEAR) {
+                  await this.adapter.sendNear(this.root, poor, TOPUP_NEAR);
+                  this.say(`NEAR: ${poor} was low on gas; the bank sent it ${TOPUP_NEAR} testnet NEAR.`);
                   this.feed.unshift(entry);
                   return;
                 }
