@@ -472,6 +472,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 /* ---------- phones (v46) ---------- */
 @media (max-width: 700px) {
   .topbar { gap: 8px; padding: 6px 10px; }
+  /* on a phone the judge tour and help come right after the name, before anything that scrolls off */
+  .topbar > * { order: 10; } .topbar > .brand { order: 0; } #tour-btn { order: 1; } #howto-btn { order: 2; } #near-pill { order: 3; } #wallet-btn { order: 4; }
   .stage { margin: 6px; gap: 6px; }
   .view { height: 440px; min-height: 0; border-radius: 12px; }
   .side { order: 2; margin: 0; } .bottom { order: 3; }

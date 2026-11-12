@@ -548,7 +548,7 @@ You need [Node.js](https://nodejs.org) 22.22.2 or newer (near-api-js 7.4 require
 **Quick check, no keys and no network needed:**
 ```bash
 npm install
-npm test          # economy and NEAR bridge checks (in-memory chain), about a minute
+npm test          # economy and NEAR bridge checks (in-memory chain), a few seconds
 npm run report    # the 100-day economy simulation above, about a second
 npm run demo      # open http://localhost:3000
 ```

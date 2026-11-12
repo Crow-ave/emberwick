@@ -2411,7 +2411,7 @@ function sysBox() {
   const time = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const bankLink = s.bank ? (s.explorer ? `<a href="${s.explorer}/address/${encodeURIComponent(s.bank)}" target="_blank" rel="noopener">${esc(s.bank)}</a>` : esc(s.bank)) : '–';
   const bal = typeof s.bankNear === 'number' ? s.bankNear.toFixed(2) + ' NEAR' : '–';
-  const gas = !s.bank ? 'off' : s.lowGas || (typeof s.bankNear === 'number' && s.bankNear < s.gasMin) ? 'low' : 'ok';
+  const gas = !s.bank ? (s.status && s.status !== 'off' ? 'wait' : 'off') : s.lowGas || (typeof s.bankNear === 'number' && s.bankNear < s.gasMin) ? 'low' : 'ok';
   const aiOk = s.ai && s.ai.status === 'ready';
   h += `<table class="systab">` +
     `<tr><td>${t('sys.bank')}</td><td>${bankLink}</td></tr>` +
