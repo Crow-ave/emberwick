@@ -395,7 +395,7 @@ export async function haggleLine(card, deal, lang, playerName, playerId) {
 export async function fetchAttestation() {
   if (MODE === 'fake') { ai.attest = { at: Date.now(), signer: '0xtest0000000000', algo: 'ecdsa', quote: true, models: 1, nonce: 'test' }; return ai.attest; }
   if (ai.status !== 'ready' || !KEY) return null;
-  const nonce = [...Array(32)].map(() => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join('');
+  const nonce = crypto.randomBytes(32).toString('hex'); // unpredictable, so an old report cannot be replayed
   const q = (n) => `/attestation/report?model=${encodeURIComponent(ai.model)}${n ? '&nonce=' + n : ''}&signing_algo=ecdsa`;
   try {
     let r;
