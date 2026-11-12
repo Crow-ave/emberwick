@@ -13,7 +13,7 @@ Built from scratch during the NEAR hackathon: the first commit is from 2 Novembe
 - **What it is:** a multiplayer village economy. Eight AI craftsmen with their own NEAR accounts buy, produce, price and sell; players work, trade, own land and vote; every coin is EMWK, a fixed-supply NEP-141 token on NEAR testnet.
 - **Where NEAR is real:** every coin movement is batched to NEAR testnet; land deeds are NEP-171 NFTs; the craftsmen plan with NEAR AI Cloud, and every plan's signature is checked against the attested TEE key; the exchange makes real cross-chain swaps on mainnet through NEAR Intents from the player's own wallet.
 - **How to check it:** the [Judge tour](#try-it-as-a-judge-do-x-see-y) needs no wallet and no money; [Verify it yourself](#verify-it-yourself) gives commands for every claim; `npm test` and `npm run report` run offline.
-- **Known limits (stated, not hidden):** a server runs the game and holds the in-game balances in the village bank's NEAR account (a player cannot take them out without the game, and whoever holds the server's keys controls the bank); the daily hashes on NEAR prove a record was not changed afterwards, but they cannot stop a dishonest server from cheating at the moment it plays; the council is in-game governance with results recorded on NEAR, not a DAO contract; deed rights follow the game's record, not yet the NFT holder; in our scripted-player simulation the village is healthy with 10 always-on players and holds, though tightly, with 30, while at 100 the work runs out and most players end poorer ([details](#with-players-0-to-100-reproducible)); NEAR AI changes which shop does well but not, measurably, how well the village does.
+- **Known limits (stated, not hidden):** a server runs the game and holds the in-game balances in the village bank's NEAR account (a player cannot take them out without the game, and whoever holds the server's keys controls the bank); the daily hashes on NEAR prove a record was not changed afterwards, but they cannot stop a dishonest server from cheating at the moment it plays; the council is in-game governance with results recorded on NEAR, not a DAO contract; deed rights follow the game's record, not yet the NFT holder; in our scripted-player simulation the village is healthy with 10 always-on players and holds, though tightly, with 30, while at 100 the work runs out and most players end poorer ([details](#with-players-0-to-100-reproducible), [plan](#plan-for-100-players)); NEAR AI changes which shop does well but not, measurably, how well the village does.
 
 ---
 
@@ -437,7 +437,7 @@ What we read from it:
 
 - **In this scripted-player model, with 10 always-on players the village is healthy:** the treasury stays near 8,300, shops make a profit, almost no rescues are needed, villagers keep 160–321 EMWK, and players grow their purse from 56 to 390–581 EMWK on average.
 - **With 30 the village holds, but it is tight:** the treasury still stays near 8,300 and no shop goes broke, but the treasury rescues a shop 6–15 times, shop profit ranges from −26 to +685, and the villagers' purses fall to 19–132 EMWK because the players take much of their market.
-- **With 100 always-on players the work runs out.** The shops buy only what they need, so most work turns find nothing worth gathering. The treasury, shops and villagers are no longer in danger, but most players end poorer than they started, many cannot always pay for food, and the richest tenth holds most of the players' coins. Demand for raw goods does not yet grow enough with the number of players; more jobs, more craftsmen and player-to-player trade are on the roadmap.
+- **With 100 always-on players the work runs out.** The shops buy only what they need, so most work turns find nothing worth gathering. The treasury, shops and villagers are no longer in danger, but most players end poorer than they started, many cannot always pay for food, and the richest tenth holds most of the players' coins. Demand for raw goods does not yet grow enough with the number of players. The [plan for 100+ players](#plan-for-100-players) lists the steps and the numbers each must reach.
 - We stopped there on purpose: three rules that close the money loop, not tuning for a nicer table.
 
 ### Rules only vs NEAR AI
@@ -626,6 +626,22 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 ---
 
 ## Roadmap
+
+### Plan for 100+ players
+
+What the simulation shows at 100 always-on players (see [With players: 0 to 100](#with-players-0-to-100-reproducible)): the village itself does not go under. The treasury stays above its locked reserve, no shop goes broke on its own, and the villagers keep a purse. What breaks is the players' income: the shops buy only what they need, so most work turns find nothing worth gathering, most players end poorer than they started, and the richest tenth holds most of the players' coins. The cause is measured, not guessed: **demand for raw goods grows more slowly than the number of players.** Each step below raises demand or spreads it, and each is checked with the same command, `npm run report -- --players`, so the result stays reproducible.
+
+| Step | What changes | Why it helps |
+|---|---|---|
+| 1. Demand that grows with the village | Every production chain keeps more stock as more players are active, the way the bread chain already does since 1.7.0 | More players → the shops buy more raw goods, so the work grows with the population |
+| 2. New workshops when the village grows | When enough players are active, the council can open a new workshop in a neighbourhood (a mason who builds houses from stone and lumber, a second baker): a new AI craftsman with its own NEAR account | New buyers for raw goods and new jobs, decided by the players |
+| 3. Player-to-player orders | A board where players post orders for goods and services and pay each other | Income no longer depends only on what the craftsmen buy |
+| 4. Spots that tire | A gathering spot yields less when many people work it the same day, and more in less crowded places | Work spreads over the village instead of piling on the best spot |
+| 5. Taxes that follow the village | The council sets the tax and public-works levels within limits, and the defaults move with the treasury and with how unequal the players' purses are | Money that piles up comes back as demand and wages when it is needed |
+
+**What success looks like** with 100 always-on players, measured over 5 seeds: fewer than 30% of players end poorer than they started (64–73% today), fewer than 75% of work turns find nothing worth gathering (92–93% today; even with 10 players it is 83–88%, because scripted players never stop trying), fewer than 10% of mornings without money for food (57–68% today), the richest tenth below half of the players' coins (69–86% today), and the treasury above 6,000 EMWK (6,781–7,842 today, kept).
+
+### Later
 
 - A governance contract for the council: votes cast and counted on chain
 - Business deeds: an NFT that gives a right to a shop's income and management, with a skill requirement to buy one
