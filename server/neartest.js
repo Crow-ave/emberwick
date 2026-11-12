@@ -103,6 +103,29 @@ async function deeds() {
 }
 await deeds();
 
+// a craftsman account out of NEAR for gas gets a top-up from the bank; the bank does not pause
+async function gas() {
+  console.log('\n== gas');
+  const chain = fakeChain({ faucetWorks: true });
+  const state = createState(4);
+  let saved = null; const said = [];
+  const bridge = new Bridge({ adapter: chain, npcIds: CRAFTSMEN.map((c) => c.id), totalSupply: TOKEN.totalSupply, balances: () => state.balances,
+    store: { load: () => saved, save: (o) => { saved = o; } }, wasm: new Uint8Array(1), nftWasm: new Uint8Array(1), say: (m) => said.push(m) });
+  await bridge.step(); await bridge.step(); await bridge.step();
+  const smith = bridge.subAccounts().find((a) => a.startsWith('smithy.'));
+  chain.acc.get(smith).near = 0;
+  const before = await chain.nearBalance(smith);
+  state.balances['npc:smithy'] -= 1; state.balances['npc:bakery'] += 1;
+  bridge.onTransfer('npc:smithy', 'npc:bakery', 1);
+  for (let i = 0; i < 4; i++) await bridge.step();
+  const after = await chain.nearBalance(smith);
+  check(before < 0.001, 'the smith account was out of gas (' + before + ')');
+  check(after > 0.05, 'the bank topped the smith account up (' + after + ')');
+  check(!bridge.lowGas, 'sending is not paused');
+  check(said.some((m) => /low on gas/.test(m)), 'the log says which account was topped up');
+}
+await gas();
+
 await run(true);
 await run(false);
 console.log(fails ? `\n${fails} check(s) failed.` : '\nAll NEAR bridge checks passed.');

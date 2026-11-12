@@ -32,7 +32,7 @@ const ROOT_NAMES = ['emberwick-village', 'emberwick-village-2', 'emberwick-villa
 const SUB_NEAR = 0.2;      // NEAR given to each craftsman / treasury account for gas
 const TOKEN_NEAR = 2.5;    // NEAR for the token contract storage (~220 KB)
 const ROOT_MIN_SETUP = 4.5; // root needs at least this before it creates everything
-const LOW_GAS = 0.05;
+const LOW_GAS = 0.1;       // a craftsman account below this gets SUB_NEAR more from the bank for gas
 const ROOT_MIN = 0.5;        // below this the bank pauses sending and asks for testnet NEAR       // top an account up below this
 const MAX_ACTIONS = 15;     // ft_transfer actions per transaction
 const FT_GAS = 15n * 10n ** 12n;
@@ -65,7 +65,7 @@ export class Bridge {
    * @param {object} [o.wasm]    token contract bytes
    */
   constructor(o) {
-    Object.assign(this, { adapter: o.adapter, npcIds: o.npcIds, totalSupply: o.totalSupply, balances: o.balances, names: o.names || ((h) => h), store: o.store, say: o.say || (() => {}), wasm: o.wasm });
+    Object.assign(this, { adapter: o.adapter, npcIds: o.npcIds, totalSupply: o.totalSupply, balances: o.balances, names: o.names || ((h) => h), store: o.store, say: ((f) => { let last = '', at = 0; return (m) => { const now = Date.now(); if (m === last && now - at < 10 * 60000) return; last = m; at = now; f(m); }; })(o.say || (() => {})), wasm: o.wasm });
     this.status = 'starting';
     this.detail = null;
     this.queue = [];
@@ -414,7 +414,22 @@ export class Bridge {
           entry.error = String(e.message || e).slice(0, 160);
           this.needReconcile = true;
           // the village bank has no NEAR left for gas: stop and wait for a top-up instead of failing over and over
-          if (/not enough balance|doesn't have enough balance/i.test(entry.error) && String(e.message || e).includes(this.root)) {
+          // "Sender X does not have enough balance ... for operation costing ..." means no NEAR for gas. The token
+          // contract's "The account doesn't have enough balance" is about EMWK, not gas: a sync fixes that, no pause.
+          if (/does not have enough balance|for operation costing|NotEnoughBalance|LackBalanceForState/i.test(String(e.message || e))) {
+            // which account ran short? a craftsman's own account gets a gas top-up from the bank right away;
+            // only the bank itself running short pauses sending until someone sends it testnet NEAR
+            const msg = String(e.message || e), poor = (msg.match(/[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.testnet/g) || []).find((a) => a !== this.root && this.subAccounts().includes(a));
+            if (poor && from === poor) {
+              try {
+                if ((await this.adapter.nearBalance(this.root)) >= ROOT_MIN + SUB_NEAR) {
+                  await this.adapter.sendNear(this.root, poor, SUB_NEAR);
+                  this.say(`NEAR: ${poor} was low on gas; the bank sent it ${SUB_NEAR} testnet NEAR.`);
+                  this.feed.unshift(entry);
+                  return;
+                }
+              } catch { /* fall through to the pause below */ }
+            }
             if (!this.lowGas) this.say(`NEAR: ${this.root} is out of testnet NEAR for gas. Send it a few testnet NEAR; sending is paused until then.`);
             this.lowGas = { address: this.root, at: Date.now() };
             this.feed.unshift(entry);
