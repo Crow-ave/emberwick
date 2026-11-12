@@ -1,5 +1,5 @@
 // Runs the economy for 100 game days and checks that it stays healthy.
-import { createState, tick, joinPlayer, playerAction, totalMoney, publicView } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions } from './economy.js';
 import { TOKEN, RULES } from './world.js';
 
 const state = createState(42);
@@ -178,6 +178,14 @@ const decided = state.council.closed.length;
 console.log('Council: proposals', stats.proposals, 'votes', stats.votes, '| recent results', state.council.closed.map((x) => x.kind + ':' + x.result).join(', '), '| tax', state.taxRate ?? 'default');
 if (!stats.proposals || !stats.votes || !decided) fail('the council never decided anything');
 console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day', l.day, l.text));
+// a price named in conversation becomes an offer at the counter, decided by the haggling rules (the AI never bargains in words)
+{
+  const hp = joinPlayer(state, 'Haggler', 'farmer').id;
+  const g = Object.keys(state.npcs.carpenter.sells).find((x) => (state.npcs.carpenter.stock[x] || 0) >= 1);
+  const acts = checkAiActions(state, hp, 'carpenter', [{ type: 'haggle', side: 'buy', good: g, qty: 1, price: 0.48 }, { type: 'haggle', side: 'buy', good: 'dragon', qty: 1, price: 1 }, { type: 'haggle', side: 'sell', good: 'wood', qty: 1, price: 2 }]);
+  console.log('Haggle from conversation:', JSON.stringify(acts));
+  if (acts.length !== 1 || acts[0].type !== 'haggle' || acts[0].offer !== 0.5 || acts[0].good !== g) fail('a haggle action from conversation was not checked correctly');
+}
 // daily food: an active player eats 2 bread each morning (bag first, then the bakery); without money they wake up hungry
 {
   const fed = joinPlayer(state, 'Eater', 'farmer').id, broke = joinPlayer(state, 'Broke', 'farmer').id;

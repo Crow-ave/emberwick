@@ -480,6 +480,12 @@ export function checkAiActions(state, pid, npcId, list) {
     else if (type === 'sell' && n.buys[good] !== undefined && inv(p, good) >= 1) out.push({ type: 'sell', npc: npcId, good, qty: Math.min(qty, Math.floor(inv(p, good))) });
     else if (type === 'order') { const o = commissionPolicy(state, pid, npcId, 1); if (o) out.push({ type: 'order', npc: npcId, ...o }); }
     else if (type === 'credit') { const c = creditPolicy(state, pid, npcId); if (c && c.ok) out.push({ type: 'credit', npc: npcId, good: c.good, qty: Math.min(qty, c.max), price: c.unitPrice }); }
+    else if (type === 'haggle' && npcId !== 'tower' && Number(a.price) > 0 && Number(a.price) < 10000) {
+      // a price the customer named in conversation becomes an offer at the counter: the haggling rules decide
+      const side = String(a.side) === 'sell' ? 'sell' : 'buy', offer = Math.round(Number(a.price) * 10) / 10;
+      if (side === 'buy' && n.sells[good] !== undefined && good !== 'meal' && (n.stock[good] || 0) >= 1) out.push({ type: 'haggle', npc: npcId, side, good, qty: Math.min(qty, Math.floor(n.stock[good])), offer });
+      else if (side === 'sell' && n.buys[good] !== undefined && inv(p, good) >= 1) out.push({ type: 'haggle', npc: npcId, side, good, qty: Math.min(qty, Math.floor(inv(p, good))), offer });
+    }
     else if (type === 'goto' && (shopIds.includes(String(a.place)) || GATHER_SPOTS[a.place]) && a.place !== npcId) out.push({ type: 'goto', place: String(a.place) });
   }
   const seen = new Set();

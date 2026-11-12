@@ -538,6 +538,7 @@ function aiActions(list) {
       : x.type === 'sell' ? t('aiact.sell', { n: x.qty, good: goodWord(x.good) })
       : x.type === 'order' ? (x.ok ? t('order.btn', { n: x.outQty, good: goodWord(x.output) }) + ` (${x.fee} EMWK)` : t('aiact.orderNeed', { ins: Object.entries(x.inputs).map(([g, q]) => q + ' ' + goodWord(g)).join(' + '), n: x.outQty, good: goodWord(x.output) }))
       : x.type === 'credit' ? t('aiact.credit', { n: x.qty, good: goodWord(x.good) })
+      : x.type === 'haggle' ? '🤝 ' + t('aiact.haggle', { n: x.qty, good: goodWord(x.good), p: x.offer })
       : t('go.to', { place: placeName(x.place) });
     const dis = x.type === 'order' && !x.ok;
     return `<button class="${x.type === 'goto' ? '' : 'primary'} small" data-aiact="${k}" ${dis ? 'disabled' : ''}>${esc(lab)}</button>`;
@@ -545,6 +546,8 @@ function aiActions(list) {
 }
 async function runAiAction(npc, x) {
   if (x.type === 'goto') { ui.scene = null; select(x.place); return; }
+  // a price named in conversation goes to the counter: the same haggling rules as the 🤝 button
+  if (x.type === 'haggle') { ui.haggle = { npc, good: x.good, side: x.side, qty: x.qty, offer: x.offer }; renderNow(); sendHaggle(null); return; }
   const body = x.type === 'buy' ? { type: 'buy', npc, good: x.good, qty: x.qty } : x.type === 'sell' ? { type: 'sell', npc, good: x.good, qty: x.qty }
     : x.type === 'meal' ? { type: 'meal' } : x.type === 'order' ? { type: 'commission', npc, n: 1 } : { type: 'credit', npc, qty: x.qty };
   const r = await post('/api/action', { player: playerId, ...body });

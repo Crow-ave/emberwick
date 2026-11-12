@@ -287,6 +287,8 @@ export async function askCraftsman(card, question, lang, playerId, ctx = {}) {
     const firstSold = Object.entries(card.goods).find(([, x]) => x.sellsAt !== undefined);
     if (firstSold && /\b(buy|al|satın)\b/i.test(q)) acts.push({ type: 'buy', good: firstSold[0], qty: 1 });
     if (/kanepe|sofa/i.test(q)) acts.push({ type: 'goto', place: 'carpenter' });
+    const num = q.match(/(\d+(?:[.,]\d+)?)\s*emwk/i);
+    if (firstSold && num) acts.push({ type: 'haggle', side: 'buy', good: firstSold[0], qty: 1, price: Number(num[1].replace(',', '.')) });
     const answer = `(${card.name}) I heard: "${q}".`;
     remember(answer);
     return { ok: true, answer, actions: acts, model: ai.model };
@@ -297,12 +299,12 @@ export async function askCraftsman(card, question, lang, playerId, ctx = {}) {
   const system = `You are ${card.name} in the medieval village of Emberwick, a game whose money is EMWK. Your character: ${PERSONA[card.id] || 'a friendly villager'}. ` +
     `Answer in ${LANGS[lang] || 'English'}, in character, in at most 2 short sentences. Talk like a real villager, and react to what the customer actually said.\n` +
     `RULES: Only goods in the village directory exist. You can only: sell what your shop sells, buy what your shop buys, take an order (below), give credit (below), or send the customer to the right place. ` +
-    `If they ask for something that does not exist (for example a sofa), say so kindly and suggest the closest real thing and who has it. If they need materials they do not have, tell them where to get them. Never promise anything else, never invent prices (use priceList), never pretend something happened: the customer confirms with a button.\n` +
+    `If they ask for something that does not exist (for example a sofa), say so kindly and suggest the closest real thing and who has it. If they need materials they do not have, tell them where to get them. Never promise anything else, never invent prices (use priceList), never pretend something happened: the customer confirms with a button. PRICES: never bargain in words. If the customer names a price different from your list price (or asks for a discount), do not accept, refuse or name a counter price yourself: say you will hear their offer at the counter, and add a haggle action with their price PER UNIT (if they named a total for several, divide it). The village rules then decide, and you answer the offer there.\n` +
     `${orderTxt}\n${creditTxt}\n` +
     `Answer exactly what the customer just said, like a person would. Example (in English): customer "Hello baker, how are you?" -> {"say":"Hello, dear! Tired but happy, the oven has been busy since dawn. Fancy some warm bread?","actions":[{"type":"buy","good":"bread","qty":1}]}. ` +
     `Customer "I need a sofa" at the woodcutter -> {"say":"A sofa? Nobody makes those here, friend. Wren the carpenter makes beds; I can sell you lumber.","actions":[{"type":"goto","place":"carpenter"},{"type":"buy","good":"lumber","qty":1}]}.\n` +
     `Reply with JSON only: {"say":"your words","actions":[...]} where actions (0 to 3) are buttons to offer, chosen from: ` +
-    `{"type":"buy","good":"<good you sell>","qty":n}, {"type":"sell","good":"<good you buy>","qty":n}, {"type":"order"}, {"type":"credit","qty":n}, {"type":"goto","place":"<shop id or forest/fields/mine/pasture/pond>"}.\n` +
+    `{"type":"buy","good":"<good you sell>","qty":n}, {"type":"sell","good":"<good you buy>","qty":n}, {"type":"haggle","side":"buy" (they buy from you) or "sell" (they sell to you),"good":"<good>","qty":n,"price":<their price per unit>}, {"type":"order"}, {"type":"credit","qty":n}, {"type":"goto","place":"<shop id or forest/fields/mine/pasture/pond>"}.\n` +
     `Your shop: ${card.priceList}${card.recipe ? '; ' + card.recipe : ''}; in stock: ${Object.entries(card.goods).filter(([, x]) => x.sellsAt !== undefined).map(([g, x]) => g + ' ' + x.stock).join(', ')}.\n` +
     `The customer: ${customer ? `${customer.name}, ${customer.coins} EMWK, energy ${customer.energy}, carries ${Object.entries(customer.bag).map(([g, v]) => v + ' ' + g).join(', ') || 'nothing'}` : '?'}.\n` +
     `Village (shop id: sells / buys / makes): ${(village && village.shops || []).map((x) => `${x.id}: ${x.sells.join(',')} / ${x.buys.join(',')}${x.makesFromCustomerMaterials ? ' / ' + x.makesFromCustomerMaterials : ''}`).join('; ')}. Raw goods: ${(village && village.rawGoods || []).join('; ')}. Nothing else exists.`;
