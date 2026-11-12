@@ -2162,6 +2162,20 @@ function fairNote(x) {
   return `<p class="small ${ok ? 'fair-ok' : 'fair-no'}">${t(ok ? 'ex.fairOk' : 'ex.fairNo', { n: x.fair, max: Math.floor(x.fair * 1.1), p: x.sale.price })}</p>`;
 }
 
+// read-only: the deed NFT's holder read live from the NEAR contract, next to the game's own record
+const deedLiveCache = {};
+function deedLive(id) {
+  const c = deedLiveCache[id];
+  if (!c || (!c.busy && Date.now() - c.at > 60000)) {
+    deedLiveCache[id] = { ...(c || {}), busy: true, at: Date.now() };
+    fetch('/api/deed/holder?plot=' + encodeURIComponent(id)).then((r) => r.json()).catch(() => ({ ok: false }))
+      .then((r) => { deedLiveCache[id] = { at: Date.now(), r }; renderPanel(); });
+  }
+  const r = deedLiveCache[id].r;
+  if (!r) return '⛓ ' + t('deed.live.check');
+  if (!r.ok) return '⛓ ' + t('deed.live.fail');
+  return '⛓ ' + t(r.match ? 'deed.live.same' : 'deed.live.diff', { id: esc(r.owner), g: esc(r.record || '–') });
+}
 function deedCard(id, p, mine) {
   const deed = p.deed;
   if (!deed) return '';
@@ -2176,11 +2190,12 @@ function deedCard(id, p, mine) {
   else if (!c.status || c.status !== 'ready') st = t('deed.st.offline');
   else st = t('plot.deedWait');
   const link = deed.minted && d.contract ? exLink('nft-token/' + d.contract + '/' + encodeURIComponent(deed.tokenId), t('plot.deedLink')) : '';
+  const live = deed.minted && d.contract ? `<p class="small deed-live">${deedLive(id)}</p>` : '';
   const wallet = mine && cls === 'held' ? `<p class="small">${me.near && !me.nearVerified ? t('deed.verifyHint') : t('deed.connectHint')}</p><button data-act="open-near">${t('deed.openNear')}</button>` : '';
   const meteor = mine && cls === 'ok' ? `<p class="muted small">${t('deed.meteorHint')}</p>` : '';
   return `<div class="deed"><div class="deed-head"><span class="seal">✦</span><div><b>${t('deed.title')}</b><div class="small">${esc(placeName(id))} · ${p.district ? t('district.' + p.district) : t('deed.side.' + (PLOT_SIDE[id] || 'west'))}</div></div></div>` +
     `<div class="deed-rows"><div><span>${t('deed.owner')}</span><b>${esc(p.owner || '')}</b></div><div><span>${t('deed.since')}</span><b>${t('ui.day', { n: p.since || '?' })}</b></div><div><span>${t('deed.nft')}</span><code>${esc(deed.tokenId)}</code></div></div>` +
-    `<p class="deed-st ${cls}">${st}</p>${link ? `<p class="small">${link}</p>` : ''}${wallet}${meteor}</div>`;
+    `<p class="deed-st ${cls}">${st}</p>${live}${link ? `<p class="small">${link}</p>` : ''}${wallet}${meteor}</div>`;
 }
 
 function boardSection() {

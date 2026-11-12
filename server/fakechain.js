@@ -29,6 +29,7 @@ export function fakeChain({ faucetWorks }) {
       token = contract; ft.set(args.owner_id, BigInt(args.total_supply)); txs++;
     },
     async isNftReady(id) { return !!(this.nft && this.nft.contract === id); },
+    async nftOwner(id, tokenId) { return this.nft && this.nft.contract === id ? this.nft.tokens.get(tokenId) || null : null; },
     async callTx(_s, contract, method, args) {
       if (!this.nft || this.nft.contract !== contract) throw new Error('no nft contract');
       if (method === 'nft_mint') this.nft.tokens.set(args.token_id, args.token_owner_id);

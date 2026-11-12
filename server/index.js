@@ -40,6 +40,7 @@ async function bankBalance() {
 const PUBLIC = path.join(root, 'public');
 const SAVE = process.env.EMBERWICK_SAVE || path.join(root, 'data', 'state.json'); // a second village (e.g. for the online demo) can keep its own save
 // the last signed NEAR AI answers are kept next to the save, so a server restart does not empty /api/ai/proof
+const deedHolders = new Map(); // tokenId -> { at, owner } read from the deed contract
 const PROOFS_FILE = path.join(path.dirname(SAVE), 'ai-proofs.json');
 try { const kept = JSON.parse(fs.readFileSync(PROOFS_FILE, 'utf8')); if (Array.isArray(kept)) ai.proofs = kept.slice(0, PROOFS_KEPT); } catch {}
 ai.onProof = (list) => { try { fs.mkdirSync(path.dirname(PROOFS_FILE), { recursive: true }); fs.writeFileSync(PROOFS_FILE + '.tmp', JSON.stringify(list)); fs.renameSync(PROOFS_FILE + '.tmp', PROOFS_FILE); } catch (e) { console.log('[AI] could not keep the proofs:', e.message); } };
@@ -975,6 +976,16 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.ok ? 200 : 400, { ...r, state: view(body.player) });
   }
 
+  // read-only: who holds a deed NFT on NEAR right now (a view call to the deed contract, cached for a minute)
+  if (url.pathname === '/api/deed/holder') {
+    const plot = state.plots && state.plots[url.searchParams.get('plot')];
+    if (!bridge || !plot || !plot.deed || !plot.deed.minted) return sendJson(res, 200, { ok: false });
+    const id = plot.deed.tokenId, hit = deedHolders.get(id);
+    let owner = hit && Date.now() - hit.at < 60000 ? hit.owner : undefined;
+    if (owner === undefined) { try { owner = await bridge.deedOwner(id); } catch { owner = null; } if (owner) deedHolders.set(id, { at: Date.now(), owner }); }
+    if (!owner) return sendJson(res, 200, { ok: false });
+    return sendJson(res, 200, { ok: true, tokenId: id, owner, record: plot.deed.owner || null, match: owner === plot.deed.owner });
+  }
   // the seller sent their deed NFT to the village bank; check it on chain, then put it up for sale
   if (req.method === 'POST' && url.pathname === '/api/market/escrow') {
     const body = await readBody(req);
