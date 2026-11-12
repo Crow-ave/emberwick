@@ -982,7 +982,8 @@ const server = http.createServer(async (req, res) => {
     if (!bridge || !plot || !plot.deed || !plot.deed.minted) return sendJson(res, 200, { ok: false });
     const id = plot.deed.tokenId, hit = deedHolders.get(id);
     let owner = hit && Date.now() - hit.at < 60000 ? hit.owner : undefined;
-    if (owner === undefined) { try { owner = await bridge.deedOwner(id); } catch { owner = null; } if (owner) deedHolders.set(id, { at: Date.now(), owner }); }
+    if (owner === null && hit && Date.now() - hit.at > 15000) owner = undefined; // a failed read is retried after 15 s, not on every request
+    if (owner === undefined) { try { owner = await bridge.deedOwner(id); } catch { owner = null; } deedHolders.set(id, { at: Date.now(), owner }); }
     if (!owner) return sendJson(res, 200, { ok: false });
     return sendJson(res, 200, { ok: true, tokenId: id, owner, record: plot.deed.owner || null, match: owner === plot.deed.owner });
   }

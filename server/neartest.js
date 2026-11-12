@@ -100,6 +100,8 @@ async function deeds() {
   await bridge.step();
   check(chain.nft.tokens.get('plot-1-1-p1') === 'emberwick.testnet', 'deed NFT belongs to the buyer');
   check(got && got.minted && got.plot === 'plot-1', 'the game hears that the deed was minted');
+  check(await bridge.deedOwner('plot-1-1-p1') === 'emberwick.testnet', 'the deed holder can be read back from the contract (deed card)');
+  check(await bridge.deedOwner('no-such-deed') === null, 'an unknown deed reads as no holder');
 }
 await deeds();
 

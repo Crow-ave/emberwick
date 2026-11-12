@@ -22,6 +22,8 @@ try {
   check(pr.status === 200 && (await pr.json()).chatId === 'chat-kept', 'signed answers kept from before a restart are still served');
   const old = await fetch(`http://127.0.0.1:${PORT}/api/ai/proof?chat=nope`);
   check(old.status === 404, 'an unknown answer gives a clear 404');
+  const dh = await fetch(`http://127.0.0.1:${PORT}/api/deed/holder?plot=plot-1`);
+  check(dh.status === 200 && (await dh.json()).ok === false, 'the live deed-holder check answers calmly when there is no deed or no NEAR');
   console.log('== player keys');
   const a = await post('/api/join', { name: 'Alice', path: 'miner' });
   check(a.j.ok && typeof a.j.key === 'string' && a.j.key.length >= 32, 'joining returns a long random key');
