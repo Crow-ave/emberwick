@@ -3,3 +3,8 @@ data/
 .DS_Store
 tools/wallet/node_modules/
 tools/wallet/package*.json
+
+# local outputs, never part of the project
+Claude outputs/
+ai-karsilastirma*.txt
+*.zip
