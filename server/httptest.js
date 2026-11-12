@@ -33,6 +33,10 @@ try {
   check(own.status !== 403, 'the player with their own key can act');
   const claim = await post('/api/claim', { player: pid });
   check(claim.status === 403 && !claim.j.key, 'a player who has a key cannot be claimed again');
+  const v1 = await post('/api/near/link', { player: pid, key: a.j.key, account: 'alice.testnet' });
+  check(v1.status === 200, 'a player can link a wallet with their own key');
+  const sl = []; for (let i = 0; i < 8; i++) sl.push((await post('/api/join', { name: 'Spam' + i, path: 'miner' })).status);
+  check(sl.includes(429), 'joining again and again from one address is slowed down (' + sl.join(',') + ')');
   const st = await (await fetch(`http://127.0.0.1:${PORT}/api/state?player=${b.j.id}`)).json();
   check(!JSON.stringify(st).includes(a.j.key) && !JSON.stringify(st).includes('playerKeys'), 'keys never appear in the shared view');
 } catch (e) { console.log('  FAIL', e.message); fails++; }

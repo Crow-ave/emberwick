@@ -52,6 +52,8 @@ try {
   state = createState();
   console.log('Started a new village.');
 }
+// villagers who joined before player keys can claim theirs during three days after the first start with keys
+if (!state.claimUntil) state.claimUntil = Date.now() + 3 * 24 * 3600 * 1000;
 
 // ---------- NEAR bridge ----------
 let bridge = null;
@@ -677,7 +679,28 @@ function readBody(req) {
   });
 }
 
+// ---------- a simple rate limit per address ----------
+// every POST counts; joining and claiming a villager are much stricter. Behind a host's proxy the client
+// address is the first entry of X-Forwarded-For.
+const hits = new Map();
+const LIMITS = { post: [120, 10000], '/api/join': [5, 60000], '/api/claim': [5, 60000] };
+function limited(req, what) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const [max, ms] = LIMITS[what], k = what + '|' + ip, now = Date.now();
+  const h = (hits.get(k) || []).filter((t) => now - t < ms);
+  h.push(now); hits.set(k, h);
+  if (hits.size > 20000) hits.clear();
+  return h.length > max;
+}
+
 const server = http.createServer(async (req, res) => {
+  if (req.method === 'POST') {
+    const p0 = new URL(req.url, 'http://x').pathname;
+    if (limited(req, 'post') || (LIMITS[p0] && limited(req, p0))) {
+      res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '10' });
+      return res.end(JSON.stringify({ ok: false, code: 'err.slowDown', error: 'Too many requests; wait a few seconds.' }));
+    }
+  }
   // every POST that names a player must carry that player's key (see keyOk above)
   if (req.method === 'POST') {
     const body = req._body = await new Promise((resolve) => {
@@ -745,6 +768,8 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req), pid = String(body.player || '');
     if (!state.players[pid]) return sendJson(res, 404, { ok: false, code: 'err.unknownPlayer' });
     if (state.playerKeys && state.playerKeys[pid]) return sendJson(res, keyOk(pid, body.key) ? 200 : 403, keyOk(pid, body.key) ? { ok: true } : { ok: false, code: 'err.notYou' });
+    // claiming is only for the move to player keys: it closes three days after the village first ran with keys
+    if (Date.now() > (state.claimUntil || 0)) return sendJson(res, 403, { ok: false, code: 'err.claimClosed', error: 'Villagers from before player keys could be claimed only in the first days.' });
     const key = newPlayerKey(pid); save();
     return sendJson(res, 200, { ok: true, key });
   }

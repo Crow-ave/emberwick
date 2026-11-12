@@ -191,6 +191,9 @@ export function linkWallet(state, playerId, accountId, verified = false) {
   // one NEAR wallet, one character: the same wallet cannot collect several characters' coins
   const other = Object.values(state.players).find((q) => q.id !== p.id && q.near === accountId);
   if (other) return { ok: false, error: 'That NEAR wallet is already linked to another villager.', code: 'err.walletUsed' };
+  // a wallet the player proved is theirs can only be replaced by another signed one
+  if (p.near && p.nearVerified && !verified && accountId !== p.near) return { ok: false, error: 'Your verified wallet can only be changed by signing with the new one.', code: 'err.walletLocked' };
+  if (p.near === accountId && p.nearVerified && !verified) return { ok: true, near: accountId }; // never downgrade a signed link
   p.near = accountId;
   p.nearVerified = !!verified;
   state.rev = (state.rev || 0) + 1;

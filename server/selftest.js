@@ -194,6 +194,8 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   const early = withdraw(state, a, 1);
   state.balances['player:' + a] += 30; state.balances.newcomerFund -= 30; // as if earned
   const can = withdrawable(state, a), over = withdraw(state, a, can + 1), ok = withdraw(state, a, can);
+  const lock = linkWallet(state, a, 'thief.testnet');
+  if (lock.ok || lock.code !== 'err.walletLocked' || state.players[a].near !== 'saver.testnet') fail('a verified wallet was replaced without a signature');
   console.log('Cash-out rules: start', start, '| right away', early.code, '| after earning 30 can', can, over.code, ok.ok, '| same wallet twice', l1.ok, l2.code);
   if (early.ok || early.code !== 'err.startLocked' || can !== 30 || over.ok || !ok.ok || !l1.ok || l2.ok || l2.code !== 'err.walletUsed') fail('the cash-out rules did not hold');
   if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with cash-out');
