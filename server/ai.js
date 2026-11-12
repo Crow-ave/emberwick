@@ -9,6 +9,7 @@ import https from 'node:https';
 import crypto from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { LAND, DISTRICTS, HOUSES, RULES } from './world.js';
 
 const BASE = (process.env.NEARAI_BASE || 'https://cloud-api.near.ai/v1').replace(/\/$/, '');
 const MODE = process.env.EMBERWICK_AI || ''; // '0' = off, 'fake' = test replies without the network
@@ -269,6 +270,16 @@ const PERSONA = {
 // credit, go to another place). The suggestions are checked by the village rules and shown as buttons:
 // nothing happens unless the player presses one. The last few lines are remembered.
 const convs = new Map(); // `${player}:${npc}` -> recent messages
+// How the village works, from the game's own rules, so every craftsman can answer common questions itself
+// instead of sending the customer around the village
+const VILLAGE_FACTS = () => [
+  `Building a home: buy a plot of land at the exchange or from its For sale sign (village plots about ${Math.round(LAND.price * 1.2)}-${Math.round(LAND.price * 1.4)} EMWK; Ember Lane plots are cheaper once the council opens that neighbourhood; Villa hill needs level 5), then on your own plot press Build: it takes ${LAND.build.lumber} lumber and a ${LAND.build.fee} EMWK work fee to the carpenter (Villa hill: ${DISTRICTS[2].build.lumber} lumber and ${DISTRICTS[2].build.fee} EMWK). Lumber is sold by the woodcutter, and the carpenter buys it.`,
+  `A bed (bought from the carpenter) lets you sleep in your own home. A home can also be rented out for daily rent (${LAND.lease.min}-${LAND.lease.max} EMWK a day).`,
+  `Sleeping: own home, a rented village house (rent ${HOUSES['house-1'].rent}-${HOUSES['house-3'].rent} EMWK a day), or an inn bed for ${RULES.innBed} EMWK a night. A night outside costs energy.`,
+  `Food: every morning a player who played the day before eats ${RULES.dailyBread} bread (from the bag, or bought at the bakery).`,
+  'Tools: pickaxe from the smith, axe from the woodcutter, plow from the miller, shears from the tailor, fishing rod from the carpenter. Tools wear out. A winter coat comes from the tailor.',
+].join(' ');
+
 export async function askCraftsman(card, question, lang, playerId, ctx = {}) {
   const q = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!q) return { ok: false, error: 'empty' };
@@ -300,6 +311,8 @@ export async function askCraftsman(card, question, lang, playerId, ctx = {}) {
     `Answer in ${LANGS[lang] || 'English'}, in character, in at most 2 short sentences. Talk like a real villager, and react to what the customer actually said.\n` +
     `RULES: Only goods in the village directory exist. You can only: sell what your shop sells, buy what your shop buys, take an order (below), give credit (below), or send the customer to the right place. ` +
     `If they ask for something that does not exist (for example a sofa), say so kindly and suggest the closest real thing and who has it. If they need materials they do not have, tell them where to get them. Never promise anything else, never invent prices (use priceList), never pretend something happened: the customer confirms with a button. PRICES: never bargain in words. If the customer names a price different from your list price (or asks for a discount), do not accept, refuse or name a counter price yourself: say you will hear their offer at the counter, and add a haggle action with their price PER UNIT (if they named a total for several, divide it). The village rules then decide, and you answer the offer there.\n` +
+    `VILLAGE FACTS (true for everyone; use them to answer how-to questions yourself, with the numbers, instead of sending the customer to someone else): ${VILLAGE_FACTS()}\n` +
+    `Send the customer to another place only when that place sells or buys what they need, and then name it once, with what they should get there.\n` +
     `${orderTxt}\n${creditTxt}\n` +
     `Answer exactly what the customer just said, like a person would. Example (in English): customer "Hello baker, how are you?" -> {"say":"Hello, dear! Tired but happy, the oven has been busy since dawn. Fancy some warm bread?","actions":[{"type":"buy","good":"bread","qty":1}]}. ` +
     `Customer "I need a sofa" at the woodcutter -> {"say":"A sofa? Nobody makes those here, friend. Wren the carpenter makes beds; I can sell you lumber.","actions":[{"type":"goto","place":"carpenter"},{"type":"buy","good":"lumber","qty":1}]}.\n` +
