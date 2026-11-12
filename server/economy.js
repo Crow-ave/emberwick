@@ -188,6 +188,9 @@ export function linkWallet(state, playerId, accountId, verified = false) {
   if (!validNearId(accountId) || !accountId.endsWith('.testnet') && !/^[0-9a-f]{64}$/.test(accountId)) {
     return { ok: false, error: 'That is not a NEAR testnet account.', code: 'err.badWallet' };
   }
+  // one NEAR wallet, one character: the same wallet cannot collect several characters' coins
+  const other = Object.values(state.players).find((q) => q.id !== p.id && q.near === accountId);
+  if (other) return { ok: false, error: 'That NEAR wallet is already linked to another villager.', code: 'err.walletUsed' };
   p.near = accountId;
   p.nearVerified = !!verified;
   state.rev = (state.rev || 0) + 1;
@@ -219,6 +222,12 @@ export function depositIn(state, playerId, amount, hash) {
 
 // Moves coins out of the game to the player's own NEAR wallet. They are kept in
 // the 'withdrawn' bucket so the game's total stays exactly the fixed supply.
+export function withdrawable(state, playerId) {
+  const p = state.players[playerId];
+  if (!p) return 0;
+  return Math.max(0, Math.floor((balance(state, 'player:' + playerId) - (p.startCoins || 0)) * 100) / 100);
+}
+
 export function withdraw(state, playerId, amount) {
   const p = state.players[playerId];
   if (!p) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };
@@ -226,6 +235,10 @@ export function withdraw(state, playerId, amount) {
   amount = Math.floor(Number(amount) * 100) / 100;
   if (!(amount >= 1)) return { ok: false, error: 'Cash out at least 1 EMWK.', code: 'err.minWithdraw' };
   if (balance(state, 'player:' + playerId) + 1e-9 < amount) return { ok: false, error: 'You do not have that much.', code: 'err.noMoney' };
+  // only what the player earned can leave the village: the starting money from the newcomer fund stays,
+  // so nobody can empty the fund by opening many characters and cashing out their starting money
+  const can = withdrawable(state, playerId);
+  if (amount > can + 1e-9) return { ok: false, error: `You can cash out ${can} EMWK: your starting money stays in the village.`, code: 'err.startLocked', params: { n: can, s: p.startCoins || 0 } };
   transfer(state, 'player:' + playerId, 'withdrawn', amount, { why: 'cash-out to your NEAR wallet' });
   p.withdrawn = r2((p.withdrawn || 0) + amount);
   state.rev = (state.rev || 0) + 1;
@@ -703,6 +716,7 @@ export function joinPlayer(state, name, pathKey) {
   state.balances['player:' + id] = 0;
   const coins = Math.min(path.coins, balance(state, 'newcomerFund'));
   transfer(state, 'newcomerFund', 'player:' + id, coins, { why: 'starting money' });
+  state.players[id].startCoins = coins; // the starting money stays in the village: it cannot be cashed out
   state.rev = (state.rev || 0) + 1;
   addLog(state, `${name} arrived at the gate as a ${path.name.toLowerCase()}.`, 'join', 'log.join', { name, path: pathKey });
   return { ok: true, id };
@@ -2277,7 +2291,7 @@ function playerView(state, p) {
   }
   const costs = Object.fromEntries(Object.keys(GATHER_SPOTS).map((k) => [k, energyCost(p, k, state)]));
   return {
-    ...p, coins: r2(balance(state, 'player:' + p.id)), questInfo: questFor(p, state),
+    ...p, coins: r2(balance(state, 'player:' + p.id)), withdrawable: withdrawable(state, p.id), questInfo: questFor(p, state),
     job: p.job ? (() => {
       const today = p.job.shiftDay === state.day ? p.job.shiftsToday : 0;
       return { ...p.job, shiftsToday: today, maxShifts: JOBS.shiftsPerDay, shiftToday: today >= JOBS.shiftsPerDay, energy: JOBS.shiftEnergy };

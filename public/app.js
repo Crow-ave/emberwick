@@ -2486,7 +2486,7 @@ function panelNear() {
     h += `<p class="muted small">${t('near.cashHelp', { n: me.coins })}</p>`;
     if (me.withdrawn) h += `<p class="muted small">${t('near.withdrawn', { n: me.withdrawn })}</p>`;
     h += chainOk()
-      ? `<div class="row"><input id="near-amount" type="number" min="1" step="1" max="${Math.floor(me.coins)}" value="${Math.min(10, Math.floor(me.coins))}"><button class="primary" data-act="near-withdraw" ${me.coins < 1 ? 'disabled' : ''}>${t('near.cashout')}</button></div>`
+      ? `<p class="muted small">${t('near.canOut', { n: Math.floor(me.withdrawable || 0), s: me.startCoins || 0 })}</p><div class="row"><input id="near-amount" type="number" min="1" step="1" max="${Math.floor(me.withdrawable || 0)}" value="${Math.min(10, Math.floor(me.withdrawable || 0))}"><button class="primary" data-act="near-withdraw" ${(me.withdrawable || 0) < 1 ? 'disabled' : ''}>${t('near.cashout')}</button></div>`
       : `<p class="muted small">${t('near.needReady')}</p>`;
     if ((me.nearVerified || ui.meteorAccount === me.near) && meteor) {
       h += `<p class="muted small">${t('near.depositHelp', { bank: esc(c.accounts.bank) })}</p>` +

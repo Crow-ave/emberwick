@@ -1,5 +1,5 @@
 // Runs the economy for 100 game days and checks that it stays healthy.
-import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable } from './economy.js';
 import { TOKEN, RULES } from './world.js';
 
 const state = createState(42);
@@ -185,6 +185,18 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   const acts = checkAiActions(state, hp, 'carpenter', [{ type: 'haggle', side: 'buy', good: g, qty: 1, price: 0.48 }, { type: 'haggle', side: 'buy', good: 'dragon', qty: 1, price: 1 }, { type: 'haggle', side: 'sell', good: 'wood', qty: 1, price: 2 }]);
   console.log('Haggle from conversation:', JSON.stringify(acts));
   if (acts.length !== 1 || acts[0].type !== 'haggle' || acts[0].offer !== 0.5 || acts[0].good !== g) fail('a haggle action from conversation was not checked correctly');
+}
+// cash-out: the starting money stays in the village, and one NEAR wallet links to one character only
+{
+  const a = joinPlayer(state, 'Saver', 'miner').id, b = joinPlayer(state, 'Twin', 'miner').id;
+  const l1 = linkWallet(state, a, 'saver.testnet'), l2 = linkWallet(state, b, 'saver.testnet');
+  const start = state.players[a].startCoins;
+  const early = withdraw(state, a, 1);
+  state.balances['player:' + a] += 30; state.balances.newcomerFund -= 30; // as if earned
+  const can = withdrawable(state, a), over = withdraw(state, a, can + 1), ok = withdraw(state, a, can);
+  console.log('Cash-out rules: start', start, '| right away', early.code, '| after earning 30 can', can, over.code, ok.ok, '| same wallet twice', l1.ok, l2.code);
+  if (early.ok || early.code !== 'err.startLocked' || can !== 30 || over.ok || !ok.ok || !l1.ok || l2.ok || l2.code !== 'err.walletUsed') fail('the cash-out rules did not hold');
+  if (Math.abs(totalMoney(state) - TOKEN.totalSupply) > 0.05) fail('money total changed with cash-out');
 }
 // daily food: an active player eats 2 bread each morning (bag first, then the bakery); without money they wake up hungry
 {
