@@ -10,12 +10,18 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'emberwick-http-'));
 const PORT = 30000 + Math.floor(Math.random() * 20000);
 const env = { ...process.env, PORT: String(PORT), EMBERWICK_SAVE: path.join(dir, 'state.json'), EMBERWICK_KEYS: path.join(dir, 'none.json'), EMBERWICK_NEAR: 'off', EMBERWICK_AI: '0', NEARAI_API_KEY: '' };
+fs.writeFileSync(path.join(dir, 'ai-proofs.json'), JSON.stringify([{ ok: true, chatId: 'chat-kept', request: '{}', response: '{}' }])); // a proof from before a restart
 const srv = spawn(process.execPath, [path.join(here, 'index.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let fails = 0;
 const check = (ok, what) => { console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) fails++; };
 const post = async (p, body) => { const r = await fetch(`http://127.0.0.1:${PORT}${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, j: await r.json().catch(() => ({})) }; };
 try {
   for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${PORT}/api/world`); break; } catch { await new Promise((r) => setTimeout(r, 200)); } }
+  console.log('== NEAR AI proofs');
+  const pr = await fetch(`http://127.0.0.1:${PORT}/api/ai/proof`);
+  check(pr.status === 200 && (await pr.json()).chatId === 'chat-kept', 'signed answers kept from before a restart are still served');
+  const old = await fetch(`http://127.0.0.1:${PORT}/api/ai/proof?chat=nope`);
+  check(old.status === 404, 'an unknown answer gives a clear 404');
   console.log('== player keys');
   const a = await post('/api/join', { name: 'Alice', path: 'miner' });
   check(a.j.ok && typeof a.j.key === 'string' && a.j.key.length >= 32, 'joining returns a long random key');

@@ -9,7 +9,7 @@ import { markSeen, awaySummary, giveSeal, createState, ensureContracts, moneyHis
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
-import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, aiProof, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
+import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, aiProof, PROOFS_KEPT, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -39,6 +39,10 @@ async function bankBalance() {
 }
 const PUBLIC = path.join(root, 'public');
 const SAVE = process.env.EMBERWICK_SAVE || path.join(root, 'data', 'state.json'); // a second village (e.g. for the online demo) can keep its own save
+// the last signed NEAR AI answers are kept next to the save, so a server restart does not empty /api/ai/proof
+const PROOFS_FILE = path.join(path.dirname(SAVE), 'ai-proofs.json');
+try { const kept = JSON.parse(fs.readFileSync(PROOFS_FILE, 'utf8')); if (Array.isArray(kept)) ai.proofs = kept.slice(0, PROOFS_KEPT); } catch {}
+ai.onProof = (list) => { try { fs.mkdirSync(path.dirname(PROOFS_FILE), { recursive: true }); fs.writeFileSync(PROOFS_FILE + '.tmp', JSON.stringify(list)); fs.renameSync(PROOFS_FILE + '.tmp', PROOFS_FILE); } catch (e) { console.log('[AI] could not keep the proofs:', e.message); } };
 const PORT = Number(process.env.PORT) || 3000;
 
 let state;
@@ -943,7 +947,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/ai/proof') {
     const d = Number(url.searchParams.get('day')), rec = d ? (state.aiLog || []).find((x) => x.day === d) : null;
     const p = aiProof(url.searchParams.get('chat') || (rec && rec.proof && rec.proof.chatId) || null);
-    if (!p) return sendJson(res, 404, { ok: false, error: rec ? 'the proof for that day is no longer kept (the server keeps the last 5 answers since it started)' : 'no signed answer yet' });
+    if (!p) return sendJson(res, 404, { ok: false, error: rec ? `the proof for that day is no longer kept (the server keeps the last ${PROOFS_KEPT} signed answers); the plan's hash for that day is still on NEAR (/api/ai/plan?day=N)` : 'no signed answer yet: the first one comes with the next village morning while someone is playing (open the game and click around, then reload)' });
     return sendJson(res, 200, p);
   }
   if (url.pathname === '/api/ai/attestation') {

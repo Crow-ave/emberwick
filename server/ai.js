@@ -485,9 +485,11 @@ export async function verifyAnswer(call) {
   return keep(out, call);
 }
 // the last few proofs with the exact request and response bytes, so anyone can re-hash them
+export const PROOFS_KEPT = 10;
 function keep(out, call) {
-  ai.proofs = [{ ...out, request: call.sent, response: call.received }, ...(ai.proofs || [])].slice(0, 5);
+  ai.proofs = [{ ...out, request: call.sent, response: call.received }, ...(ai.proofs || [])].slice(0, PROOFS_KEPT);
   ai.lastProof = out;
+  if (ai.onProof) try { ai.onProof(ai.proofs); } catch {}
   return out;
 }
 export const aiProof = (chatId) => (ai.proofs || []).find((x) => !chatId || x.chatId === chatId) || null;

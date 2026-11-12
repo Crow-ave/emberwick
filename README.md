@@ -286,7 +286,7 @@ The village keeps living when you log off, and the game shows you what that mean
 
 ## Proof on chain
 
-- **Real cross-chain swap made from the game:** 0.005 SOL on Solana → 0.1205 NEAR on `emberwick.near`: [NEAR Intents explorer](https://explorer.near-intents.org/transactions/8pbsZb3giBZLihUSarvtvQDR4gNbz5Td7WP4gdCyRMDC) · [delivery on NearBlocks](https://nearblocks.io/txns/CuxvRFFyGCpXyvQh8kB5QnpN3FdhSLfv4pxW7ScT6Ad6). Total cost about 1%.
+- **Real cross-chain swap made from the game:** 0.005 SOL on Solana → 0.1205 NEAR (listed as wNEAR in the Intents explorer) on `emberwick.near`: [NEAR Intents explorer](https://explorer.near-intents.org/transactions/8pbsZb3giBZLihUSarvtvQDR4gNbz5Td7WP4gdCyRMDC) · [delivery on NearBlocks](https://nearblocks.io/txns/CuxvRFFyGCpXyvQh8kB5QnpN3FdhSLfv4pxW7ScT6Ad6). Total cost about 1%.
 - **Village accounts on NEAR testnet (the author's own village, the one in the screenshots):** [village bank](https://testnet.nearblocks.io/address/emberwick-village.testnet) · [EMWK token](https://testnet.nearblocks.io/address/token.emberwick-village.testnet) · [land deeds](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet) · [treasury](https://testnet.nearblocks.io/address/treasury.emberwick-village.testnet) · [the tailor's own account](https://testnet.nearblocks.io/address/tailor.emberwick-village.testnet) · [the baker's own account](https://testnet.nearblocks.io/address/bakery.emberwick-village.testnet) (agent-to-agent trade: its payments to the miller, and the innkeeper's payments for bread).
 - **Online demo village:** [emberwick-village-2.testnet](https://testnet.nearblocks.io/address/emberwick-village-2.testnet) with token [emwk.emberwick-village-2.testnet](https://testnet.nearblocks.io/address/emwk.emberwick-village-2.testnet). Free hosting: the first visit after a quiet spell can take about a minute, and the online village restarts from day 1 after a redeploy.
 
@@ -538,7 +538,7 @@ The server is the single source of truth for the game state (`data/state.json`).
 | GET | `/api/state-records` | All kept village records (about 60 days) with their hashes, for `tools/archive-records.mjs` |
 | GET | `/api/solvency` | The bank's EMWK on NEAR, transfers on the way, what the game owes, and the cover |
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
-| GET | `/api/ai/proof?day=N` | Signature check of that day's plan answer, with the exact request and response bytes |
+| GET | `/api/ai/proof?day=N` | Signature check of that day's plan answer, with the exact request and response bytes (the last 10 signed answers are kept; without `day` it shows the newest). Look for `"ok": true` with `signatureOk`, `attested`, `requestHashOk` and `responseHashOk` all true |
 | POST | `/api/ai/swap` | Read a swap sentence into the swap form |
 | GET | `/api/away?player=` | What changed for a player since they last played (shown once) |
 | GET | `/api/system` | Bank, gas, queue, NEAR AI and the last 50 log lines |
