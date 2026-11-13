@@ -2,7 +2,7 @@
 
 **A living village economy on NEAR.** AI craftsmen with their own NEAR wallets run the shops, think privately with NEAR AI Cloud inside a TEE, and trade in a real token economy on NEAR testnet. Players work, haggle, rent homes, own land as NFTs and vote in a village council whose results are recorded on NEAR, and the village exchange makes **real cross-chain swaps on mainnet through NEAR Intents**, from the player's own wallet.
 
-**▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** (desktop and phone). Press **Judge tour** in the top bar for a two-minute walk through every NEAR part.
+**▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** (desktop and phone). Press **Judge tour** in the top bar for a two-minute walk through every NEAR part. Source: [github.com/Crow-ave/emberwick](https://github.com/Crow-ave/emberwick) (MIT, see [LICENSE](LICENSE)).
 
 **Tracks:** Games With Real Economies · Agent Economy · Privacy & Private AI · NFTs That Do Something.
 
@@ -165,7 +165,7 @@ Each feature lists what it does, how it works, and where it lives in the code.
 ### 2. AI craftsmen with NEAR AI Cloud
 
 - **Morning plan:** once per village morning, one request gives the model the real numbers of every shop (stock, target, prices, recent sales, winter, dragon, drought, the live NEAR price). The model returns a plan per craftsman: what to stock up on, what to discount, and why. The shop panel shows it with the model name.
-- **Talk to get things done:** ask any craftsman a question in any of the six languages. The answer is JSON: words plus up to three suggested actions (buy, sell, order, credit, go to a place). The game checks each action against the rules and shows it as a button; nothing happens until the player presses it. Example: ask the woodcutter for a sofa and he sends you to the carpenter and offers lumber.
+- **Talk to get things done:** ask any craftsman a question in any of the game's languages (NEAR AI answers in the player's language). The answer is JSON: words plus up to three suggested actions (buy, sell, order, credit, go to a place). The game checks each action against the rules and shows it as a button; nothing happens until the player presses it. Example: ask the woodcutter for a sofa and he sends you to the carpenter and offers lumber.
 - **Memory and credit:** craftsmen remember the last lines of a conversation. A hungry player with almost no money can ask the baker or innkeeper for food on credit; the rules say what is possible, the model decides, and the debt is collected the next morning (3-day deadline).
 - **Orders:** bring your own materials and pay a work fee for the product (e.g. 3 wool → a coat).
 - **Haggling:** every counter row has a 🤝 button. The rules decide the outcome from stock, target and trading skill; NEAR AI only voices it in character. A price a player names in conversation ("can I have it for 5?") becomes the same kind of offer: the craftsman never bargains in words, it offers a 🤝 button with that price, and the rules decide. Lowballing twice ends haggling for the day.
@@ -260,7 +260,7 @@ Every real swap (a split counts once) puts one **Village seal** in the player's 
 ### 10. Around the game
 
 - **Judge tour:** an eleven-step guided tour of every NEAR part with links to the accounts.
-- **Six languages:** English, Turkish, French, German, Russian, Chinese (`public/i18n.js`).
+- **Languages:** English and Turkish are complete. French, German, Russian and Chinese cover the core game (village, shops, council, NEAR panel); the newest panels (Orin, Emberwick City, wallet menu, real swaps, Judge tour) fall back to English there (`public/i18n.js`).
 - **Village chat** with speech bubbles on the map; player profiles.
 - **Sounds and music** made live in the browser, no sound files.
 - **Phone layout** for small screens.
@@ -605,6 +605,12 @@ On first start the game creates its NEAR testnet accounts and keeps the keys in 
 | `EMBERWICK_KEYS_JSON` | Village bank keys as a secret environment variable (for hosts such as Render) |
 | `EMBERWICK_SAVE` | Where the village is saved (default `data/state.json`) |
 | `PORT` | HTTP port (default 3000) |
+| `EMBERWICK_DEMO=1` | Demo speed (`npm run demo`): a game day lasts 2 minutes instead of 8, for recording videos |
+| `EMBERWICK_KEYS` | Where the village bank keys file is (default `~/.emberwick/near-keys.json`) |
+| `EMBERWICK_IDLE_MIN` | Minutes without a click before NEAR AI morning plans pause (default 30) |
+| `EMBERWICK_AWAY_MIN` | Minutes away before the "while you were away" summary is shown (default 10) |
+| `NEARAI_BASE` | NEAR AI Cloud API address (default `https://cloud-api.near.ai/v1`) |
+| `EMBERWICK_ONECLICK`, `EMBERWICK_OMNI`, `EMBERWICK_LIFI`, `EMBERWICK_PRICES`, `EMBERWICK_NEARRPC`, `EMBERWICK_SOLRPC`, `EMBERWICK_EVMRPC` | Addresses of the outside services (NEAR Intents 1Click, Omni bridge, LI.FI, price feed, NEAR/Solana/EVM RPC). Only for offline tests, which point them at local mock servers; leave unset to use the real ones |
 
 To run a second, separate village on a host with its own NEAR bank: run `npm run online-bank` once on your computer (new bank, keys in `~/.emberwick/online-keys.json`, separate save), then put that file's contents in the host's secret variable `EMBERWICK_KEYS_JSON`. Two villages must never share one bank.
 
@@ -626,7 +632,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | `tools/archive-records.mjs` | Keeps your own copy of the daily village records and checks each hash |
 | `public/app.js` | Panels, swap card, wallets, seal, judge tour |
 | `public/iso.js`, `public/scenes.js` | Isometric map and close-up scenes |
-| `public/i18n.js` | Six languages |
+| `public/i18n.js` | Texts: English and Turkish complete; French, German, Russian, Chinese partly (missing keys fall back to English) |
 | `public/sound.js` | Sounds and music made in the browser |
 | `public/vendor/wallets.js` | Wallet bridge bundle (source `wallets.src.mjs`): NEAR, Solana and EVM sending, balances |
 | `public/vendor/near-wallet.js` | Meteor Wallet link for NEP-413 (source in `tools/wallet/`) |
