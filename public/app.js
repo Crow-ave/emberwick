@@ -588,9 +588,33 @@ function aiProof(short) {
   if (at && at.signer) h += `<p class="small ai-proof">🔒 ${t(at.gatewayOnly ? 'ai.attestGw' : 'ai.attest', { s: esc(String(at.signer).slice(0, 10)) + '…', q: at.quote ? 'Intel TDX ✓' : '' })} · <a href="/api/ai/attestation" target="_blank" rel="noopener">${t('ai.attestLink')}</a></p>`;
   const pr = rec && rec.proof;
   if (pr) h += `<p class="small ai-proof">✍️ ${pr.ok ? t('ai.signOk', { s: esc(String(pr.signer || '').slice(0, 10)) + '…' }) : t('ai.signBad', { e: esc(String(pr.error || '?').slice(0, 60)) })}${pr.chatId ? ` · <a href="/api/ai/proof?day=${rec.day}" target="_blank" rel="noopener">${t('ai.signLink')}</a>` : ''}</p>`;
+  const L = view.chain && view.chain.ledger;
+  if (rec && L && L.status === 'ready' && ((view.ledger && view.ledger.done) || []).some((x) => x.kind === 'ai_plan' && x.day === rec.day)) {
+    const k = 'ai_plan:' + rec.day, r = (ui.ledgerCheck || {})[k];
+    h += `<p class="small ai-proof">🔒 ${t('ai.ledgerLine', { d: rec.day })} <button class="ledger-btn" data-ledgercheck="${k}"${r && r.busy ? ' disabled' : ''}>${t(r && r.busy ? 'ledger.checking' : 'ledger.check')}</button></p>` +
+      (r && !r.busy ? `<div class="ledger-res ${r.ok ? 'ok' : 'bad'}">${r.html}</div>` : '');
+  }
   return h;
 }
 
+// the Village Ledger (our own contract) with a "Check it yourself" button per record; shown near the top of the NEAR panel
+function ledgerSection(c) {
+  let h = '';
+  if (c.ledger && c.ledger.contract) {
+    const L = c.ledger, done = (view.ledger && view.ledger.done) || [];
+    h += `<p class="sub2">${t('near.ledger')}</p><p class="muted small">${t('near.ledger.note')}</p>`;
+    if (L.status === 'ready') {
+      h += `<p>${exLink('address/' + L.contract, esc(L.contract))}${L.locked ? ` · <span class="nocut">🔒 ${t('near.ledger.locked')}</span>` : ''}</p>`;
+      h += done.length ? `<p class="muted small">${t('ledger.checkNote')}</p><ul class="decided ledger-list">${done.slice(0, 6).map((x) => {
+        const k = x.kind + ':' + x.day, r = (ui.ledgerCheck || {})[k];
+        return `<li>${t('near.ledger.' + (x.kind === 'state' ? 'state' : 'plan'), { n: x.day })} · <code>${esc(String(x.sha256).slice(0, 12))}…</code>${x.tx ? ' · ' + exLink('txns/' + x.tx, '⛓', 'near-link small') : ''}` +
+          ` <button class="ledger-btn" data-ledgercheck="${esc(k)}"${r && r.busy ? ' disabled' : ''}>${t(r && r.busy ? 'ledger.checking' : 'ledger.check')}</button>` +
+          (r && !r.busy ? `<div class="ledger-res ${r.ok ? 'ok' : 'bad'}">${r.html}</div>` : '') + '</li>';
+      }).join('')}</ul>` : `<p class="muted small">${t('near.ledger.none')}</p>`;
+    } else h += `<p>${esc(L.contract)} · ${esc(L.status)}${L.detail && L.detail.amount ? ` (${t('near.st.need-funds', { n: L.detail.amount })} <code class="addr">${esc(L.detail.address)}</code>)` : ''}</p>`;
+  }
+  return h;
+}
 // the craftsman's NEAR AI mind: today's plan, and a box to ask them something
 function aiBox(id, n) {
   const st = view.ai || {};
@@ -1777,9 +1801,9 @@ function pollCurrent() { const g = swapGroup(curSwap()).filter((x) => !REAL_END.
 // ---------- what NEAR does in Emberwick, visible at a glance ----------
 const NEAR_FEATURES = [
   { k: 'agents', icon: '🤖', tour: 1 },
-  { k: 'tee', icon: '🔒', tour: 1 },
-  { k: 'intents', icon: '🌉', tour: 5 },
-  { k: 'economy', icon: '⛓', tour: 3 },
+  { k: 'tee', icon: '🔒', tour: 2 },
+  { k: 'intents', icon: '🌉', tour: 6 },
+  { k: 'economy', icon: '⛓', tour: 4 },
 ];
 function nearInside(clickable) {
   return `<div class="nearinside"><div class="ni-title">${t('ni.title')}</div><div class="ni-grid">${NEAR_FEATURES.map((f) =>
@@ -2516,6 +2540,7 @@ function panelNear() {
     `<div class="row"><button data-act="near-copy" data-copy="${esc(c.lowGas.address)}">${t('near.copy')}</button>` +
     `<a class="btnlink" href="${c.wallet}" target="_blank" rel="noopener">${t('near.openWallet')}</a></div></div>`;
   else if (!['ready', 'setup', 'need-funds'].includes(st)) h += `<div class="status">${t('near.st.' + (st in { off: 1, starting: 1, error: 1 } ? st : 'starting'))}</div>`;
+  if (st === 'ready') h += ledgerSection(c);
 
   if (c.accounts && st === 'ready') {
     const a = c.accounts, bal = c.balances || {};
@@ -2527,19 +2552,6 @@ function panelNear() {
     h += c.feed.length ? feedList(c.feed.slice(0, 15), false) : `<p class="muted small">${t('near.noFeed')}</p>`;
     h += `<p class="sub2">${t('near.token')}</p><p>${exLink('token/' + a.token, esc(a.token))}</p>`;
     if (c.deeds && c.deeds.contract) h += `<p class="sub2">${t('near.deeds')}</p><p>${c.deeds.status === 'ready' ? exLink('nft-token/' + c.deeds.contract, esc(c.deeds.contract)) : esc(c.deeds.contract) + ' · ' + esc(c.deeds.status) + (c.deeds.detail && c.deeds.detail.amount ? ` (${t('near.st.need-funds', { n: c.deeds.detail.amount })} <code class="addr">${esc(c.deeds.detail.address)}</code>)` : '')}</p>`;
-    if (c.ledger && c.ledger.contract) {
-      const L = c.ledger, done = (view.ledger && view.ledger.done) || [];
-      h += `<p class="sub2">${t('near.ledger')}</p><p class="muted small">${t('near.ledger.note')}</p>`;
-      if (L.status === 'ready') {
-        h += `<p>${exLink('address/' + L.contract, esc(L.contract))}${L.locked ? ` · <span class="nocut">🔒 ${t('near.ledger.locked')}</span>` : ''}</p>`;
-        h += done.length ? `<p class="muted small">${t('ledger.checkNote')}</p><ul class="decided ledger-list">${done.slice(0, 6).map((x) => {
-          const k = x.kind + ':' + x.day, r = (ui.ledgerCheck || {})[k];
-          return `<li>${t('near.ledger.' + (x.kind === 'state' ? 'state' : 'plan'), { n: x.day })} · <code>${esc(String(x.sha256).slice(0, 12))}…</code>${x.tx ? ' · ' + exLink('txns/' + x.tx, '⛓', 'near-link small') : ''}` +
-            ` <button class="ledger-btn" data-ledgercheck="${esc(k)}"${r && r.busy ? ' disabled' : ''}>${t(r && r.busy ? 'ledger.checking' : 'ledger.check')}</button>` +
-            (r && !r.busy ? `<div class="ledger-res ${r.ok ? 'ok' : 'bad'}">${r.html}</div>` : '') + '</li>';
-        }).join('')}</ul>` : `<p class="muted small">${t('near.ledger.none')}</p>`;
-      } else h += `<p>${esc(L.contract)} · ${esc(L.status)}${L.detail && L.detail.amount ? ` (${t('near.st.need-funds', { n: L.detail.amount })} <code class="addr">${esc(L.detail.address)}</code>)` : ''}</p>`;
-    }
     h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, a.deposits, ...Object.values(a.npcs)].filter(Boolean).map(row).join('')}</table>`;
   }
 
@@ -2672,6 +2684,7 @@ function renderNearPill() {
   const pill = $('near-pill');
   pill.className = 'near-pill st-' + c.status;
   $('near-text').textContent = t('near.pill.' + c.status);
+  pill.title = t('near.pillHint');
 }
 
 // ---------- character card and goal ----------
@@ -2687,7 +2700,7 @@ function renderHud() {
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)} <button class="editname" data-rename="1" title="${esc(t('rename.title'))}" aria-label="${esc(t('rename.title'))}">✎</button></h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
     `<div class="energy" id="energy-row" title="${esc(t('rank.' + String(me.rank).toLowerCase()))}">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.hungry || me.food || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.hungry ? `<span class="cond bad">${t('cond.hungry')}</span>` : me.food && me.food.fromBag + me.food.bought + (me.food.credit || 0) > 0 ? `<span class="cond ok">${t('cond.ate', { n: me.food.fromBag + me.food.bought + (me.food.credit || 0), c: me.food.paid ? t('cond.atePaid', { n: me.food.paid }) : '' })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
-    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button></div>` +
+    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button><button class="chip strong proofchip" data-proofs="1">${t('hud.proofs')}</button></div>` +
     (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}" title="${esc(t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage }))}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}" title="${esc(t('me.homeInfo', { r: me.home.rent, left: dayLeftText() }))}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
   '';
   const q = me.questInfo;
@@ -3326,6 +3339,7 @@ document.body.addEventListener('click', (e) => {
     if (me && window.EmberwickWallet && (!me.near || ui.challenge)) nearMeteor();
     return;
   }
+  if (e.target.closest('[data-proofs]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = document.querySelector('.ledger-list') || document.querySelector('#panel .sub2'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
   if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); watchSys(); return; }
   if (e.target.closest('[data-sysrefresh]')) { loadSys(); return; }
   if (e.target.closest('[data-awayclose]')) { ui.selected = null; ui.away = null; render(); return; }

@@ -7,7 +7,7 @@
 **Tracks:** Games With Real Economies · Agent Economy · Privacy & Private AI · NFTs That Do Something.
 
 **What sets it apart**
-- **AI you can verify, not just trust.** The craftsmen's plans come from NEAR AI Cloud in a TEE; the game checks every plan's signature against the attested key, and writes the plan's hash to NEAR. In the game, **Check it yourself** lets your own browser re-hash a record and read it straight from NEAR, without asking our server.
+- **AI you can verify, not just trust.** The craftsmen's plans come from NEAR AI Cloud in a TEE; the game checks every plan's signature against the attested key, and writes the plan's hash to NEAR. In the game, press **🔒 Check it on NEAR** on your character card (or the 🔒 Private AI card), then **Check it yourself**: your own browser re-hashes a record and reads it straight from NEAR, without asking our server.
 - **Our own locked contract.** The Village Ledger keeps each day's state hash and AI plan hash, once; its account has no key, so nobody, us included, can change it.
 - **Real money paths.** A fixed-supply NEP-141 token that players can cash out to their own NEAR wallet, and real cross-chain swaps on mainnet through NEAR Intents.
 - **Land that follows its NFT.** Send a deed to another player's wallet and the land and house follow it in the game.
