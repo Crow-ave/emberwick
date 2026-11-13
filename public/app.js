@@ -2555,6 +2555,7 @@ function panelNear() {
     h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, a.deposits, ...Object.values(a.npcs)].filter(Boolean).map(row).join('')}</table>`;
   }
 
+  h += keepBox();
   h += `<p class="sub2">${t('near.wallet')}</p>`;
   const meteor = chainOk() && window.EmberwickWallet;
   if (!me) h += `<p class="muted small">${t('near.joinFirst')}</p>`;
@@ -2700,7 +2701,7 @@ function renderHud() {
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)} <button class="editname" data-rename="1" title="${esc(t('rename.title'))}" aria-label="${esc(t('rename.title'))}">✎</button></h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
     `<div class="energy" id="energy-row" title="${esc(t('rank.' + String(me.rank).toLowerCase()))}">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.hungry || me.food || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.hungry ? `<span class="cond bad">${t('cond.hungry')}</span>` : me.food && me.food.fromBag + me.food.bought + (me.food.credit || 0) > 0 ? `<span class="cond ok">${t('cond.ate', { n: me.food.fromBag + me.food.bought + (me.food.credit || 0), c: me.food.paid ? t('cond.atePaid', { n: me.food.paid }) : '' })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
-    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button><button class="chip strong proofchip" data-proofs="1">${t('hud.proofs')}</button></div>` +
+    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button><button class="chip strong proofchip" data-proofs="1">${t('hud.proofs')}</button>${!(me.logins || []).length && !(me.near && me.nearVerified) ? `<button class="chip keepchip" data-keepchip="1">${t('hud.keep')}</button>` : ''}</div>` +
     (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}" title="${esc(t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage }))}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}" title="${esc(t('me.homeInfo', { r: me.home.rent, left: dayLeftText() }))}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
   '';
   const q = me.questInfo;
@@ -3254,6 +3255,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  const kl = e.target.closest('[data-keeplink]');
+  if (kl) { linkLogin(kl.dataset.keeplink); return; }
   const lc = e.target.closest('[data-ledgercheck]');
   if (lc) { checkLedger(lc.dataset.ledgercheck); return; }
   const rc = e.target.closest('[data-realcancel]');
@@ -3339,6 +3342,7 @@ document.body.addEventListener('click', (e) => {
     if (me && window.EmberwickWallet && (!me.near || ui.challenge)) nearMeteor();
     return;
   }
+  if (e.target.closest('[data-keepchip]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
   if (e.target.closest('[data-proofs]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = document.querySelector('.ledger-list') || document.querySelector('#panel .sub2'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
   if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); watchSys(); return; }
   if (e.target.closest('[data-sysrefresh]')) { loadSys(); return; }
@@ -3410,7 +3414,96 @@ function showJoin() {
   $('paths').innerHTML = Object.entries(world.paths).map(([k, p]) =>
     `<div class="path${k === pathChoice ? ' on' : ''}" data-path="${k}" tabindex="0" role="radio" aria-checked="${k === pathChoice}"><b>${t('path.' + k)}</b>${t('blurb.' + k)}<br><span class="muted">${p.coins} EMWK${Object.keys(p.items).length ? ' + ' + Object.keys(p.items).map(goodName).join(', ') : ''}</span></div>`).join('');
   $('join-near').innerHTML = nearInside(false);
+  renderSignin();
   $('join').hidden = false;
+}
+// ---------- sign in with a wallet from any chain (NEAR, Solana, EVM): the wallet signs a one-time message ----------
+const WALLETS = { near: 'signin.near', sol: 'signin.sol', evm: 'signin.evm' };
+const b64 = (u8) => btoa(String.fromCharCode(...u8));
+async function signinChallenge(chain, address, purpose) {
+  const q = new URLSearchParams({ chain, address, purpose, ...(purpose === 'link' ? { player: playerId } : {}) });
+  const r = await (await fetch('/api/signin/challenge?' + q)).json();
+  if (!r.ok) throw new Error(errText(r));
+  return r;
+}
+async function nearInfo() {
+  let c = view && view.chain;
+  if (!c || !c.network) { try { c = (await (await fetch('/api/state')).json()).chain; } catch { /* below */ } }
+  if (!c || !c.network || !window.EmberwickWallet) throw new Error(t('signin.nearOff'));
+  return c;
+}
+// the wallet signs; returns what the server needs to check it. NEAR needs two clicks (the wallet opens twice).
+async function walletSign(chain, purpose) {
+  if (chain === 'evm') {
+    const e = window.ethereum;
+    if (!e) throw new Error(t('signin.noWallet', { w: 'MetaMask' }));
+    const [address] = await e.request({ method: 'eth_requestAccounts' });
+    const ch = await signinChallenge('evm', address, purpose);
+    const hex = '0x' + [...new TextEncoder().encode(ch.message)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return { nonce: ch.nonce, signature: await e.request({ method: 'personal_sign', params: [hex, address] }) };
+  }
+  if (chain === 'sol') {
+    const w = (window.phantom && window.phantom.solana) || window.solflare || window.solana;
+    if (!w || !w.signMessage) throw new Error(t('signin.noWallet', { w: 'Phantom' }));
+    const r = await w.connect();
+    const address = String((r && r.publicKey) || w.publicKey);
+    const ch = await signinChallenge('sol', address, purpose);
+    const out = await w.signMessage(new TextEncoder().encode(ch.message), 'utf8');
+    return { nonce: ch.nonce, signature: b64(new Uint8Array((out && out.signature) || out)) };
+  }
+  const c = await nearInfo(), W = window.EmberwickWallet;
+  if (!ui.nearSign || ui.nearSign.purpose !== purpose) {
+    const account = await W.signIn(c.network, c.accounts.token);
+    if (!account) throw new Error(t('signin.cancelled'));
+    ui.nearSign = { purpose, account, ch: await signinChallenge('near', account, purpose) };
+    return null; // step two is its own click
+  }
+  const { ch } = ui.nearSign; ui.nearSign = null;
+  const signed = await W.signMessage(c.network, { message: ch.message, recipient: ch.recipient, nonce: ch.nonce });
+  return { nonce: ch.nonce, signature: signed && signed.signature, publicKey: signed && signed.publicKey, page: location.href, origin: location.origin };
+}
+function renderSignin() {
+  const box = $('join-signin'); if (!box) return;
+  box.innerHTML = `<p class="label">${t('signin.title')}</p><p class="muted small">${t('signin.text')}</p><div class="row signin-row">` +
+    Object.keys(WALLETS).map((k) => `<button type="button" data-signin="${k}"${ui.signinBusy ? ' disabled' : ''}>${ui.nearSign && k === 'near' && ui.nearSign.purpose === 'login' ? t('signin.nearNext', { id: esc(ui.nearSign.account) }) : t(WALLETS[k])}</button>`).join('') +
+    `</div>${ui.signinMsg ? `<p class="small ${ui.signinMsg.bad ? 'closed' : 'ok'}">${ui.signinMsg.text}</p>` : ''}`;
+}
+async function signinWith(chain) {
+  ui.signinBusy = true; ui.signinMsg = { text: t('signin.busy') }; renderSignin();
+  try {
+    const s = await walletSign(chain, 'login');
+    if (!s) { ui.signinMsg = { text: t('signin.nearStep') }; return; }
+    const r = await post('/api/signin/login', s);
+    if (!r.ok) { ui.signinMsg = { bad: true, text: errText(r) }; return; }
+    store.set(r.id); store.setKey(r.key);
+    ui.signinMsg = { text: t('signin.ok', { name: esc(r.name) }) }; renderSignin();
+    setTimeout(() => location.reload(), 600);
+  } catch (e) { ui.nearSign = null; ui.signinMsg = { bad: true, text: t('signin.failed', { why: esc(String((e && e.message) || e).slice(0, 120)) }) }; }
+  finally { ui.signinBusy = false; renderSignin(); }
+}
+$('join-signin').addEventListener('click', (e) => { const b = e.target.closest('[data-signin]'); if (b) signinWith(b.dataset.signin); });
+// in the game: tie this villager to a wallet, so it can sign in anywhere
+async function linkLogin(chain) {
+  ui.keepBusy = true; ui.keepMsg = null; renderPanel();
+  try {
+    const s = await walletSign(chain, 'link');
+    if (!s) { ui.keepMsg = { text: t('signin.nearStep') }; return; }
+    const r = await post('/api/signin/link', { player: playerId, ...s });
+    if (r.state) view = r.state;
+    ui.keepMsg = r.ok ? { text: t('keep.done', { w: t(WALLETS[chain]) }) } : { bad: true, text: errText(r) };
+  } catch (e) { ui.nearSign = null; ui.keepMsg = { bad: true, text: t('signin.failed', { why: esc(String((e && e.message) || e).slice(0, 120)) }) }; }
+  finally { ui.keepBusy = false; render(); }
+}
+function keepBox() {
+  const me = view.player; if (!me) return '';
+  const logins = (me.logins || []).map((l) => `${t(WALLETS[l.chain])} <code>${esc(shortAddr(l.address))}</code>`);
+  let h = `<p class="sub2" id="keep-box">🔑 ${t('keep.title')}</p><p class="muted small">${t('keep.text')}</p>`;
+  if (me.near && me.nearVerified) h += `<p class="ok small">${t('keep.nearCounts', { id: esc(me.near) })}</p>`;
+  if (logins.length) h += `<p class="ok small">${t('keep.linked', { list: logins.join(' · ') })}</p>`;
+  h += `<div class="row signin-row">${['sol', 'evm'].map((k) => `<button data-keeplink="${k}"${ui.keepBusy ? ' disabled' : ''}>${ui.nearSign && k === 'near' && ui.nearSign.purpose === 'link' ? t('signin.nearNext', { id: esc(ui.nearSign.account) }) : t('keep.link', { w: t(WALLETS[k]) })}</button>`).join('')}</div>`;
+  if (!(me.near && me.nearVerified)) h += `<p class="muted small">${t('keep.nearHint')}</p>`;
+  if (ui.keepMsg) h += `<p class="small ${ui.keepMsg.bad ? 'closed' : 'ok'}">${ui.keepMsg.text}</p>`;
+  return h;
 }
 $('paths').addEventListener('click', (e) => {
   const d = e.target.closest('.path');

@@ -422,7 +422,7 @@ export async function fetchAttestation() {
 // the keys in the model's attestation report. Only then is the answer counted as signed by the TEE.
 const sha256hex = (t) => crypto.createHash('sha256').update(t, 'utf8').digest('hex');
 const enc = new TextEncoder();
-function recoverEip191(text, sigHex) {
+export function recoverEip191(text, sigHex) {
   const m = enc.encode(text), pre = enc.encode(`\x19Ethereum Signed Message:\n${m.length}`);
   const h = keccak_256(new Uint8Array([...pre, ...m]));
   const b = Buffer.from(String(sigHex).replace(/^0x/, ''), 'hex');

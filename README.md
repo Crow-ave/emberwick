@@ -11,6 +11,7 @@
 - **Our own locked contract.** The Village Ledger keeps each day's state hash and AI plan hash, once; its account has no key, so nobody, us included, can change it.
 - **Real money paths.** A fixed-supply NEP-141 token that players can cash out to their own NEAR wallet, and real cross-chain swaps on mainnet through NEAR Intents.
 - **Land that follows its NFT.** Send a deed to another player's wallet and the land and house follow it in the game.
+- **Sign in with any wallet.** NEAR, Phantom or MetaMask: no password, no e-mail, and your villager follows you to any device.
 
 ![The village of Emberwick: an isometric map with shops, fields, a mine, the council hall and Dragon peak](docs/img/village.jpg)
 
@@ -547,6 +548,8 @@ The server is the single source of truth for the game state (`data/state.json`).
 | GET | `/api/state-records` | All kept village records (about 60 days) with their hashes, for `tools/archive-records.mjs` |
 | GET | `/api/solvency` | The bank's EMWK on NEAR, transfers on the way, what the game owes, and the cover |
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
+| GET | `/api/signin/challenge?chain=near\|sol\|evm&address=…&purpose=login\|link` | A one-time message for a wallet to sign (ten minutes, used once) |
+| POST | `/api/signin/login`, `/api/signin/link` | Sign in with that signature (a new device key for the villager), or tie a wallet to your villager |
 | GET | `/api/ledger` | The Village Ledger contract (our own), whether it is locked, and the records written to it (kind, day, full SHA-256, transaction) |
 | GET | `/api/deed/holder?plot=ID` | Who holds that plot's deed NFT on NEAR right now (a view call to the deed contract, cached for a minute), next to the game's record; the deed card shows it |
 | GET | `/api/ai/proof?day=N` | Signature check of that day's plan answer, with the exact request and response bytes (the last 10 signed answers are kept; without `day` it shows the newest). Look for `"ok": true` with `signatureOk`, `attested`, `requestHashOk` and `responseHashOk` all true |
@@ -615,6 +618,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | `server/world.js` | The fixed world: buildings, goods, craftsmen, rules, token supply, market |
 | `server/ai.js` | NEAR AI Cloud: model choice, attestation, morning plan, answers, haggling, swap sentences |
 | `server/near.js` | NEAR bridge: account setup, token and deed contracts, batched transfers, balance sync |
+| `server/signin.js` | Sign in with a wallet from any chain: the one-time message, and the Solana (ed25519), EVM (EIP-191) checks |
 | `server/selftest.js`, `server/neartest.js`, `server/fakechain.js` | Tests and the in-memory chain used by them |
 | `tools/economy-report.mjs` | The reproducible 100-day economy report (`npm run report`) |
 | `tools/archive-records.mjs` | Keeps your own copy of the daily village records and checks each hash |
@@ -637,8 +641,9 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 - **Players' funds:** the game never holds keys or player funds for real swaps. Every deposit is signed in the player's own wallet, which shows the amount and the address first. Refunds go to the player's own address.
 - **Player keys:** a player id (`p1`, `p2` ...) is not a secret, so it is not what proves who is asking. On joining, the server gives the browser a random 192-bit key; every request that acts for a player (actions, questions, wallet linking, cash-out) must carry it, or the server answers `403 err.notYou`. The server stores only the key's SHA-256, compares it in constant time, and never puts it in any shared view. A villager from before keys existed gets one the first time their browser asks (`/api/claim`), only once, and only during the three days after the village first ran with keys. `node server/httptest.js` (part of `npm test`) starts a throwaway server and tries the attacks: acting, linking a wallet or cashing out with only an id or with another player's key are all refused.
 - **Cash-out:** coins go only to a wallet the player proved is theirs with a NEP-413 signature; a verified wallet can only be replaced by signing with the new one; only what they earned above their starting money can leave; one wallet links to one character.
-- **Rate limit:** at most 120 POST requests per 10 seconds from one address, and 5 joins or claims per minute (`429 err.slowDown`); NEAR AI questions have their own per-player and daily limits.
-- **Not done yet:** a player who clears their browser data loses their key, and with it the villager; recovering a villager by signing with its verified wallet is planned. The game is a testnet demo.
+- **Rate limit:** at most 120 POST requests per 10 seconds from one address, 5 joins or claims and 10 wallet sign-ins per minute (`429 err.slowDown`); NEAR AI questions have their own per-player and daily limits.
+- **Sign in with a wallet from any chain:** a villager can be tied to a Phantom (Solana) or MetaMask (EVM) wallet, and a verified NEAR wallet counts too. On another device, or after clearing the browser, the wallet signs a one-time message (it names the site, the address and a fresh nonce, and moves no money) and the villager comes back with a new device key; the first device stays signed in (up to five). The server checks an ed25519 signature (Solana), an EIP-191 signature (EVM) or NEP-413 (NEAR); a message is accepted once, within ten minutes, and one wallet signs in as one villager. No password, no e-mail, and the game never sees a key (`server/signin.js`; `httptest` tries forged, replayed and wrong-wallet signatures).
+- **Not done yet:** a villager that never linked a wallet still lives only in its browser. The game is a testnet demo.
 - **AI cannot move money:** NEAR AI suggests; the rules in `server/economy.js` decide. Suggested actions become buttons only after a rules check, and a swap sentence only fills the form.
 - **Council safety:** a fixed menu of executable decisions (no free-form "send treasury money anywhere"), a proposal fee, quorum, caps per decision, and a locked reserve.
 - **Verifiable AI:** the TEE attestation, each plan's answer signature checked against the attested key, and the on-chain plan hashes let anyone check what the model was asked and answered, and where.

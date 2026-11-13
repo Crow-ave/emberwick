@@ -9,6 +9,7 @@ import { markSeen, ledgerWritten, deedFollowsChain, awaySummary, giveSeal, creat
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
+import { CHAINS, normAddress, signinMessage, verifyEvm, verifySol, Challenges } from './signin.js';
 import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, aiProof, PROOFS_KEPT, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -154,6 +155,7 @@ async function startNear() {
   }, 10000);
 }
 const challenges = new Map(); // playerId -> one-time wallet sign-in message
+const signins = new Challenges(); // one-time messages for signing in with a wallet from any chain
 function moveHeldDeeds(pid) {
   const p = state.players[pid];
   if (!bridge || !p || !p.near) return;
@@ -680,17 +682,19 @@ function sendJson(res, code, body) {
 // browser a random key; every request that acts for a player must carry it. Keys are kept apart from the
 // game state that is shown to anyone (state.playerKeys holds only their SHA-256).
 const keyHash = (k) => crypto.createHash('sha256').update(String(k)).digest('hex');
-function newPlayerKey(pid) {
+// a wallet sign-in on another device adds a key (up to five devices), so the first one stays signed in
+function newPlayerKey(pid, another = false) {
   const k = crypto.randomBytes(24).toString('hex');
   state.playerKeys = state.playerKeys || {};
-  state.playerKeys[pid] = keyHash(k);
+  const had = state.playerKeys[pid];
+  state.playerKeys[pid] = another && had ? [keyHash(k), ...(Array.isArray(had) ? had : [had])].slice(0, 5) : keyHash(k);
   return k;
 }
 function keyOk(pid, k) {
   const h = state.playerKeys && state.playerKeys[pid];
   if (!h || typeof k !== 'string' || !k) return false;
-  const a = Buffer.from(h, 'hex'), b = Buffer.from(keyHash(k), 'hex');
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const b = Buffer.from(keyHash(k), 'hex');
+  return (Array.isArray(h) ? h : [h]).some((x) => { const a = Buffer.from(x, 'hex'); return a.length === b.length && crypto.timingSafeEqual(a, b); });
 }
 
 function readBody(req) {
@@ -706,7 +710,7 @@ function readBody(req) {
 // every POST counts; joining and claiming a villager are much stricter. Behind a host's proxy the client
 // address is the first entry of X-Forwarded-For.
 const hits = new Map();
-const LIMITS = { post: [120, 10000], '/api/join': [5, 60000], '/api/claim': [5, 60000] };
+const LIMITS = { post: [120, 10000], '/api/join': [5, 60000], '/api/claim': [5, 60000], '/api/signin/login': [10, 60000] };
 function limited(req, what) {
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   const [max, ms] = LIMITS[what], k = what + '|' + ip, now = Date.now();
@@ -795,6 +799,44 @@ const server = http.createServer(async (req, res) => {
     if (Date.now() > (state.claimUntil || 0)) return sendJson(res, 403, { ok: false, code: 'err.claimClosed', error: 'Villagers from before player keys could be claimed only in the first days.' });
     const key = newPlayerKey(pid); save();
     return sendJson(res, 200, { ok: true, key });
+  }
+
+  // ---------- sign in with a wallet (NEAR, EVM, Solana): see server/signin.js ----------
+  if (url.pathname === '/api/signin/challenge') {
+    const chain = String(url.searchParams.get('chain') || ''), purpose = url.searchParams.get('purpose') === 'link' ? 'link' : 'login';
+    const address = normAddress(chain, url.searchParams.get('address'));
+    if (!CHAINS.includes(chain) || !address) return sendJson(res, 400, { ok: false, code: 'err.badWallet' });
+    const pid = String(url.searchParams.get('player') || ''), p = state.players[pid];
+    if (purpose === 'link' && !p) return sendJson(res, 400, { ok: false, code: 'err.unknownPlayer' });
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'emberwick').split(',')[0].trim();
+    const c = signins.make({ chain, address, purpose, player: purpose === 'link' ? pid : null });
+    c.message = signinMessage({ chain, address, purpose, name: p ? p.name : '', nonce: c.nonce, host });
+    return sendJson(res, 200, { ok: true, message: c.message, nonce: c.nonce, recipient: 'emberwick' });
+  }
+  if (req.method === 'POST' && (url.pathname === '/api/signin/link' || url.pathname === '/api/signin/login')) {
+    const body = await readBody(req), login = url.pathname === '/api/signin/login';
+    const c = signins.take(body.nonce);
+    if (!c || c.purpose !== (login ? 'login' : 'link') || (!login && c.player !== body.player)) return sendJson(res, 400, { ok: false, code: 'err.challenge' });
+    let ok = false;
+    if (c.chain === 'evm') ok = verifyEvm(c.message, String(body.signature || ''), c.address);
+    else if (c.chain === 'sol') ok = verifySol(c.message, String(body.signature || ''), c.address);
+    else {
+      if (!bridge || bridge.status !== 'ready') return sendJson(res, 400, { ok: false, code: 'err.chainOff' });
+      try { await bridge.adapter.verifySigned({ accountId: c.address, publicKey: body.publicKey, signature: String(body.signature || ''), message: c.message, recipient: 'emberwick', nonce: c.nonce, callbackUrls: [body.page, body.origin].filter(Boolean) }); ok = true; } catch { ok = false; }
+    }
+    if (!ok) return sendJson(res, 400, { ok: false, code: 'err.badSignature' });
+    const owner = Object.values(state.players).find((q) => (q.logins || []).some((l) => l.chain === c.chain && l.address === c.address) || (c.chain === 'near' && q.nearVerified && q.near === c.address));
+    if (login) {
+      if (!owner) return sendJson(res, 404, { ok: false, code: 'err.noVillager' });
+      const key = newPlayerKey(owner.id, true); save();
+      console.log(`[sign-in] ${owner.name} signed in with a ${c.chain} wallet.`);
+      return sendJson(res, 200, { ok: true, id: owner.id, key, name: owner.name });
+    }
+    const p = state.players[body.player];
+    if (owner && owner.id !== p.id) return sendJson(res, 400, { ok: false, code: 'err.walletUsed' });
+    p.logins = [{ chain: c.chain, address: c.address, at: Date.now() }, ...(p.logins || []).filter((l) => l.chain !== c.chain)].slice(0, 3);
+    save(); broadcast();
+    return sendJson(res, 200, { ok: true, logins: p.logins.map(({ chain, address }) => ({ chain, address })), state: view(p.id) });
   }
 
   // ask a craftsman a question; NEAR AI answers in character (words only, it never moves money)
