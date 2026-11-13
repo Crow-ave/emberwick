@@ -2396,8 +2396,9 @@ export function publicView(state, playerId) {
         return [g, { qty: q.qty, total: q.total, want: q.want, first: q.first, last: q.last }];
       })) : {},
       full: Object.keys(n.buys).filter((g) => (n.stock[g] || 0) >= targetFor(state, def.id, g) * WANT_FACTOR - 0.5),
-      line: def.lines[(state.day + def.id.length) % def.lines.length],
-      lineKey: `${def.id}.${(state.day + def.id.length) % def.lines.length}`,
+      // the guard never says the peak is quiet while the dragon's attack is announced
+      line: def.id === 'tower' && state.events.attackDay ? 'Smoke over the peak. Swords and bread to the tower, before the dragon comes.' : def.lines[(state.day + def.id.length) % def.lines.length],
+      lineKey: def.id === 'tower' && state.events.attackDay ? 'tower.warn' : `${def.id}.${(state.day + def.id.length) % def.lines.length}`,
     };
   }
   const p = playerId && state.players[playerId];

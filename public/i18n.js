@@ -1465,6 +1465,7 @@ const en = {
   'line.carpenter.0': 'Measure twice, cut once.', 'line.carpenter.1': 'A good cart carries a family through winter.',
   'line.inn.0': 'Travellers bring coin and stories.', 'line.inn.1': 'Full tables mean a full purse.',
   'line.tower.0': 'The peak is quiet. For now.', 'line.tower.1': 'A blade in every hand when the dragon comes.',
+  'line.tower.warn': 'Smoke over the peak. Swords and bread to the tower, before the dragon comes.',
 
   'role.farmer': 'Farmer', 'role.miner': 'Miner', 'role.woodcutter': 'Woodcutter', 'role.traveller': 'Traveller', 'role.elder': 'Village elder',
   'rank.newcomer': 'Newcomer', 'rank.settler': 'Settler',
@@ -3018,6 +3019,7 @@ const tr = {
   'line.carpenter.0': 'İki kere ölç, bir kere kes.', 'line.carpenter.1': 'İyi bir araba bir aileyi kıştan çıkarır.',
   'line.inn.0': 'Yolcular para ve hikaye getirir.', 'line.inn.1': 'Dolu masa, dolu kese demek.',
   'line.tower.0': 'Dağ sessiz. Şimdilik.', 'line.tower.1': 'Ejderha geldiğinde her ele bir kılıç.',
+  'line.tower.warn': 'Dağda duman var. Ejderha gelmeden kuleye kılıç ve ekmek getirin.',
 
   'role.farmer': 'Çiftçi', 'role.miner': 'Madenci', 'role.woodcutter': 'Oduncu', 'role.traveller': 'Yolcu', 'role.elder': 'Köyün muhtarı',
   'rank.newcomer': 'Yeni gelen', 'rank.settler': 'Yerleşik',
@@ -4045,6 +4047,7 @@ const fr = {
   'line.carpenter.0': 'Mesurer deux fois, couper une fois.', 'line.carpenter.1': 'Une bonne charrette fait passer l\'hiver à une famille.',
   'line.inn.0': 'Les voyageurs apportent des pièces et des histoires.', 'line.inn.1': 'Tables pleines, bourse pleine.',
   'line.tower.0': 'Le pic est calme. Pour l\'instant.', 'line.tower.1': 'Une lame dans chaque main quand le dragon viendra.',
+  'line.tower.warn': 'De la fumée sur le pic. Des épées et du pain à la tour, avant que le dragon vienne.',
 
   'role.farmer': 'Fermier', 'role.miner': 'Mineur', 'role.woodcutter': 'Bûcheron', 'role.traveller': 'Voyageur', 'role.elder': 'Ancien du village',
   'rank.newcomer': 'Nouveau venu', 'rank.settler': 'Habitant',
@@ -5072,6 +5075,7 @@ const de = {
   'line.carpenter.0': 'Zweimal messen, einmal schneiden.', 'line.carpenter.1': 'Ein guter Karren bringt eine Familie durch den Winter.',
   'line.inn.0': 'Reisende bringen Münzen und Geschichten.', 'line.inn.1': 'Volle Tische bedeuten einen vollen Beutel.',
   'line.tower.0': 'Der Gipfel ist ruhig. Noch.', 'line.tower.1': 'Eine Klinge in jeder Hand, wenn der Drache kommt.',
+  'line.tower.warn': 'Rauch über dem Gipfel. Schwerter und Brot zum Turm, bevor der Drache kommt.',
 
   'role.farmer': 'Bauer', 'role.miner': 'Bergmann', 'role.woodcutter': 'Holzfäller', 'role.traveller': 'Reisender', 'role.elder': 'Dorfältester',
   'rank.newcomer': 'Neuankömmling', 'rank.settler': 'Siedler',
@@ -6173,6 +6177,7 @@ const ru = {
   "line.inn.1": "Полные столы — полный кошелёк.",
   "line.tower.0": "На вершине тихо. Пока.",
   "line.tower.1": "Когда придёт дракон, в каждой руке должен быть клинок.",
+  "line.tower.warn": "Над вершиной дым. Несите мечи и хлеб в башню, пока не пришёл дракон.",
   "role.farmer": "Земледелец",
   "role.miner": "Рудокоп",
   "role.woodcutter": "Лесоруб",
@@ -7335,6 +7340,7 @@ const zh = {
   "line.inn.1": "桌子坐满，钱袋就满。",
   "line.tower.0": "山顶很安静。暂时如此。",
   "line.tower.1": "龙来的时候，人人手里都要有刀剑。",
+  "line.tower.warn": "山顶冒烟了。龙来之前，把剑和面包送到塔楼。",
   "role.farmer": "农夫",
   "role.miner": "矿工",
   "role.woodcutter": "伐木工",

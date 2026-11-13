@@ -3233,6 +3233,7 @@ $('howto').addEventListener('click', (e) => { if (e.target.id === 'howto') $('ho
 let ignoreClick = false;
 // the villager under the mouse (a generous area around the little figure)
 function walkerAt(p) {
+  if (ui.district || ui.scene) return null; // villagers walk on the village map only; in a neighbourhood a click on a building must open the building
   // real players first: a player standing next to a bot (or the elder at the gate) should win the click
   return nearestWalker(p, [...others.values()]) || nearestWalker(p, walkers);
 }
