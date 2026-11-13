@@ -39,6 +39,8 @@ const MAX_ACTIONS = 15;     // ft_transfer actions per transaction
 const FT_GAS = 15n * 10n ** 12n;
 const FEED_MAX = 40;
 const DEEDS_NEAR = 2.9;   // storage for the deeds (NFT) contract, ~250 KB
+const LEDGER_NEAR = 3;     // the Village Ledger: ~180 KB of code (about 1.8 NEAR of storage) plus room for a few hundred records
+const LEDGER_TOPUP = 0.5;  // more storage for the ledger when it fills up
 const MINT_NEAR = 0.05;   // storage for one deed; what is not used comes back
 const DEED_ICON = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#3a2a1e"/><path d="M8 18 16 10l8 8v7H8z" fill="#e8642c"/><rect x="14" y="20" width="4" height="5" fill="#f6c34a"/></svg>');
 
@@ -80,6 +82,68 @@ export class Bridge {
     this.deeds = { status: 'off', detail: null };
     this.deedQueue = [];
     this.onDeed = o.onDeed || (() => {});
+    this.ledgerWasm = o.ledgerWasm || null;
+    this.ledger = { status: 'off', detail: null, locked: false };
+    this.ledgerQueue = [];
+    this.onLedger = o.onLedger || (() => {});
+  }
+
+  // ---- the Village Ledger: Emberwick's own contract, an append-only record of each day ----
+  get ledgerId() { return this.root && 'ledger.' + this.root; }
+  recordLedger(e) { if (!this.ledgerQueue.some((x) => x.kind === e.kind && x.day === e.day)) this.ledgerQueue.push(e); }
+
+  async setupLedger() {
+    const A = this.adapter;
+    if (!this.ledgerWasm || !A.isLedgerReady) return;
+    if (this.ledger.at && Date.now() - this.ledger.at < (this.ledger.status === 'need-funds' ? 120000 : 300000)) return; // not on every pass
+    this.ledger.at = Date.now();
+    if (!(await A.exists(this.ledgerId))) {
+      const bal = await A.nearBalance(this.root);
+      if (bal < LEDGER_NEAR + ROOT_MIN) {
+        this.ledger = { status: 'need-funds', detail: { address: this.root, amount: Math.ceil(LEDGER_NEAR + ROOT_MIN + 0.5 - bal) }, locked: false, at: Date.now() };
+        this.say(`Village Ledger (Emberwick's own contract) needs ${this.ledger.detail.amount} more testnet NEAR to set up. Send it to: ${this.root}`);
+        return;
+      }
+      await A.createSub(this.root, this.ledgerId, A.publicKeyOf(this.keys.secretKey), LEDGER_NEAR);
+      await this.waitFor(this.ledgerId);
+    }
+    if (!(await A.hasCode(this.ledgerId))) await A.deploy(this.ledgerId, this.ledgerWasm);
+    if (!(await A.isLedgerReady(this.ledgerId))) await A.call(this.ledgerId, this.ledgerId, 'new', { writer: this.root }, 0);
+    if (!(await A.isLedgerReady(this.ledgerId))) throw new Error('the ledger contract did not start');
+    // lock it: remove the account's own key, so nobody (not even the village bank) can replace its code
+    if ((await A.keyCount(this.ledgerId)) > 0) {
+      await A.deleteKey(this.ledgerId, A.publicKeyOf(this.keys.secretKey));
+      this.say(`Village Ledger locked: ${this.ledgerId} has no access key, so its code can never change.`);
+    }
+    this.ledger = { status: 'ready', detail: null, locked: (await A.keyCount(this.ledgerId)) === 0 };
+    this.say(`Village Ledger contract ready: ${this.ledgerId}`);
+  }
+
+  async sendLedger() {
+    const A = this.adapter;
+    while (this.ledgerQueue.length) {
+      const e = this.ledgerQueue[0];
+      let hash = null;
+      try {
+        hash = await A.callTx(this.root, this.ledgerId, 'record', {
+          kind: e.kind, day: e.day, sha256: e.sha256, model: e.model ?? null, tee: e.tee ?? null, signed: e.signed ?? null, signer: e.signer ?? null,
+        }, 0n);
+        this.txCount++;
+        this.say(`Village Ledger: ${e.kind === 'state' ? 'village state' : 'AI plan'} of day ${e.day} recorded.`);
+      } catch (err) {
+        const msg = String(err.message || err);
+        if (/already recorded/.test(msg)) { /* written before a restart: nothing to do */ }
+        else if (/LackBalanceForState|storage/i.test(msg) && (await A.nearBalance(this.root)) > ROOT_MIN + LEDGER_TOPUP) {
+          await A.sendNear(this.root, this.ledgerId, LEDGER_TOPUP); // more room for records; try again on the next pass
+          this.say(`Village Ledger: added ${LEDGER_TOPUP} NEAR of storage.`);
+          return;
+        } else if (/kind must be|sha256 must be|must be 1\.\.|plain ASCII|only the hash/.test(msg)) {
+          this.say('Village Ledger: skipped a record the contract refused (' + msg.slice(0, 120) + ')');
+        } else { this.say('Village Ledger write failed, retrying later: ' + msg.slice(0, 140)); return; }
+      }
+      this.ledgerQueue.shift();
+      this.onLedger(e, hash);
+    }
   }
 
   // ---- land deeds: an NFT contract next to the token ----
@@ -208,6 +272,7 @@ export class Bridge {
       status: this.status, detail: this.detail, accounts,
       balances: this.chainBalances, feed: this.feed.slice(0, FEED_MAX), pending: this.queue.length, txCount: this.txCount,
       deeds: { ...this.deeds, contract: this.root ? this.deedsId : null, pending: this.deedQueue.length },
+      ledger: { status: this.ledger.status, detail: this.ledger.detail, locked: this.ledger.locked, contract: this.root && this.ledgerWasm ? this.ledgerId : null, pending: this.ledgerQueue.length },
       lowGas: this.lowGas ? { address: this.lowGas.address } : null,
     };
   }
@@ -462,6 +527,8 @@ export class Bridge {
       }
       if (this.deeds.status !== 'ready') { try { await this.setupDeeds(); } catch (e) { this.deeds = { status: 'error', detail: { message: String(e.message || e).slice(0, 160) } }; } }
       if (this.deeds.status === 'ready' && this.deedQueue.length) await this.sendDeeds();
+      if (this.ledgerWasm && this.ledger.status !== 'ready') { try { await this.setupLedger(); } catch (e) { this.ledger = { status: 'error', detail: { message: String(e.message || e).slice(0, 160) }, locked: false, at: Date.now() }; this.say('Village Ledger setup failed, retrying in 5 minutes: ' + this.ledger.detail.message); } }
+      if (this.ledger.status === 'ready' && this.ledgerQueue.length) await this.sendLedger();
       if (this.needReconcile) { await this.reconcile(); return; }
       if (!this.queue.length) return;
       const items = this.queue.splice(0);
@@ -531,6 +598,14 @@ export async function makeNearAdapter(secretKeyRef) {
     async nftOwner(contractId, tokenId) {
       try { const t = await view(contractId, 'nft_token', { token_id: tokenId }); return t ? t.owner_id : null; } catch (e) { if (e instanceof RpcError) return null; throw e; }
     },
+    async isLedgerReady(id) {
+      try { const w = await view(id, 'writer', {}); return typeof w === 'string' && w.length > 0; } catch (e) { if (e instanceof RpcError) return false; throw e; }
+    },
+    async keyCount(id) {
+      const r = await provider.viewAccessKeyList({ accountId: id });
+      return ((r && r.keys) || []).length;
+    },
+    async deleteKey(id, pk) { await acct(id).deleteKey(pk); },
     async isNftReady(id) {
       try { const m = await view(id, 'nft_metadata', {}); return !!(m && m.symbol); } catch (e) { if (e instanceof RpcError) return false; throw e; }
     },

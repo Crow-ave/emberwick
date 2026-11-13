@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { markSeen, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { markSeen, ledgerWritten, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -75,7 +75,7 @@ async function startNear() {
     : fileStore(KEYS);
   let adapter;
   try {
-    if (process.env.EMBERWICK_NEAR === 'fake') { adapter = (await import('./fakechain.js')).fakeChain({ faucetWorks: true }); adapter.pollMs = 0; adapter.acc.set('emberwick.testnet', { near: 5 }); }
+    if (process.env.EMBERWICK_NEAR === 'fake') { adapter = (await import('./fakechain.js')).fakeChain({ faucetWorks: true, faucetNear: 20 }); adapter.pollMs = 0; adapter.acc.set('emberwick.testnet', { near: 5 }); }
     else adapter = await makeNearAdapter(() => bridge.keys.secretKey);
   } catch {
     return console.log('NEAR bridge is off: run `npm install` once to turn it on.');
@@ -94,6 +94,8 @@ async function startNear() {
     wasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_token.wasm')),
     nftWasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_deeds.wasm')),
     onDeed: (plot, info) => { setDeed(state, plot, info); save(); broadcast(); },
+    ledgerWasm: fs.existsSync(path.join(root, 'contracts', 'emwk_ledger.wasm')) ? fs.readFileSync(path.join(root, 'contracts', 'emwk_ledger.wasm')) : null,
+    onLedger: (e, tx) => { ledgerWritten(state, e, tx); save(); },
     say: (m) => console.log('[NEAR] ' + m),
   });
   onTransfer((from, to, amount, note) => bridge.onTransfer(from, to, amount, note));
@@ -125,6 +127,8 @@ async function startNear() {
   loop();
   setInterval(loop, RULES.demo ? 8000 : 12000);
   setInterval(() => { if (bridge.status === 'ready') bridge.needReconcile = true; }, 5 * 60 * 1000);
+  // each day's records go to the Village Ledger contract (also the ones from before a restart)
+  setInterval(() => { if (bridge.ledger.status === 'ready') for (const e of state.ledgerOut || []) bridge.recordLedger(e); }, 10000);
   // deeds for land bought while NEAR was offline (or before a restart) are minted later
   setInterval(() => {
     if (bridge.deeds.status !== 'ready') return;
@@ -936,6 +940,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(rec.json);
   }
   // every kept village record at once (each with its hash), so anyone can keep an independent archive
+  if (url.pathname === '/api/ledger') return sendJson(res, 200, { ok: true, contract: bridge && bridge.ledgerWasm && bridge.root ? bridge.ledgerId : null, status: bridge ? bridge.ledger.status : 'off', locked: !!(bridge && bridge.ledger.locked), written: state.ledgerDone || [], waiting: (state.ledgerOut || []).map(({ kind, day, sha256 }) => ({ kind, day, sha256 })) });
   if (url.pathname === '/api/state-records') return sendJson(res, 200, { ok: true, days: (state.dayLog || []).map((x) => ({ day: x.day, sha256: x.hash, json: x.json })) });
   if (url.pathname === '/api/solvency') return sendJson(res, 200, solvency());
   if (url.pathname === '/api/state-record') {

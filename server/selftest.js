@@ -1,5 +1,5 @@
 // Runs the economy for 100 game days and checks that it stays healthy.
-import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable, applyAiPlan } from './economy.js';
 import { TOKEN, RULES } from './world.js';
 
 const state = createState(42);
@@ -237,6 +237,18 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   const notAttested = checkSignature(call, { text, signature: sign(text, k2), signing_address: addr(k2) }, keys);
   console.log('AI answer signatures: good', good.ok, '| changed answer', changed.ok, '| wrong key', wrongKey.ok, '| key not attested', notAttested.ok);
   if (!good.ok || changed.ok || wrongKey.ok || notAttested.ok) fail('the NEAR AI answer signature check is wrong');
+}
+// Village Ledger: every recorded day waits for the ledger contract with the same full hash the game serves
+{
+  const out = state.ledgerOut || [], last = (state.dayLog || [])[0];
+  const s2 = createState(7); s2.day = 3;
+  applyAiPlan(s2, { craftsmen: [{ id: 'bakery', want: { wheat: 1.3 }, price: { bread: 1.1 }, why: 'test' }] }, 'deepseek/deepseek-v3.2', { tee: true, signer: '0xab', proof: { ok: true, signer: '0x12ab', chatId: 'c' } });
+  const plan = (s2.ledgerOut || []).find((x) => x.kind === 'ai_plan');
+  console.log('Village Ledger AI plan record:', JSON.stringify(plan && { day: plan.day, model: plan.model, tee: plan.tee, signed: plan.signed, signer: plan.signer }));
+  if (!plan || plan.sha256 !== s2.aiLog[0].hash || plan.signed !== true || plan.tee !== true || plan.signer !== '0x12ab') fail('the AI plan does not go to the Village Ledger with its signature check');
+  const mine = last && out.find((x) => x.kind === 'state' && x.day === last.day);
+  console.log('Village Ledger queue:', out.length, 'records waiting (no NEAR in this test); newest state day', last && last.day, mine ? 'queued with its full hash' : 'MISSING');
+  if (!mine || mine.sha256 !== last.hash || out.length > 40 || out.some((x) => !/^[0-9a-f]{64}$/.test(x.sha256))) fail('the Village Ledger queue does not match the day records');
 }
 console.log(problems ? `${problems} problem(s)` : 'All checks passed.');
 process.exit(problems ? 1 : 0);

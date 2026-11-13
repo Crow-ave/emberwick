@@ -2491,6 +2491,14 @@ function panelNear() {
     h += c.feed.length ? feedList(c.feed.slice(0, 15), false) : `<p class="muted small">${t('near.noFeed')}</p>`;
     h += `<p class="sub2">${t('near.token')}</p><p>${exLink('token/' + a.token, esc(a.token))}</p>`;
     if (c.deeds && c.deeds.contract) h += `<p class="sub2">${t('near.deeds')}</p><p>${c.deeds.status === 'ready' ? exLink('nft-token/' + c.deeds.contract, esc(c.deeds.contract)) : esc(c.deeds.contract) + ' · ' + esc(c.deeds.status) + (c.deeds.detail && c.deeds.detail.amount ? ` (${t('near.st.need-funds', { n: c.deeds.detail.amount })} <code class="addr">${esc(c.deeds.detail.address)}</code>)` : '')}</p>`;
+    if (c.ledger && c.ledger.contract) {
+      const L = c.ledger, done = (view.ledger && view.ledger.done) || [];
+      h += `<p class="sub2">${t('near.ledger')}</p><p class="muted small">${t('near.ledger.note')}</p>`;
+      if (L.status === 'ready') {
+        h += `<p>${exLink('address/' + L.contract, esc(L.contract))}${L.locked ? ` · <span class="nocut">🔒 ${t('near.ledger.locked')}</span>` : ''}</p>`;
+        h += done.length ? `<ul class="decided">${done.slice(0, 6).map((x) => `<li>${t('near.ledger.' + (x.kind === 'state' ? 'state' : 'plan'), { n: x.day })} · <code>${esc(String(x.sha256).slice(0, 12))}…</code>${x.tx ? ' · ' + exLink('txns/' + x.tx, '⛓', 'near-link small') : ''}</li>`).join('')}</ul>` : `<p class="muted small">${t('near.ledger.none')}</p>`;
+      } else h += `<p>${esc(L.contract)} · ${esc(L.status)}${L.detail && L.detail.amount ? ` (${t('near.st.need-funds', { n: L.detail.amount })} <code class="addr">${esc(L.detail.address)}</code>)` : ''}</p>`;
+    }
     h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, a.deposits, ...Object.values(a.npcs)].filter(Boolean).map(row).join('')}</table>`;
   }
 

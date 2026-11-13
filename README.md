@@ -17,7 +17,7 @@ A multiplayer village economy: eight AI craftsmen with their own NEAR accounts b
 | EMWK token, 25,000 fixed supply (NEP-141) | Payments inside the village bank (one player or villager paying another) |
 | Coin moves between NEAR accounts: bank, treasury, rent deposits, each craftsman, a player's wallet | Prices, stock, jobs, homes, chat |
 | Land deeds as NEP-171 NFTs; deed sales through NFT escrow | Who may build, sleep and collect rent on a plot |
-| Hashes of every AI plan and of each day's village state; council results | Counting council votes (in-game governance, not a DAO contract) |
+| Hashes of every AI plan and of each day's village state, kept in the Village Ledger: our own contract, locked so its code can never change | Counting council votes (in-game governance, not a DAO contract) |
 | Real cross-chain swaps on mainnet through NEAR Intents, from the player's own wallet | |
 
 **Check it:** the [Judge tour](#try-it-as-a-judge-do-x-see-y) needs no wallet and no money · [Verify it yourself](#verify-it-yourself) gives a command for every claim · `npm test` and `npm run report` run offline.
@@ -28,7 +28,7 @@ A multiplayer village economy: eight AI craftsmen with their own NEAR accounts b
 - In our scripted-player simulation the village is healthy with 10 always-on players and holds, tightly, with 30; at 100 the work runs out and most players end poorer ([details](#with-players-0-to-100-reproducible), [plan](#plan-for-100-players)).
 - NEAR AI changes which shop does well, but not, measurably, how well the village does.
 
-*Built from scratch during the NEAR hackathon (first commit: 2 November 2026): all of the game's own code was written in the hackathon window. Not ours: the two contracts are the unchanged near-sdk-rs examples ([contracts](contracts/README.md)), and `public/vendor/` bundles open-source wallet libraries (Wallet Selector, Wallet Standard; sources listed in the [project layout](#project-layout)).*
+*Built from scratch during the NEAR hackathon (first commit: 2 November 2026): all of the game's own code was written in the hackathon window. Our own contract: the Village Ledger ([contracts](contracts/README.md)). Not ours: the token and deed contracts are the unchanged near-sdk-rs examples, and `public/vendor/` bundles open-source wallet libraries (Wallet Selector, Wallet Standard; sources listed in the [project layout](#project-layout)).*
 
 ---
 
@@ -128,6 +128,7 @@ Screenshots are from a local run in English. The swap screens used a test RPC, s
 | **AI agents with wallets** | Eight craftsmen, each with its own NEAR sub-account, buy, make and sell on their own and decide with NEAR AI. | `server/economy.js`, `server/pricing.js`, `server/ai.js` | e.g. [smithy.emberwick-village.testnet](https://testnet.nearblocks.io/address/smithy.emberwick-village.testnet) |
 | **NEAR AI Cloud (TEE)** | Daily plan per craftsman, answers to players with action buttons, haggling lines, credit decisions, and reading swap sentences. Models with a TEE attestation report are picked first, and each morning plan's signature is checked against the attested key. | `server/ai.js` | `/api/ai/attestation`, `/api/ai/proof?day=N`, `/api/ai/plan?day=N`, the shop panel's 🔒, ✍️ and ⛓ lines |
 | **On-chain records (memos)** | AI plan SHA-256, signed job contracts, council results, and every real mainnet swap are written to NEAR testnet as 0.01 EMWK memo transfers. | `server/economy.js`, `server/index.js` | Memo text on the transfer in NearBlocks |
+| **Village Ledger (our contract)** | Emberwick's own Rust contract (`ledger.<bank>`): each day's full village-state SHA-256 and each NEAR AI plan's SHA-256 with model, TEE report and signature check. Append-only: one record per day, never changed; the account's key is deleted after setup, so its code can never be replaced. | `contracts/village-ledger/src/lib.rs`, `server/near.js` (`setupLedger`, `sendLedger`) | NEAR panel → Village Ledger; `HOST/api/ledger`; view methods `get`, `latest` ([how](contracts/README.md#the-village-ledger)) |
 | **NEP-171 NFTs (land deeds)** | Each plot of land is an NFT. Owning the plot lets you build, sleep at home, rent out for daily income, and sell on the exchange with NFT escrow; by design the game's record decides those rights (the rules run on the server), while every deed sale goes through NFT escrow on NEAR; the deed card reads the NFT's holder live from the contract and shows it next to the game's record; making the on-chain holder decide them is on the roadmap. | `server/near.js` (`setupDeeds`, `moveDeed`), `contracts/emwk_deeds.wasm` | [deeds contract](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet); deed card in game |
 | **NEP-413 wallet link** | A player proves ownership of a NEAR account by signing a message; the server checks it against the account's full-access key. Then EMWK can be cashed out to, or deposited from, that wallet. | `server/index.js` (`/api/near/*`), `public/vendor/near-wallet.js` | NEAR panel → wallet section |
 | **NEAR Intents (mainnet)** | Real cross-chain swaps between any supported tokens and chains, one approval from the player's wallet, tracked to delivery. Also live dry-run quotes, a pay-from-any-chain preview, a council reserve quote and a NEAR price oracle. | `server/index.js` (`realQuote`, `quoteAny`, `realStatus`), `public/app.js` (swap UI), `public/vendor/wallets.src.mjs` | [A real swap made from the game](https://explorer.near-intents.org/transactions/8pbsZb3giBZLihUSarvtvQDR4gNbz5Td7WP4gdCyRMDC) |
@@ -322,7 +323,9 @@ node tools/archive-records.mjs HOST my-records
 ```
 It saves each day's exact JSON, checks its SHA-256 before saving, never overwrites a copy you already have, and warns if the server later sends a different record for a day you saved. Compare `my-records/index.json` with the memos on NEAR. If the server goes away, your copies and the hashes on NEAR are still there. (Storing the records themselves on decentralised storage is on the roadmap.)
 
-**2c. The village bank can pay what it owes.** The NEAR panel opens with *Village bank: is every coin covered?*: the EMWK the bank's account really holds on NEAR, plus or minus the transfers still on their way there, next to everything the game owes (to players, and to villagers and funds), and the cover in percent. `HOST/api/solvency` returns the same numbers. The treasury, the rent deposits and the craftsmen have NEAR accounts of their own and are not part of what the bank owes. Check the bank's balance yourself on NearBlocks (the panel links it). It is a reading, not a guarantee: the game still controls the bank's key, so a player cannot take their in-game EMWK out without the game (see *What is on chain and what is not*).
+**2c. The full hashes in our own contract.** The Village Ledger keeps each day's full state hash and each AI plan's hash, once, in a locked contract: read one with `get` and compare it with the hashes above ([commands](contracts/README.md#the-village-ledger)). `HOST/api/ledger` lists what the game has written.
+
+**2d. The village bank can pay what it owes.** The NEAR panel opens with *Village bank: is every coin covered?*: the EMWK the bank's account really holds on NEAR, plus or minus the transfers still on their way there, next to everything the game owes (to players, and to villagers and funds), and the cover in percent. `HOST/api/solvency` returns the same numbers. The treasury, the rent deposits and the craftsmen have NEAR accounts of their own and are not part of what the bank owes. Check the bank's balance yourself on NearBlocks (the panel links it). It is a reading, not a guarantee: the game still controls the bank's key, so a player cannot take their in-game EMWK out without the game (see *What is on chain and what is not*).
 
 **3. A real swap happened.** Each swap card links the wallet transaction, the deposit and delivery transactions and the [NEAR Intents explorer](https://explorer.near-intents.org) page for its deposit address. The swap is also written into the village book on NEAR testnet (`HOST/api/intents/real/book?depositAddress=...`).
 
@@ -353,7 +356,7 @@ Emberwick is a **blockchain-backed game run by a server**, not a fully on-chain 
 
 **AI: what it changes and what it cannot.** NEAR AI decides, within fixed limits, how much each craftsman wants to keep in stock (×0.7–1.4 of the rule-based target) and how it prices each good (×0.9–1.1); the rule-based prices then follow that stock. It also decides who gets food on credit, which actions to suggest to a player, how a haggle is voiced, and how a swap sentence is read. It cannot move coins, create money, change the rules or send a swap: every transfer goes through `transfer()` in `server/economy.js`, and every suggested action is checked by the rules before it becomes a button the player presses. With NEAR AI off, the same economy runs on rules alone; the AI makes the craftsmen plan ahead and talk to players, and its plans are recorded so anyone can see what it decided.
 
-**Contracts.** The token and the deed contracts are the standard NEP-141 and NEP-171 examples of near-sdk-rs 4.0, deployed unchanged on testnet. They have not had a separate audit; no mainnet value sits in them. [`contracts/README.md`](contracts/README.md) gives their source and the code hash to compare with the one NEAR reports for the deployed accounts.
+**Contracts.** The Village Ledger is Emberwick's own contract (`contracts/village-ledger/`, 7 unit tests, locked after setup). The token and the deed contracts are the standard NEP-141 and NEP-171 examples of near-sdk-rs 4.0, deployed unchanged on testnet. They have not had a separate audit; no mainnet value sits in them. [`contracts/README.md`](contracts/README.md) gives their source and the code hash to compare with the one NEAR reports for the deployed accounts.
 
 
 ---
@@ -538,6 +541,7 @@ The server is the single source of truth for the game state (`data/state.json`).
 | GET | `/api/state-records` | All kept village records (about 60 days) with their hashes, for `tools/archive-records.mjs` |
 | GET | `/api/solvency` | The bank's EMWK on NEAR, transfers on the way, what the game owes, and the cover |
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
+| GET | `/api/ledger` | The Village Ledger contract (our own), whether it is locked, and the records written to it (kind, day, full SHA-256, transaction) |
 | GET | `/api/deed/holder?plot=ID` | Who holds that plot's deed NFT on NEAR right now (a view call to the deed contract, cached for a minute), next to the game's record; the deed card shows it |
 | GET | `/api/ai/proof?day=N` | Signature check of that day's plan answer, with the exact request and response bytes (the last 10 signed answers are kept; without `day` it shows the newest). Look for `"ok": true` with `signatureOk`, `attested`, `requestHashOk` and `responseHashOk` all true |
 | POST | `/api/ai/swap` | Read a swap sentence into the swap form |
@@ -614,6 +618,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | `public/sound.js` | Sounds and music made in the browser |
 | `public/vendor/wallets.js` | Wallet bridge bundle (source `wallets.src.mjs`): NEAR, Solana and EVM sending, balances |
 | `public/vendor/near-wallet.js` | Meteor Wallet link for NEP-413 (source in `tools/wallet/`) |
+| `contracts/village-ledger/`, `contracts/emwk_ledger.wasm` | The Village Ledger: Emberwick's own contract (Rust source, unit tests and the built wasm) |
 | `contracts/emwk_token.wasm` | Standard NEP-141 token (near-sdk-rs 4.0 example, NEP-297 events) |
 | `contracts/emwk_deeds.wasm` | Standard NEP-171 NFT for land deeds (near-sdk-rs 4.0 example) |
 | `docs/img/` | Screenshots used in this README |
@@ -640,7 +645,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 |---|---|
 | **Games With Real Economies** | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token, and real swaps that lower the village's market fee; the economy is tested with 0 to 100 scripted players (`npm run report -- --players`) |
 | **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other (about 18,000 EMWK agent-to-agent in the 100-day report): they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
-| **Privacy & Private AI** | Every model call goes to NEAR AI Cloud; the game picks a model with a TEE attestation report, keeps the report public (`/api/ai/attestation`), checks each morning plan's signature against the attested key (`/api/ai/proof`), and hashes each day's plan onto NEAR |
+| **Privacy & Private AI** | Every model call goes to NEAR AI Cloud; the game picks a model with a TEE attestation report, keeps the report public (`/api/ai/attestation`), checks each morning plan's signature against the attested key (`/api/ai/proof`), and hashes each day's plan onto NEAR; the full plan hash, model and signature result go into our own locked Village Ledger contract |
 | **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell through NFT escrow on NEAR; the deed card reads the holder live from the contract |
 
 ---

@@ -1174,6 +1174,15 @@ function recordDayState(state) {
   const hash = crypto.createHash('sha256').update(json).digest('hex');
   state.dayLog = [{ day: state.day, hash, json }, ...(state.dayLog || []).filter((x) => x.day !== state.day)].slice(0, 60); // about 60 village days; tools/archive-records.mjs keeps a copy elsewhere
   transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick village record day ${state.day}: sha256 ${hash.slice(0, 32)} (public state at the end of the day)`, dayRecord: state.day });
+  toLedger(state, { kind: 'state', day: state.day, sha256: hash });
+}
+// the Village Ledger (Emberwick's own contract on NEAR) gets the full hash of each record; the bridge writes it
+function toLedger(state, e) {
+  state.ledgerOut = [...(state.ledgerOut || []).filter((x) => !(x.kind === e.kind && x.day === e.day)), e].slice(-40);
+}
+export function ledgerWritten(state, e, tx) {
+  state.ledgerOut = (state.ledgerOut || []).filter((x) => !(x.kind === e.kind && x.day === e.day));
+  state.ledgerDone = [{ kind: e.kind, day: e.day, sha256: e.sha256, tx: tx || null }, ...(state.ledgerDone || []).filter((x) => !(x.kind === e.kind && x.day === e.day))].slice(0, 60);
 }
 
 // the morning plan goes on NEAR: a 0.01 EMWK record from the treasury carries a SHA-256 of the exact plan
@@ -1193,6 +1202,8 @@ function recordAiPlan(state, model, extra) {
   const proof = pr ? { ok: !!pr.ok, chatId: pr.chatId || null, signer: pr.signer || null, signedBy: pr.signedBy || null, error: pr.error || null } : null;
   state.aiLog = [{ day: state.day, model, hash, json, short, tee: !!extra.tee, signer: extra.signer || null, proof }, ...(state.aiLog || []).filter((x) => x.day !== state.day)].slice(0, 10);
   transfer(state, 'treasury', 'newcomerFund', 0.01, { memo, aiPlan: state.day });
+  const plain = (v) => { const t = String(v || '').replace(/[^\x21-\x7e]/g, '-').slice(0, 64); return t || null; };
+  toLedger(state, { kind: 'ai_plan', day: state.day, sha256: hash, model: plain(model), tee: !!extra.tee, signed: !!(pr && pr.ok), signer: plain(pr && pr.signer) });
 }
 
 // the plan is only allowed to nudge, inside fixed limits; money still moves only by the village rules
@@ -2345,6 +2356,7 @@ export function publicView(state, playerId) {
   const p = playerId && state.players[playerId];
   return {
     aiLog: (state.aiLog || []).map(({ json, ...x }) => x),
+    ledger: { done: (state.ledgerDone || []).slice(0, 12), waiting: (state.ledgerOut || []).length },
     onchain: { tx: (state.onchain && state.onchain.tx) || 0, aiPlans: state.aiDays || 0 },
     realSwaps: playerId ? (state.realSwaps || []).filter((x) => x.player === playerId && x.status !== 'CANCELLED').slice(0, 8) : [],
     realDone: (state.realSwaps || []).filter((x) => x.status === 'SUCCESS').slice(0, 12).map((x) => ({ name: (state.players[x.player] || {}).name || '?', amountIn: x.amountIn, amountOut: x.amountOut, to: x.to, fromSym: x.dir === 'in' || x.dir === 'any' ? x.fromSym : 'NEAR', dir: x.dir || 'out', toSym: x.toSym, chain: x.chain, fromChain: x.dir === 'in' || x.dir === 'any' ? x.fromChain : 'near', usdOut: x.usdOut || null, depositAddress: x.depositAddress, sentTx: x.sentTx || null, at: x.doneAt || x.at || null, batch: x.batch || null, leg: x.leg || null, origin: x.origin || [], dest: x.dest || [] })),

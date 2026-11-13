@@ -105,6 +105,36 @@ async function deeds() {
 }
 await deeds();
 
+// the Village Ledger: Emberwick's own contract is deployed, locked, and takes each day's records once
+async function ledger() {
+  console.log('\n== village ledger');
+  const chain = fakeChain({ faucetWorks: true });
+  const state = createState(5);
+  let saved = null; const done = [];
+  const bridge = new Bridge({ adapter: chain, npcIds: CRAFTSMEN.map((c) => c.id), totalSupply: TOKEN.totalSupply, balances: () => state.balances,
+    store: { load: () => saved, save: (o) => { saved = o; } }, wasm: new Uint8Array(1), ledgerWasm: new Uint8Array(1), onLedger: (e, hash) => done.push({ ...e, hash }) });
+  await bridge.step();
+  check(bridge.ledger.status === 'need-funds' || bridge.ledger.status === 'ready', 'the ledger waits for NEAR or starts (' + bridge.ledger.status + ')');
+  chain.acc.get(bridge.root).near += 10; bridge.ledger.at = 0;
+  await bridge.step();
+  check(bridge.ledger.status === 'ready', 'the ledger contract is deployed and started (' + bridge.ledger.status + ')');
+  check(bridge.ledger.locked && chain.ledger.keys === 0, 'the ledger account is locked: no access key, so its code can never change');
+  check(chain.ledger.writer === bridge.root, 'only the village bank may write');
+  const h = 'a'.repeat(64);
+  bridge.recordLedger({ kind: 'state', day: 3, sha256: h });
+  bridge.recordLedger({ kind: 'state', day: 3, sha256: h }); // the same day twice is queued once
+  bridge.recordLedger({ kind: 'ai_plan', day: 4, sha256: 'b'.repeat(64), model: 'deepseek/deepseek-v3.2', tee: true, signed: true, signer: '0xabc' });
+  await bridge.step();
+  check(chain.ledger.entries.size === 2 && done.length === 2, 'both records are written and the game hears of each');
+  check(chain.ledger.entries.get('ai_plan:4').signed === true, 'the AI plan record carries the signature check');
+  bridge.recordLedger({ kind: 'state', day: 3, sha256: 'c'.repeat(64) }); // e.g. after a restart
+  await bridge.step();
+  check(chain.ledger.entries.get('state:3').sha256 === h && !bridge.ledgerQueue.length, 'a day already on the ledger is never overwritten, and the queue moves on');
+  const v = bridge.view().ledger;
+  check(v.contract === 'ledger.' + bridge.root && v.locked, 'the NEAR panel sees the ledger contract');
+}
+await ledger();
+
 // a craftsman account out of NEAR for gas gets a top-up from the bank; the bank does not pause
 async function gas() {
   console.log('\n== gas');

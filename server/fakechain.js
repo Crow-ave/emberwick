@@ -1,6 +1,6 @@
 // An in-memory stand-in for NEAR testnet, used by the tests
 // (and by EMBERWICK_NEAR=fake to preview the NEAR screens offline).
-export function fakeChain({ faucetWorks }) {
+export function fakeChain({ faucetWorks, faucetNear = 10 }) {
   const acc = new Map(); // id -> { near, code, ft: Map|null }
   let token = null;
   const ft = new Map(); // id -> bigint (registered accounts only)
@@ -18,19 +18,32 @@ export function fakeChain({ faucetWorks }) {
     async isRegistered(_t, id) { return ft.has(id); },
     async ftBalance(_t, id) { return ft.get(id) || 0n; },
     async faucet(name) {
-      if (this.slow) await new Promise((r) => setTimeout(r, this.slow)); if (!faucetWorks) throw new Error('faucet 429'); acc.set(name, { near: 10 }); },
+      if (this.slow) await new Promise((r) => setTimeout(r, this.slow)); if (!faucetWorks) throw new Error('faucet 429'); acc.set(name, { near: faucetNear }); },
     async createTopLevel(from, name, _pk, n) { const a = need(from); if (a.near < n) throw new Error('not enough'); a.near -= n; acc.set(name, { near: n }); },
     async createSub(parent, id, _pk, n) { const a = need(parent); if (a.near < n) throw new Error('not enough'); a.near -= n; acc.set(id, { near: n }); txs++; },
     async deploy(id) { need(id).code = true; txs++; },
     nft: null,
     async call(_s, contract, method, args) {
       if (method !== 'new') throw new Error('unknown');
+      if (args.writer !== undefined) { this.ledger = { contract, writer: args.writer, entries: new Map(), keys: 1 }; txs++; return; }
       if (args.total_supply === undefined) { this.nft = { contract, tokens: new Map() }; txs++; return; }
       token = contract; ft.set(args.owner_id, BigInt(args.total_supply)); txs++;
     },
+    ledger: null,
+    async isLedgerReady(id) { return !!(this.ledger && this.ledger.contract === id); },
+    async keyCount(id) { return this.ledger && this.ledger.contract === id ? this.ledger.keys : 1; },
+    async deleteKey(id) { if (this.ledger && this.ledger.contract === id) this.ledger.keys = 0; txs++; },
     async isNftReady(id) { return !!(this.nft && this.nft.contract === id); },
     async nftOwner(id, tokenId) { return this.nft && this.nft.contract === id ? this.nft.tokens.get(tokenId) || null : null; },
     async callTx(_s, contract, method, args) {
+      if (this.ledger && this.ledger.contract === contract) { // the Village Ledger's rules
+        if (_s !== this.ledger.writer) throw new Error('only the village bank can write to the ledger');
+        if (!/^[0-9a-f]{64}$/.test(args.sha256)) throw new Error('sha256 must be 64 lowercase hex characters');
+        const k = args.kind + ':' + args.day;
+        if (this.ledger.entries.has(k)) throw new Error('Smart contract panicked: this day is already recorded; records cannot be changed');
+        this.ledger.entries.set(k, { ...args, seq: this.ledger.entries.size }); txs++;
+        return 'ledgerhash' + txs;
+      }
       if (!this.nft || this.nft.contract !== contract) throw new Error('no nft contract');
       if (method === 'nft_mint') this.nft.tokens.set(args.token_id, args.token_owner_id);
       if (method === 'nft_transfer') this.nft.tokens.set(args.token_id, args.receiver_id);
