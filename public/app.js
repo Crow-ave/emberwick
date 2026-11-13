@@ -849,7 +849,9 @@ function panelBank() {
     `<p class="muted small">${t('bank.safe')}${acct && chainOk() ? ' · ' + t('bank.account') + ' ' + exLink('address/' + acct, esc(acct)) : ''}</p></div>`;
   // today's view from NEAR AI
   const pl = B.plan;
-  h += `<p class="sub2">${t('bank.today')}</p>`;
+  const stale = pl && pl.day !== view.day;
+  h += `<p class="sub2">${stale ? t('bank.last', { d: pl.day }) : t('bank.today')}</p>`;
+  if (stale) h += `<p class="muted small">${t('bank.stale')}</p>`;
   if (pl && pl.picks) {
     h += `<div class="ai-box"><div class="ai-head"><span class="ai-dot"></span>${t('bank.aiHead', { d: pl.day, model: esc(pl.model || '') })}</div>${pl.note ? `<p class="small">“${esc(pl.note)}”</p>` : ''}` +
       `<ul class="small bankpicks">${pl.picks.map((x) => `<li><span class="pick pick-${esc(x.action)}">${t('bank.act.' + x.action)}</span> <b>${esc(goodName(x.good))}</b> · ${esc(x.why)}</li>`).join('')}</ul>` +
@@ -866,7 +868,7 @@ function panelBank() {
       `<p class="muted small">${t('bank.limits', { mt: pc(m.maxTrade), sl: pc(m.stopLoss), n: m.goods.length })}</p>`;
     h += m.log && m.log.length ? `<ul class="small banklog">${m.log.slice(0, 8).map((l) => `<li>${t('bank.day', { d: l.day })} · ${bankLogLine(l)}</li>`).join('')}</ul>` : `<p class="muted small">${t('bank.waiting')}</p>`;
     const done = (m.log || []).filter((l) => l.kind === 'buy' || l.kind === 'sell');
-    if (done.length) h += `<details class="small" data-keep="banktrades"${keepOpen('banktrades')}><summary>${t('bank.allTrades', { n: done.length })}</summary><table class="small banktable"><tr><th>${t('bank.th.day')}</th><th>${t('bank.th.what')}</th><th class="n">${t('bank.th.total')}</th></tr>${done.map((l) => `<tr><td>${l.day}</td><td>${bankLogLine(l)}</td><td class="n ${l.kind === 'sell' ? 'ok' : ''}">${l.kind === 'sell' ? '+' : '−'}${(Math.round(l.qty * l.unit * 100) / 100)}</td></tr>`).join('')}</table></details>`;
+    if (done.length) h += `<details class="small" data-keep="banktrades"${keepOpen('banktrades')}><summary>${t('bank.allTrades', { n: done.length })}</summary><table class="small banktable"><tr><th>${t('bank.th.day')}</th><th>${t('bank.th.what')}</th><th class="n">${t('bank.th.total')}</th></tr>${done.map((l) => `<tr><td>${l.day}</td><td>${bankLogLine(l)}</td><td class="n ${l.kind === 'sell' ? 'ok' : ''}">${bankAmount(l)}</td></tr>`).join('')}</table><p class="muted small">${t('bank.amountNote')}</p></details>`;
     h += `<div class="row"><input id="bank-add" type="number" min="1" step="1" value="20"><button data-act="mandateAdd">${t('bank.add')}</button></div>` +
       `<div class="row"><label class="small">${t('bank.maxTrade')} <select id="bank-mt">${[0.1, 0.2, 0.3, 0.4, 0.5].map((x) => `<option value="${x}"${Math.abs(x - m.maxTrade) < 0.001 ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label>` +
       `<label class="small">${t('bank.stopLoss')} <select id="bank-sl">${[0.05, 0.1, 0.2, 0.3, 0.5].map((x) => `<option value="${x}"${Math.abs(x - m.stopLoss) < 0.001 ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label><button data-act="mandateSettings">${t('bank.save')}</button></div>` +
@@ -885,7 +887,10 @@ function panelBank() {
   }
   if (ui.bankMsg) h += `<p class="small ${ui.bankMsg.ok ? 'ok' : 'closed'}">${ui.bankMsg.text}</p>`;
   // Orin's book: everyone who hired him, each mandate apart
-  if ((B.book || []).length) h += `<details class="small" data-keep="bankbook"${keepOpen('bankbook')}><summary>${t('bank.book', { n: B.book.length })}</summary><table class="small banktable"><tr><th>${t('bank.th.client')}</th><th class="n">${t('bank.th.since')}</th><th class="n">${t('bank.th.stake')}</th><th class="n">${t('bank.th.value')}</th><th class="n">${t('bank.trades')}</th></tr>${B.book.map((c) => `<tr${c.me ? ' class="me"' : ''}><td>${esc(c.name)}</td><td class="n">${c.since}</td><td class="n">${c.stake}</td><td class="n ${c.profit >= 0 ? 'ok' : 'closed'}">${Math.round(c.value)} (${c.profit >= 0 ? '+' : ''}${c.profit})</td><td class="n">${c.trades}</td></tr>`).join('')}</table></details>`;
+  if (B.clients) h += `<details class="small" data-keep="bankbook"${keepOpen('bankbook')}><summary>${t('bank.book', { n: B.clients })}</summary>` +
+    `<p class="muted small">${t('bank.private')}</p>` +
+    (B.others && B.others.n ? `<p class="small">${t('bank.othersSum', { n: B.others.n, up: B.others.up, down: B.others.down, tr: B.others.trades })}</p>` : '') +
+    ((B.book || []).length ? `<table class="small banktable"><tr><th>${t('bank.th.client')}</th><th class="n">${t('bank.th.since')}</th><th class="n">${t('bank.th.stake')}</th><th class="n">${t('bank.th.value')}</th><th class="n">${t('bank.trades')}</th></tr>${B.book.map((c) => `<tr${c.me ? ' class="me"' : ''}><td>${esc(c.name)}</td><td class="n">${c.since}</td><td class="n">${c.stake}</td><td class="n ${c.profit >= 0 ? 'ok' : 'closed'}">${Math.round(c.value)} (${c.profit >= 0 ? '+' : ''}${c.profit})</td><td class="n">${c.trades}</td></tr>`).join('')}</table>` : '') + `</details>`;
   // the market as Orin sees it
   const mk = (B.market || []).filter((x) => x.buyFrom || x.sellTo);
   h += `<details class="small" data-keep="bankmarket"${keepOpen('bankmarket')}><summary>${t('bank.market')}</summary><table class="small">${mk.map((x) => `<tr><td>${esc(goodName(x.good))}</td><td class="n">${x.buyFrom ? x.buyFrom.price + ' · ' + esc(npcName(x.buyFrom.npc)) : '–'}</td><td class="n">${x.sellTo ? x.sellTo.price + ' · ' + esc(npcName(x.sellTo.npc)) : '–'}</td></tr>`).join('')}</table><p class="muted small">${t('bank.marketNote')}</p></details>`;
@@ -910,6 +915,13 @@ function panelCity() {
     `<div class="bankhow"><p class="sub2">${t('city.planTitle')}</p><ol class="small">${[1, 2, 3, 4, 5].map((k) => `<li>${t('city.plan' + k)}</li>`).join('')}</ol></div>` +
     `<p class="sub2">${t('city.whyTitle')}</p><p class="small">${t('city.why')}</p>` +
     `<p class="muted small">${t('city.more')}</p>`;
+}
+// a sale shows what reached the mandate after the market tax; older entries (before tax was logged) say they are gross
+function bankAmount(l) {
+  const gross = Math.round(l.qty * l.unit * 100) / 100;
+  if (l.kind !== 'sell') return '−' + gross;
+  if (l.net === undefined) return `+${gross} <span class="muted">${t('bank.gross')}</span>`;
+  return `+${l.net}${l.tax ? `<div class="muted">${t('bank.taxOf', { t: l.tax })}</div>` : ''}`;
 }
 function bankLogLine(l) {
   if (l.kind === 'buy' || l.kind === 'sell') return t('bank.log.' + l.kind, { q: l.qty, g: esc(goodName(l.good)), u: l.unit, n: esc(npcName(l.npc)) }) + (l.why ? ` <span class="muted">· ${esc(/^rule\./.test(l.why) ? t('bank.' + l.why) : l.why)}</span>` : '');
@@ -3428,6 +3440,7 @@ document.body.addEventListener('click', (e) => {
     else setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); // linked: show which wallets sign you in
     return;
   }
+  if (e.target.closest('[data-keepnear]')) { if (window.EmberwickWallet) nearMeteor(); return; }
   if (e.target.closest('[data-keepchip]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
   if (e.target.closest('[data-proofs]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = document.querySelector('.ledger-list') || document.querySelector('#panel .sub2'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
   if (e.target.closest('#near-pill')) { ui.selected = ui.selected === 'near' ? null : 'near'; renderMapNow(); renderPanel(); watchSys(); return; }
@@ -3587,7 +3600,7 @@ function keepBox() {
   let h = `<p class="sub2" id="keep-box">🔑 ${t('keep.title')}</p><p class="muted small">${t('keep.text')}</p>`;
   if (me.near && me.nearVerified) h += `<p class="ok small">${t('keep.nearCounts', { id: esc(me.near) })}</p>`;
   if (logins.length) h += `<p class="ok small">${t('keep.linked', { list: logins.join(' · ') })}</p>`;
-  h += `<div class="row signin-row">${['sol', 'evm'].map((k) => `<button data-keeplink="${k}"${ui.keepBusy ? ' disabled' : ''}>${ui.nearSign && k === 'near' && ui.nearSign.purpose === 'link' ? t('signin.nearNext', { id: esc(ui.nearSign.account) }) : t('keep.link', { w: t(WALLETS[k]) })}</button>`).join('')}</div>`;
+  h += `<div class="row signin-row">${me.near && me.nearVerified ? `<span class="pill ok">NEAR ✓ ${esc(shortAddr(me.near))}</span>` : `<button data-keepnear="1"${ui.keepBusy ? ' disabled' : ''}>${t('keep.link', { w: t(WALLETS.near) })}</button>`}${['sol', 'evm'].map((k) => `<button data-keeplink="${k}"${ui.keepBusy ? ' disabled' : ''}>${ui.nearSign && k === 'near' && ui.nearSign.purpose === 'link' ? t('signin.nearNext', { id: esc(ui.nearSign.account) }) : t('keep.link', { w: t(WALLETS[k]) })}</button>`).join('')}</div>`;
   if (!(me.near && me.nearVerified)) h += `<p class="muted small">${t('keep.nearHint')}</p>`;
   if (ui.keepMsg) h += `<p class="small ${ui.keepMsg.bad ? 'closed' : 'ok'}">${ui.keepMsg.text}</p>`;
   return h;

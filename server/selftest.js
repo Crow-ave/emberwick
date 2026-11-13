@@ -293,6 +293,17 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   if (cashProfit > 0 ? Math.abs(closed.fee - cashProfit * 0.1) > 0.02 : closed.fee !== 0) fail('Orin took the wrong fee');
   if ((g.balances['mandate:' + a] || 0) > 0.001) fail('money was left behind in a closed mandate');
   if (!v.market.length || v.unlock.needLevel !== 8) fail('the banker view is missing');
+  // sales are logged with their tax and the net amount that reached the mandate
+  const sells = (m.log || []).filter((x) => x.kind === 'sell');
+  if (sells.some((x) => x.net === undefined || Math.abs(x.net + x.tax - x.qty * x.unit) > 0.06)) fail('an Orin sale does not show its tax and net amount');
+  // Orin's book is private: another player sees totals, never a name or an amount per client
+  const g2 = createState(12), x1 = joinPlayer(g2, 'Ayla', 'farmer').id, x2 = joinPlayer(g2, 'Baran', 'farmer').id;
+  for (const id of [x1, x2]) { for (const k of Object.keys(g2.players[id].xp)) g2.players[id].xp[k] = 400; g2.balances['player:' + id] += 300; g2.balances.treasury -= 300; }
+  playerAction(g2, x1, { type: 'mandateOpen', amount: 120 });
+  const seen = bankerView(g2, x2), own = bankerView(g2, x1), txt = JSON.stringify(seen);
+  console.log('Orin\'s book seen by another player:', JSON.stringify({ clients: seen.clients, book: seen.book.length, others: seen.others }));
+  if (seen.clients !== 1 || seen.book.length || txt.includes('Ayla') || seen.mine || JSON.stringify((g2.log || []).filter((l) => /mandate/.test(l.key || ''))).includes('Ayla') || JSON.stringify(g2.tx || g2.transfers || []).includes('Ayla') || seen.others.n !== 1) fail('another player can see who hired Orin or how much');
+  if (own.book.length !== 1 || !own.book[0].me || own.book[0].stake !== 120 || own.others.n !== 0) fail('a client cannot see their own mandate in Orin\'s book');
 }
 // Village Ledger: every recorded day waits for the ledger contract with the same full hash the game serves
 {

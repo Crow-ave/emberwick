@@ -86,7 +86,7 @@ async function startNear() {
     if (h.startsWith('npc:')) return CRAFTSMEN.find((c) => c.id === h.slice(4))?.name || h;
     if (h.startsWith('player:')) return state.players[h.slice(7)]?.name || 'player';
     if (h.startsWith('bot:')) return state.bots[h.slice(4)]?.name || 'villager';
-    if (h.startsWith('mandate:')) return `Orin for ${state.players[h.slice(8)]?.name || 'a villager'}`;
+    if (h.startsWith('mandate:')) return 'Orin (a mandate)'; // Orin's book is private: no client name here either
     if (h === 'npc:banker') return 'Orin the Banker';
     return { treasury: 'Treasury', newcomerFund: 'Newcomer fund', adventurerFund: 'Adventurer fund', botFund: 'Villagers', deposits: 'Rent deposits', withdrawn: 'NEAR wallet' }[h] || h;
   };

@@ -883,6 +883,12 @@ const DROADS = {
 const DN = 10, DOY = 120;
 const dcell = (i, j) => [OX + (i - j) * TW / 2, DOY + (i + j) * TH / 2];
 
+// an invisible shape over a building's whole footprint and height, so a click between its walls, roofs
+// and trees opens it too (otherwise the same building answers on one spot and not on the next)
+function hitArea(cx, cy, w) {
+  const hw = TW * w / 2, hh = TH * w / 2, up = TH * w * 0.9;
+  return `<polygon class="hit" points="${pts([[cx - hw, cy], [cx - hw, cy - up], [cx, cy - up - hh], [cx + hw, cy - up], [cx + hw, cy], [cx, cy + hh]])}" fill="#000" fill-opacity="0"/>`;
+}
 export function renderDistrict(svg, world, view, ui) {
   const n = ui.district, def = view.districts.defs[n], open = (view.districts.open || []).includes(n) || !!(def && def.alwaysOpen);
   const winter = view.events.winter, greens = winter ? ['#cfdcc8', '#c6d5bf', '#d8e3d2'] : ['#86c457', '#7dbd4f', '#90cb60'];
@@ -909,7 +915,7 @@ export function renderDistrict(svg, world, view, ui) {
     const [cx, cy] = b.w > 1 ? dcell(b.i + (b.w - 1) / 2, b.j + (b.w - 1) / 2) : dcell(b.i, b.j);
     const nm = ui.nameOf ? ui.nameOf(b.id) : b.name;
     const art = b.id === 'city' ? cityArt(cx, cy, view) : b.id === 'bank' ? bankArt(cx, cy, view) : b.id === 'exchange' ? exchangeArt(cx, cy, view) : b.villa ? villaArt(b.id, cx, cy, view) : plotArt(b.id, cx, cy, view);
-    s += `<g class="bld" data-id="${b.id}" tabindex="0" role="button" aria-label="${nm}"><title>${nm}</title><g transform="translate(${cx} ${cy}) scale(${K}) translate(${-cx} ${-cy})">${art}</g></g>`;
+    s += `<g class="bld" data-id="${b.id}" tabindex="0" role="button" aria-label="${nm}"><title>${nm}</title>${hitArea(cx, cy, b.w || 1)}<g transform="translate(${cx} ${cy}) scale(${K}) translate(${-cx} ${-cy})">${art}</g></g>`;
     const pl = view.plots[b.id] || {};
     if (ui.hover === b.id || ui.selected === b.id || pl.mine || b.id === 'exchange' || b.id === 'bank' || b.id === 'city') {
       const label = (pl.mine && ui.mineTag ? '✦ ' + ui.mineTag + ' · ' : '') + nm, lw = tlen(label) * 7.4 + 16, ly = cy + TH * (b.w > 1 ? 1.4 : 0.9);

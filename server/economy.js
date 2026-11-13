@@ -1781,6 +1781,8 @@ function councilView(state, playerId) {
 }
 
 export function ensureContracts(state) {
+  // older saves: the village news once named Orin's clients and their amounts; his book is private now
+  for (const l of state.log || []) if (l.key === 'log.mandateOpen' || l.key === 'log.mandateClose') { l.text = l.key === 'log.mandateOpen' ? 'A villager hired Orin the Banker (his book is private).' : 'A villager closed a mandate with Orin.'; l.p = {}; }
   ensureCouncil(state);
   // villages saved before the tailor opened: the shop opens with money from the treasury
   for (const c of CRAFTSMEN) if (!state.npcs[c.id]) {
@@ -2530,10 +2532,10 @@ export function bankerAction(state, pid, a) {
     if (balance(state, 'player:' + pid) < amount) return { ok: false, code: 'err.noMoney' };
     const goods = goodsOf(a.goods);
     if (!goods.length) return { ok: false, code: 'err.noGoods' };
-    transfer(state, 'player:' + pid, mAcct(pid), amount, { memo: `Emberwick: ${p.name} hands Orin the Banker ${amount} EMWK to trade (mandate)` });
+    transfer(state, 'player:' + pid, mAcct(pid), amount, { memo: 'Emberwick: a mandate for Orin the Banker to trade' });
     p.mandate = { status: 'active', stake: amount, start: state.day, inv: {}, cost: {}, maxTrade: pct(a.maxTrade, BANKER.maxTrade), stopLoss: pct(a.stopLoss, BANKER.stopLoss), goods, log: [], trades: 0, realised: 0 };
     mLog(p.mandate, state, { kind: 'open', amount });
-    addLog(state, `${p.name} hired Orin the Banker with ${amount} EMWK.`, 'good', 'log.mandateOpen', { name: p.name, n: amount });
+    addLog(state, 'A villager hired Orin the Banker (his book is private).', 'good', 'log.mandateOpen', {}); // no name, no amount: Orin's book is private
     state.rev++;
     return { ok: true };
   }
@@ -2541,7 +2543,7 @@ export function bankerAction(state, pid, a) {
   if (a.type === 'mandateAdd') {
     const amount = Math.floor(Number(a.amount) || 0);
     if (amount < 1 || m.stake + amount > BANKER.maxStake) return { ok: false, code: 'err.stakeRange', params: { min: 1, max: BANKER.maxStake - m.stake } };
-    if (!transfer(state, 'player:' + pid, mAcct(pid), amount, { memo: `Emberwick: ${p.name} adds ${amount} EMWK to the mandate with Orin` })) return { ok: false, code: 'err.noMoney' };
+    if (!transfer(state, 'player:' + pid, mAcct(pid), amount, { memo: 'Emberwick: more for a mandate with Orin' })) return { ok: false, code: 'err.noMoney' };
     m.stake += amount; mLog(m, state, { kind: 'add', amount }); state.rev++;
     return { ok: true };
   }
@@ -2566,17 +2568,17 @@ export function closeMandate(state, pid, why) {
       if (!r.ok) break;
       m.realised = r2(m.realised + r.total - r.tax - (m.cost[g] || 0) * r.qty);
       left -= r.qty; m.trades++;
-      mLog(m, state, { kind: 'sell', good: g, qty: r.qty, unit: r.unit, npc: b.npc, why: 'closing' });
+      mLog(m, state, { kind: 'sell', good: g, qty: r.qty, unit: r.unit, tax: r2(r.tax), net: r2(r.total - r.tax), npc: b.npc, why: 'closing' });
     }
     if (left > 0) { addInv(p, g, left); m.inv[g] = 0; m.toBag = r2((m.toBag || 0) + left * (m.cost[g] || 0)); mLog(m, state, { kind: 'toBag', good: g, qty: left }); }
   }
   // the fee is on EMWK profit only; goods handed back count in the result at what they cost, but carry no fee
   const cash = balance(state, mAcct(pid)), cashProfit = r2(cash - m.stake), fee = cashProfit > 0 ? r2(cashProfit * BANKER.fee) : 0, profit = r2(cashProfit + (m.toBag || 0));
-  if (fee > 0) transfer(state, mAcct(pid), 'npc:' + BANKER.id, fee, { memo: `Emberwick: Orin's fee, ${Math.round(BANKER.fee * 100)}% of ${p.name}'s profit` });
-  transfer(state, mAcct(pid), 'player:' + pid, balance(state, mAcct(pid)), { memo: `Emberwick: Orin returns ${p.name}'s mandate` });
+  if (fee > 0) transfer(state, mAcct(pid), 'npc:' + BANKER.id, fee, { memo: `Emberwick: Orin's fee, ${Math.round(BANKER.fee * 100)}% of a mandate's profit` });
+  transfer(state, mAcct(pid), 'player:' + pid, balance(state, mAcct(pid)), { memo: 'Emberwick: Orin returns a mandate' });
   m.status = 'closed'; m.closed = { day: state.day, why, cash: r2(cash), profit, fee, goods: m.toBag || 0 };
   mLog(m, state, { kind: 'close', profit, fee, why });
-  addLog(state, `${p.name} closed the mandate with Orin: ${profit >= 0 ? 'profit' : 'loss'} ${Math.abs(profit)} EMWK${fee ? `, fee ${fee}` : ''}.`, profit >= 0 ? 'good' : 'info', 'log.mandateClose', { name: p.name, n: profit, fee });
+  addLog(state, 'A villager closed a mandate with Orin.', 'info', 'log.mandateClose', {});
   state.rev++;
   return { ok: true, profit, fee };
 }
@@ -2601,7 +2603,7 @@ export function bankerDay(state, plan = null) {
       const r = sellToNpc(state, actor, b.npc, g, b.qty);
       if (!r.ok) continue;
       m.realised = r2(m.realised + r.total - r.tax - (m.cost[g] || 0) * r.qty); m.trades++; trades++;
-      mLog(m, state, { kind: 'sell', good: g, qty: r.qty, unit: r.unit, npc: b.npc, why: why(g, 'rule.sellGain') });
+      mLog(m, state, { kind: 'sell', good: g, qty: r.qty, unit: r.unit, tax: r2(r.tax), net: r2(r.total - r.tax), npc: b.npc, why: why(g, 'rule.sellGain') });
     }
     // 3. buy: from the cheapest seller when another craftsman pays more today (resell at once), or when it is
     //    cheap against its usual price and someone buys it (keep it for a better day). Goods the AI marks "avoid" are skipped.
@@ -2627,7 +2629,7 @@ export function bankerDay(state, plan = null) {
       mLog(m, state, { kind: 'buy', good: g, qty, unit: s.unit, npc: s.npc, why: why(g, flip ? 'rule.flip' : 'rule.cheap') });
       if (flip) {
         const b2 = bestBuyer(state, g, qty, s.npc);
-        if (b2) { const r2s = sellToNpc(state, actor, b2.npc, g, b2.qty); if (r2s.ok) { m.realised = r2(m.realised + r2s.total - r2s.tax - m.cost[g] * r2s.qty); m.trades++; mLog(m, state, { kind: 'sell', good: g, qty: r2s.qty, unit: r2s.unit, npc: b2.npc, why: why(g, 'rule.flipSell') }); } }
+        if (b2) { const r2s = sellToNpc(state, actor, b2.npc, g, b2.qty); if (r2s.ok) { m.realised = r2(m.realised + r2s.total - r2s.tax - m.cost[g] * r2s.qty); m.trades++; mLog(m, state, { kind: 'sell', good: g, qty: r2s.qty, unit: r2s.unit, tax: r2(r2s.tax), net: r2(r2s.total - r2s.tax), npc: b2.npc, why: why(g, 'rule.flipSell') }); } }
       }
     }
     // a day without a trade says why, so the player is not left guessing
@@ -2642,9 +2644,12 @@ export function bankerDay(state, plan = null) {
 export function bankerView(state, pid) {
   const p = state.players[pid];
   const book = Object.values(state.players).filter((q) => q.mandate && q.mandate.status === 'active');
-  // Orin's book: every client and how their mandate stands (the village sees who hired Orin, like the market)
-  const clients = book.map((q) => { const val = mandateValue(state, q.id); return { name: q.name, me: q.id === pid, since: q.mandate.start, stake: q.mandate.stake, value: val, profit: r2(val - q.mandate.stake), trades: q.mandate.trades }; });
-  const v = { rules: BANKER, clients: book.length, book: clients, managed: r2(book.reduce((a, q) => a + mandateValue(state, q.id), 0)), earned: r2(balance(state, 'npc:' + BANKER.id)), plan: state.bankerPlan ? (({ json, ...x }) => x)(state.bankerPlan) : null, market: bankerMarket(state), tradedToday: state.bankerDay === state.day };
+  // Orin's book is private: each player sees their own mandate in full; of the others only totals, never a name or an amount per person
+  const rows = book.map((q) => { const val = mandateValue(state, q.id); return { me: q.id === pid, name: q.name, since: q.mandate.start, stake: q.mandate.stake, value: val, profit: r2(val - q.mandate.stake), trades: q.mandate.trades }; });
+  const others = rows.filter((c) => !c.me);
+  const clients = rows.filter((c) => c.me);
+  const othersSum = { n: others.length, up: others.filter((c) => c.profit > 0).length, down: others.filter((c) => c.profit < 0).length, trades: others.reduce((a, c) => a + c.trades, 0) };
+  const v = { rules: BANKER, clients: book.length, book: clients, others: othersSum, managed: r2(book.reduce((a, q) => a + mandateValue(state, q.id), 0)), earned: r2(balance(state, 'npc:' + BANKER.id)), plan: state.bankerPlan ? (({ json, ...x }) => x)(state.bankerPlan) : null, market: bankerMarket(state), tradedToday: state.bankerDay === state.day };
   if (!p) return v;
   const m = p.mandate;
   v.unlock = bankerUnlock(state, p);
