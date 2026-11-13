@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { markSeen, ledgerWritten, deedFollowsChain, bankerMarket, applyBankerPlan, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { markSeen, ledgerWritten, ledgerRepair, deedFollowsChain, bankerMarket, applyBankerPlan, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -54,6 +54,7 @@ try {
   for (const x of state.realSwaps || []) if (x.status === 'SUCCESS' && giveSeal(state, x.player, x.batch || x.depositAddress)) x.sealGiven = true; // real swaps made before seals existed
   if (state.ff) state.ff.running = false; // a fast-forward cut off by a restart just stops
   console.log(`Loaded saved village (day ${state.day}).`);
+  { const n = ledgerRepair(state); if (n) console.log(`[NEAR] Village Ledger: ${n} waiting record(s) were for days NEAR already holds; settled.`); }
 } catch {
   state = createState();
   console.log('Started a new village.');
@@ -98,7 +99,7 @@ async function startNear() {
     nftWasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_deeds.wasm')),
     onDeed: (plot, info) => { setDeed(state, plot, info); save(); broadcast(); },
     ledgerWasm: fs.existsSync(path.join(root, 'contracts', 'emwk_ledger.wasm')) ? fs.readFileSync(path.join(root, 'contracts', 'emwk_ledger.wasm')) : null,
-    onLedger: (e, tx) => { ledgerWritten(state, e, tx); save(); },
+    onLedger: (e, tx, onChain) => { ledgerWritten(state, e, tx, onChain); save(); },
     say: (m) => console.log('[NEAR] ' + m),
   });
   onTransfer((from, to, amount, note) => bridge.onTransfer(from, to, amount, note));
@@ -629,12 +630,14 @@ async function aiMorning() {
   aiTry = { day, n: aiTry.day === day ? aiTry.n + 1 : 1, at: Date.now() };
   try {
     const plan = await planDay(aiBrief(state));
-    if (plan && applyAiPlan(state, plan, ai.model, { tee: !!ai.tee, signer: ai.attest && ai.attest.signer, proof: plan._proof || null })) { state.aiPlannedDay = day; broadcast(); }
+    // a slow answer that arrives after its day has ended is not used: the new day gets its own plan
+    if (plan && state.day !== day) console.log(`[AI] the plan for day ${day} arrived after that day ended; not used.`);
+    else if (plan && applyAiPlan(state, plan, ai.model, { tee: !!ai.tee, signer: ai.attest && ai.attest.signer, proof: plan._proof || null })) { state.aiPlannedDay = day; broadcast(); }
     // Orin the Banker reads the market too, when someone has a mandate (one question a day for all clients)
-    if (Object.values(state.players).some((p) => p.mandate && p.mandate.status === 'active') && !(state.bankerPlan && state.bankerPlan.day === day) && state.bankerDay !== day) {
+    if (state.day === day && Object.values(state.players).some((p) => p.mandate && p.mandate.status === 'active') && !(state.bankerPlan && state.bankerPlan.day === day) && state.bankerDay !== day) {
       try {
         const bp = await bankerThink({ day, events: { winter: !!state.events.winter, dragon: state.events.dragon > 0 }, taxRate: state.taxRate ?? 0.02, market: bankerMarket(state) });
-        if (bp) { applyBankerPlan(state, bp, ai.model, bp._proof || null); broadcast(); }
+        if (bp && state.day === day) { applyBankerPlan(state, bp, ai.model, bp._proof || null); broadcast(); }
       } catch (e) { console.log('[AI] Orin the Banker trades by the rules today:', String(e.message || e).slice(0, 120)); }
     }
   } catch (e) {

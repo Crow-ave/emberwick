@@ -112,7 +112,7 @@ async function ledger() {
   const state = createState(5);
   let saved = null; const done = [];
   const bridge = new Bridge({ adapter: chain, npcIds: CRAFTSMEN.map((c) => c.id), totalSupply: TOKEN.totalSupply, balances: () => state.balances,
-    store: { load: () => saved, save: (o) => { saved = o; } }, wasm: new Uint8Array(1), ledgerWasm: new Uint8Array(1), onLedger: (e, hash) => done.push({ ...e, hash }) });
+    store: { load: () => saved, save: (o) => { saved = o; } }, wasm: new Uint8Array(1), ledgerWasm: new Uint8Array(1), onLedger: (e, hash, onChain) => done.push({ ...e, hash, onChain }) });
   await bridge.step();
   check(bridge.ledger.status === 'need-funds' || bridge.ledger.status === 'ready', 'the ledger waits for NEAR or starts (' + bridge.ledger.status + ')');
   chain.acc.get(bridge.root).near += 10; bridge.ledger.at = 0;
@@ -130,6 +130,17 @@ async function ledger() {
   bridge.recordLedger({ kind: 'state', day: 3, sha256: 'c'.repeat(64) }); // e.g. after a restart
   await bridge.step();
   check(chain.ledger.entries.get('state:3').sha256 === h && !bridge.ledgerQueue.length, 'a day already on the ledger is never overwritten, and the queue moves on');
+  // the real contract's refusal can come back as a bare "unreachable" trap: the bridge asks the ledger and moves on
+  const realCall = chain.callTx.bind(chain);
+  chain.callTx = async (...a) => { if (a[1] === chain.ledger.contract && chain.ledger.entries.has(a[3].kind + ':' + a[3].day)) throw new Error('WebAssembly trap: An `unreachable` opcode was executed.'); return realCall(...a); };
+  bridge.recordLedger({ kind: 'ai_plan', day: 4, sha256: 'd'.repeat(64) });
+  bridge.recordLedger({ kind: 'state', day: 5, sha256: 'e'.repeat(64) });
+  const before = done.length;
+  await bridge.step();
+  const last2 = done.slice(before);
+  check(!bridge.ledgerQueue.length && chain.ledger.entries.get('state:5') && last2.length === 2, 'an opaque refusal for a day already held does not block the next records');
+  check(last2[0].onChain && last2[0].onChain.sha256 === 'b'.repeat(64), 'the game hears which hash NEAR really holds for that day');
+  chain.callTx = realCall;
   const v = bridge.view().ledger;
   check(v.contract === 'ledger.' + bridge.root && v.locked, 'the NEAR panel sees the ledger contract');
 }

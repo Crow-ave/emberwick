@@ -132,7 +132,15 @@ export class Bridge {
         this.say(`Village Ledger: ${e.kind === 'state' ? 'village state' : 'AI plan'} of day ${e.day} recorded.`);
       } catch (err) {
         const msg = String(err.message || err);
-        if (/already recorded/.test(msg)) { /* written before a restart: nothing to do */ }
+        // the contract's own message can come back as a bare WebAssembly trap; then ask the ledger what it holds for that day
+        let held = null;
+        if (!/already recorded/.test(msg) && A.ledgerGet) { try { held = await A.ledgerGet(this.ledgerId, e.kind, e.day); } catch { held = null; } }
+        if (/already recorded/.test(msg) || held) {
+          if (held && held.sha256 !== e.sha256) this.say(`Village Ledger: day ${e.day} (${e.kind}) was already recorded with another hash; the first record stands.`);
+          this.ledgerQueue.shift();
+          this.onLedger(e, null, held ? { sha256: held.sha256 } : { sha256: null });
+          continue;
+        }
         else if (/LackBalanceForState|storage/i.test(msg) && (await A.nearBalance(this.root)) > ROOT_MIN + LEDGER_TOPUP) {
           await A.sendNear(this.root, this.ledgerId, LEDGER_TOPUP); // more room for records; try again on the next pass
           this.say(`Village Ledger: added ${LEDGER_TOPUP} NEAR of storage.`);
@@ -599,6 +607,7 @@ export async function makeNearAdapter(secretKeyRef) {
     async nftOwner(contractId, tokenId) {
       try { const t = await view(contractId, 'nft_token', { token_id: tokenId }); return t ? t.owner_id : null; } catch (e) { if (e instanceof RpcError) return null; throw e; }
     },
+    async ledgerGet(id, kind, day) { return (await view(id, 'get', { kind, day })) || null; },
     async isLedgerReady(id) {
       try { const w = await view(id, 'writer', {}); return typeof w === 'string' && w.length > 0; } catch (e) { if (e instanceof RpcError) return false; throw e; }
     },

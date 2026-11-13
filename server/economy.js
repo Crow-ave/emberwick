@@ -1203,11 +1203,31 @@ function recordDayState(state) {
 }
 // the Village Ledger (Emberwick's own contract on NEAR) gets the full hash of each record; the bridge writes it
 function toLedger(state, e) {
+  if ((state.ledgerDone || []).some((x) => x.kind === e.kind && x.day === e.day)) return; // NEAR already holds this day: records there never change
   state.ledgerOut = [...(state.ledgerOut || []).filter((x) => !(x.kind === e.kind && x.day === e.day)), e].slice(-40);
 }
-export function ledgerWritten(state, e, tx) {
+// onChain: what the ledger already held for that day, when the write was refused because the day was taken
+export function ledgerWritten(state, e, tx, onChain) {
   state.ledgerOut = (state.ledgerOut || []).filter((x) => !(x.kind === e.kind && x.day === e.day));
-  state.ledgerDone = [{ kind: e.kind, day: e.day, sha256: e.sha256, tx: tx || null }, ...(state.ledgerDone || []).filter((x) => !(x.kind === e.kind && x.day === e.day))].slice(0, 60);
+  const old = (state.ledgerDone || []).find((x) => x.kind === e.kind && x.day === e.day);
+  const sha = (onChain && onChain.sha256) || (old && onChain ? old.sha256 : e.sha256);
+  if (sha !== e.sha256) dropUnmatched(state, e.kind, e.day, sha);
+  state.ledgerDone = [{ kind: e.kind, day: e.day, sha256: sha, tx: tx || (old && old.tx) || null }, ...(state.ledgerDone || []).filter((x) => !(x.kind === e.kind && x.day === e.day))].slice(0, 60);
+}
+// the game's copy of a day no longer matches what NEAR holds (a second plan replaced the first one):
+// stop serving it, so nobody is shown a record that NEAR does not back
+function dropUnmatched(state, kind, day, sha) {
+  if (kind === 'ai_plan') state.aiLog = (state.aiLog || []).filter((x) => !(x.day === day && x.hash !== sha));
+  else state.dayLog = (state.dayLog || []).filter((x) => !(x.day === day && x.hash !== sha));
+}
+// on load: a record waiting to be written for a day NEAR already holds can never go through; settle it here
+export function ledgerRepair(state) {
+  let n = 0;
+  for (const e of [...(state.ledgerOut || [])]) {
+    const d = (state.ledgerDone || []).find((x) => x.kind === e.kind && x.day === e.day);
+    if (d) { ledgerWritten(state, e, null, { sha256: d.sha256 }); n++; }
+  }
+  return n;
 }
 
 // the morning plan goes on NEAR: a 0.01 EMWK record from the treasury carries a SHA-256 of the exact plan

@@ -1,5 +1,5 @@
 // Runs the economy for 100 game days and checks that it stays healthy.
-import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable, applyAiPlan, deedFollowsChain, bankerView, mandateValue } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable, applyAiPlan, ledgerWritten, ledgerRepair, deedFollowsChain, bankerView, mandateValue } from './economy.js';
 import { TOKEN, RULES } from './world.js';
 
 const state = createState(42);
@@ -305,6 +305,20 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   const mine = last && out.find((x) => x.kind === 'state' && x.day === last.day);
   console.log('Village Ledger queue:', out.length, 'records waiting (no NEAR in this test); newest state day', last && last.day, mine ? 'queued with its full hash' : 'MISSING');
   if (!mine || mine.sha256 !== last.hash || out.length > 40 || out.some((x) => !/^[0-9a-f]{64}$/.test(x.sha256))) fail('the Village Ledger queue does not match the day records');
+}
+// a second plan for a day NEAR already holds: never queued again, and a stuck one from an older save is settled on load
+{
+  const s3 = createState(9); s3.day = 783;
+  applyAiPlan(s3, { craftsmen: [{ id: 'bakery', want: { wheat: 1.3 }, price: {}, why: 'first' }] }, 'm', {});
+  const first = s3.ledgerOut.find((x) => x.kind === 'ai_plan'); ledgerWritten(s3, first, 'tx1');
+  applyAiPlan(s3, { craftsmen: [{ id: 'bakery', want: { wheat: 0.8 }, price: {}, why: 'second' }] }, 'm', {});
+  const again = (s3.ledgerOut || []).some((x) => x.kind === 'ai_plan' && x.day === 783);
+  // an older save: the second plan got queued before this fix
+  s3.ledgerOut.push({ kind: 'ai_plan', day: 783, sha256: s3.aiLog[0].hash });
+  const n = ledgerRepair(s3);
+  const served = (s3.aiLog || []).find((x) => x.day === 783);
+  console.log('Second plan for a recorded day:', again ? 'QUEUED AGAIN' : 'not queued', '| settled on load:', n, '| game serves', served ? (served.hash === first.sha256 ? 'the NEAR one' : 'ANOTHER ONE') : 'nothing for that day');
+  if (again || n !== 1 || (served && served.hash !== first.sha256) || s3.ledgerOut.some((x) => x.day === 783 && x.kind === 'ai_plan') || s3.ledgerDone[0].sha256 !== first.sha256) fail('a day already on the Village Ledger can block or contradict the queue');
 }
 console.log(problems ? `${problems} problem(s)` : 'All checks passed.');
 process.exit(problems ? 1 : 0);

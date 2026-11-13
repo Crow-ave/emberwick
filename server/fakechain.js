@@ -30,6 +30,7 @@ export function fakeChain({ faucetWorks, faucetNear = 10 }) {
       token = contract; ft.set(args.owner_id, BigInt(args.total_supply)); txs++;
     },
     ledger: null,
+    async ledgerGet(id, kind, day) { const x = this.ledger && this.ledger.contract === id && this.ledger.entries.get(kind + ':' + day); return x ? { sha256: x.sha256 } : null; },
     async isLedgerReady(id) { return !!(this.ledger && this.ledger.contract === id); },
     async keyCount(id) { return this.ledger && this.ledger.contract === id ? this.ledger.keys : 1; },
     async deleteKey(id) { if (this.ledger && this.ledger.contract === id) this.ledger.keys = 0; txs++; },
