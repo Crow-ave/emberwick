@@ -1046,3 +1046,21 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .map-card::after { content: ''; position: sticky; display: block; bottom: -22px; height: 28px; margin: 0 -16px -22px; background: linear-gradient(rgba(255,250,242,0), rgba(255,250,242,.95)); pointer-events: none; }
 /* a phone: a card over the map (the exchange) gets most of the screen, not the 440px strip */
 @media (max-width: 700px) { .view.card-on { height: calc(100vh - 110px); min-height: 520px; } }
+
+/* a NEAR wallet already linked: shown in the row with the other wallets, as a done button */
+.signin-row .keep-linked { opacity: 1; background: #eaf6ea; border-color: #7bb77b; color: #2e6b3a; font-weight: 600; cursor: default; }
+
+/* the wallet menu under the top-bar button */
+.wallet-menu { position: fixed; z-index: 60; width: 320px; background: #fffaf2; color: #3a2e22; border: 1px solid rgba(120,90,60,.3); border-radius: 14px; box-shadow: 0 12px 32px rgba(40,25,10,.25); padding: 12px 14px; }
+.wallet-menu .wm-title { margin: 0 0 8px; font-weight: 700; }
+.wallet-menu .wm-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(120,90,60,.15); }
+.wallet-menu .wm-icon { width: 28px; height: 28px; border-radius: 50%; background: #f1e6d4; display: grid; place-items: center; font-weight: 700; }
+.wallet-menu .wm-name { flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+.wallet-menu .wm-go { background: #e8642c; color: #fff; border: 0; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.wallet-menu .wm-go:disabled { opacity: .5; }
+.wallet-menu .wm-done { color: #2e8b57; font-weight: 700; font-size: 18px; }
+.wallet-menu .wm-more { background: none; border: 0; color: #b5501e; font: inherit; font-size: 13px; padding: 0; cursor: pointer; text-decoration: underline; }
+.wallet-menu .wm-un { background: none; border: 1px solid rgba(120,90,60,.35); color: #7a5236; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.wallet-menu .wm-un:hover { border-color: #b23a2e; color: #b23a2e; }
+.wallet-menu .wm-confirm { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.wallet-menu .wm-red { background: #b23a2e; }

@@ -851,6 +851,19 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, logins: p.logins.map(({ chain, address }) => ({ chain, address })), state: view(p.id) });
   }
 
+  // forget a wallet: a sign-in wallet (Phantom, MetaMask) or the NEAR wallet. Only the player can do it (their key is checked
+  // above). Coins and deeds stay where they are: deeds already in that NEAR wallet stay there, and the plot stays the player's.
+  if (req.method === 'POST' && url.pathname === '/api/signin/unlink') {
+    const body = await readBody(req), p = state.players[body.player], chain = String(body.chain || '');
+    if (!p) return sendJson(res, 400, { ok: false, code: 'err.unknownPlayer' });
+    if (chain === 'near') { if (!p.near) return sendJson(res, 400, { ok: false, code: 'err.badWallet' }); p.near = null; p.nearVerified = false; }
+    else if (chain === 'sol' || chain === 'evm') p.logins = (p.logins || []).filter((l) => l.chain !== chain);
+    else return sendJson(res, 400, { ok: false, code: 'err.badWallet' });
+    state.rev = (state.rev || 0) + 1; save(); broadcast();
+    console.log(`[sign-in] ${p.name} removed a ${chain} wallet.`);
+    return sendJson(res, 200, { ok: true, state: view(p.id) });
+  }
+
   // ask a craftsman a question; NEAR AI answers in character (words only, it never moves money)
   if (req.method === 'POST' && url.pathname === '/api/ai/ask') {
     const body = await readBody(req);

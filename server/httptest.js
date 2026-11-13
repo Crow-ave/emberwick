@@ -90,6 +90,12 @@ try {
   check(nearTry.status === 400 && nearTry.j.code === 'err.chainOff', 'NEAR sign-in waits for NEAR when it is off');
   const st2 = await (await fetch(`http://127.0.0.1:${PORT}/api/state?player=${b.j.id}`)).json();
   check(!JSON.stringify(st2.others || []).includes(evmAddr) && JSON.stringify(st2.player.logins).includes(solAddr), "a villager's sign-in wallets are shown only to them");
+  const unSteal = await post('/api/signin/unlink', { player: b.j.id, key: a.j.key, chain: 'sol' });
+  check(unSteal.status === 403, "removing someone else's wallet is refused");
+  const un = await post('/api/signin/unlink', { player: b.j.id, key: b.j.key, chain: 'sol' });
+  c = await chal({ chain: 'sol', address: solAddr, purpose: 'login' });
+  const afterUn = await post('/api/signin/login', { nonce: c.nonce, signature: solSign(c.message) });
+  check(un.status === 200 && !JSON.stringify(un.j.state.player.logins).includes(solAddr) && afterUn.status === 404, 'a villager removes their Phantom wallet, and it no longer signs them in');
   const sl = []; for (let i = 0; i < 8; i++) sl.push((await post('/api/join', { name: 'Spam' + i, path: 'miner' })).status);
   check(sl.includes(429), 'joining again and again from one address is slowed down (' + sl.join(',') + ')');
   const st = await (await fetch(`http://127.0.0.1:${PORT}/api/state?player=${b.j.id}`)).json();

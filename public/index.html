@@ -18,7 +18,7 @@
     <select id="lang" class="lang"></select>
     <button class="sndbtn" id="sfx-btn" type="button"></button><button class="sndbtn" id="music-btn" type="button"></button>
     <button id="near-pill" class="near-pill st-off" type="button"><span class="dot"></span><span id="near-text">NEAR</span></button>
-    <button id="wallet-btn" class="wallet-btn" type="button" hidden></button>
+    <button id="wallet-btn" class="wallet-btn" type="button" hidden aria-haspopup="true"></button>
     <div class="readiness" title="How ready the village is for a dragon attack">
       <span data-i18n="ui.readiness">Dragon readiness</span><div class="bar"><div id="ready-fill"></div></div><span id="ready-num">0%</span>
     </div>
@@ -106,5 +106,6 @@
   <div class="toast" id="toast" hidden></div>
   <script src="/vendor/near-wallet.js" defer></script>
   <script type="module" src="/app.js"></script>
+<div id="wallet-menu" class="wallet-menu" hidden></div>
 </body>
 </html>

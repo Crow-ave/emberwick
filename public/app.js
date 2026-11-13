@@ -2773,18 +2773,47 @@ async function nearWithdraw(amount) {
   if (r.state) { view = r.state; render(); }
   if (r.ok) toast(t('toast.withdrew', { n: r.amount, id: r.wallet }), 'win'); else toast(errText(r), 'bad');
 }
-// the wallet is always one click away in the top bar
+// the wallets live in the top bar, like in any app: one button, a menu with NEAR, Phantom and MetaMask
 function renderWalletBtn() {
   const btn = $('wallet-btn'), me = view.player;
-  if (!me || !chainOk()) { btn.hidden = true; return; }
+  if (!me) { btn.hidden = true; renderWalletMenu(); return; }
   btn.hidden = false;
-  if (me.near) {
+  const logins = me.logins || [], nearOk = !!(me.near && me.nearVerified), n = logins.length + (nearOk ? 1 : 0);
+  if (ui.challenge && !me.near) { btn.className = 'wallet-btn'; btn.textContent = t('near.signStep', { id: shortId(ui.challenge.account) }); }
+  else if (me.near || n) {
     btn.className = 'wallet-btn linked';
-    btn.innerHTML = `<span class="wdot"></span>${esc(shortId(me.near))} ${me.nearVerified ? '✓' : `<span class="muted">${t('near.unverifiedShort')}</span>`}`;
-  } else {
-    btn.className = 'wallet-btn';
-    btn.textContent = ui.challenge ? t('near.signStep', { id: shortId(ui.challenge.account) }) : t('near.meteor');
-  }
+    btn.innerHTML = `<span class="wdot"></span>${me.near ? `${esc(shortId(me.near))} ${me.nearVerified ? '✓' : `<span class="muted">${t('near.unverifiedShort')}</span>`}` : esc(t('wm.count', { n }))}${n > 1 ? ` <span class="muted">+${n - 1}</span>` : ''} ▾`;
+  } else { btn.className = 'wallet-btn'; btn.textContent = t('wm.connect') + ' ▾'; }
+  renderWalletMenu();
+}
+// remove a wallet; for NEAR, also sign the Meteor wallet out of this browser
+async function unlinkWallet(chain) {
+  ui.wmConfirm = null;
+  const r = await post('/api/signin/unlink', { player: playerId, chain });
+  if (r.state) view = r.state;
+  if (r.ok && chain === 'near') { ui.challenge = null; try { const c = view.chain || {}; if (window.EmberwickWallet && c.network) await window.EmberwickWallet.signOut(c.network); } catch { /* already signed out */ } }
+  ui.keepMsg = r.ok ? { text: t('wm.removed') } : { bad: true, text: errText(r) };
+  render();
+}
+function renderWalletMenu() {
+  const m = $('wallet-menu'), me = view.player;
+  if (!m) return;
+  if (!ui.walletMenu || !me) { m.hidden = true; return; }
+  const logins = me.logins || [], has = (c) => logins.find((l) => l.chain === c);
+  const row = (icon, name, state, action) => `<div class="wm-row"><span class="wm-icon">${icon}</span><div class="wm-name"><b>${name}</b>${state}</div>${action}</div>`;
+  const nearState = me.near ? `<span class="${me.nearVerified ? 'ok' : 'muted'} small">${esc(shortAddr(me.near))} ${me.nearVerified ? '✓' : t('near.unverifiedShort')}</span>` : `<span class="muted small">${t('wm.nearWhat')}</span>`;
+  const un = (c) => ui.wmConfirm === c ? `<span class="wm-confirm"><button class="wm-go wm-red" data-wm="yes-${c}">${t('wm.yes')}</button><button class="wm-more" data-wm="no">${t('wm.no')}</button></span>` : `<button class="wm-un" data-wm="un-${c}" title="${t('wm.unlink')}">${t('wm.unlink')}</button>`;
+  const nearAct = me.near && me.nearVerified ? un('near') : chainOk() && window.EmberwickWallet ? `<button class="wm-go" data-wm="near"${ui.nearBusy ? ' disabled' : ''}>${t(me.near ? 'wm.verify' : 'wm.link')}</button>` : `<span class="muted small">${t('wm.nearOff')}</span>`;
+  const other = (c, icon, name) => { const l = has(c); return row(icon, name, l ? `<span class="ok small">${esc(shortAddr(l.address))} ✓</span>` : `<span class="muted small">${t('wm.signinOnly')}</span>`, l ? un(c) : `<button class="wm-go" data-wm="${c}"${ui.keepBusy ? ' disabled' : ''}>${t('wm.link')}</button>`); };
+  m.innerHTML = `<p class="wm-title">${t('wm.title')}</p>` +
+    row('Ⓝ', 'NEAR (Meteor)', nearState, nearAct) + other('sol', '◎', 'Phantom (Solana)') + other('evm', '⬡', 'MetaMask (EVM)') +
+    (ui.wmConfirm ? `<p class="small closed">${t(ui.wmConfirm === 'near' ? 'wm.unNear' : 'wm.unOther')}${!(me.logins || []).filter((l) => l.chain !== ui.wmConfirm).length && !(me.near && me.nearVerified && ui.wmConfirm !== 'near') ? ' ' + t('wm.lastOne') : ''}</p>` : '') +
+    (ui.keepMsg ? `<p class="small ${ui.keepMsg.bad ? 'closed' : 'ok'}">${ui.keepMsg.text}</p>` : '') +
+    `<p class="muted small">${t('wm.note')}</p><button class="wm-more" data-wm="more">${t('wm.more')} →</button>`;
+  const r = $('wallet-btn').getBoundingClientRect();
+  m.style.top = Math.round(r.bottom + 8) + 'px';
+  m.style.left = Math.round(Math.max(8, Math.min(innerWidth - 328, r.right - 320))) + 'px';
+  m.hidden = false;
 }
 
 function renderNearPill() {
@@ -3457,12 +3486,22 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-trade]')) { ui.selected = 'trade'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('[data-board]')) { ui.selected = 'board'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('#wallet-btn')) {
-    ui.selected = 'near'; renderMapNow(); renderPanel();
-    const me = view.player;
-    if (me && window.EmberwickWallet && (!me.near || ui.challenge)) nearMeteor();
-    else setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); // linked: show which wallets sign you in
+    if (ui.challenge && view.player && !view.player.near && window.EmberwickWallet) { nearMeteor(); return; } // finish the NEAR step already started
+    ui.walletMenu = !ui.walletMenu; ui.keepMsg = null; ui.wmConfirm = null; renderWalletMenu(); return;
+  }
+  const wm = e.target.closest('[data-wm]');
+  if (wm) {
+    const k = wm.dataset.wm;
+    if (k === 'near') { ui.walletMenu = false; renderWalletMenu(); nearMeteor(); return; }
+    if (k === 'sol' || k === 'evm') { linkLogin(k); return; }
+    if (k.startsWith('un-')) { ui.wmConfirm = k.slice(3); ui.keepMsg = null; renderWalletMenu(); return; }
+    if (k === 'no') { ui.wmConfirm = null; renderWalletMenu(); return; }
+    if (k.startsWith('yes-')) { unlinkWallet(k.slice(4)); return; }
+    ui.walletMenu = false; renderWalletMenu(); ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys();
+    setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300);
     return;
   }
+  if (ui.walletMenu && !e.target.closest('#wallet-menu')) { ui.walletMenu = false; renderWalletMenu(); }
   if (e.target.closest('[data-keepnear]')) { if (window.EmberwickWallet) nearMeteor(); return; }
   if (e.target.closest('[data-keepchip]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
   if (e.target.closest('[data-proofs]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = document.querySelector('.ledger-list') || document.querySelector('#panel .sub2'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
@@ -3623,7 +3662,7 @@ function keepBox() {
   let h = `<p class="sub2" id="keep-box">🔑 ${t('keep.title')}</p><p class="muted small">${t('keep.text')}</p>`;
   if (me.near && me.nearVerified) h += `<p class="ok small">${t('keep.nearCounts', { id: esc(me.near) })}</p>`;
   if (logins.length) h += `<p class="ok small">${t('keep.linked', { list: logins.join(' · ') })}</p>`;
-  h += `<div class="row signin-row">${me.near && me.nearVerified ? `<span class="pill ok">NEAR ✓ ${esc(shortAddr(me.near))}</span>` : `<button data-keepnear="1"${ui.keepBusy ? ' disabled' : ''}>${t('keep.link', { w: t(WALLETS.near) })}</button>`}${['sol', 'evm'].map((k) => `<button data-keeplink="${k}"${ui.keepBusy ? ' disabled' : ''}>${ui.nearSign && k === 'near' && ui.nearSign.purpose === 'link' ? t('signin.nearNext', { id: esc(ui.nearSign.account) }) : t('keep.link', { w: t(WALLETS[k]) })}</button>`).join('')}</div>`;
+  h += `<div class="row signin-row">${me.near && me.nearVerified ? `<button class="keep-linked" disabled title="${esc(t('keep.nearCounts', { id: me.near }))}">✓ ${t('keep.linkedNear', { id: esc(shortAddr(me.near)) })}</button>` : `<button data-keepnear="1"${ui.keepBusy ? ' disabled' : ''}>${t('keep.link', { w: t(WALLETS.near) })}</button>`}${['sol', 'evm'].map((k) => `<button data-keeplink="${k}"${ui.keepBusy ? ' disabled' : ''}>${ui.nearSign && k === 'near' && ui.nearSign.purpose === 'link' ? t('signin.nearNext', { id: esc(ui.nearSign.account) }) : t('keep.link', { w: t(WALLETS[k]) })}</button>`).join('')}</div>`;
   if (!(me.near && me.nearVerified)) h += `<p class="muted small">${t('keep.nearHint')}</p>`;
   if (ui.keepMsg) h += `<p class="small ${ui.keepMsg.bad ? 'closed' : 'ok'}">${ui.keepMsg.text}</p>`;
   return h;
