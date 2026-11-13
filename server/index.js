@@ -5,12 +5,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { markSeen, ledgerWritten, deedFollowsChain, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { markSeen, ledgerWritten, deedFollowsChain, bankerMarket, applyBankerPlan, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
 import { CHAINS, normAddress, signinMessage, verifyEvm, verifySol, Challenges } from './signin.js';
-import { ai, startAi, planDay, askCraftsman, haggleLine, aiPublic, aiProof, PROOFS_KEPT, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
+import { ai, startAi, planDay, bankerThink, askCraftsman, haggleLine, aiPublic, aiProof, PROOFS_KEPT, fetchAttestation, readSwapCommand, addressesIn } from './ai.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -85,11 +85,13 @@ async function startNear() {
     if (h.startsWith('npc:')) return CRAFTSMEN.find((c) => c.id === h.slice(4))?.name || h;
     if (h.startsWith('player:')) return state.players[h.slice(7)]?.name || 'player';
     if (h.startsWith('bot:')) return state.bots[h.slice(4)]?.name || 'villager';
+    if (h.startsWith('mandate:')) return `Orin for ${state.players[h.slice(8)]?.name || 'a villager'}`;
+    if (h === 'npc:banker') return 'Orin the Banker';
     return { treasury: 'Treasury', newcomerFund: 'Newcomer fund', adventurerFund: 'Adventurer fund', botFund: 'Villagers', deposits: 'Rent deposits', withdrawn: 'NEAR wallet' }[h] || h;
   };
   bridge = new Bridge({
     adapter, store, names,
-    npcIds: CRAFTSMEN.map((c) => c.id),
+    npcIds: [...CRAFTSMEN.map((c) => c.id), 'banker'], // Orin the Banker has a NEAR account of his own
     totalSupply: TOKEN.totalSupply,
     balances: () => state.balances,
     wasm: fs.readFileSync(path.join(root, 'contracts', 'emwk_token.wasm')),
@@ -628,6 +630,13 @@ async function aiMorning() {
   try {
     const plan = await planDay(aiBrief(state));
     if (plan && applyAiPlan(state, plan, ai.model, { tee: !!ai.tee, signer: ai.attest && ai.attest.signer, proof: plan._proof || null })) { state.aiPlannedDay = day; broadcast(); }
+    // Orin the Banker reads the market too, when someone has a mandate (one question a day for all clients)
+    if (Object.values(state.players).some((p) => p.mandate && p.mandate.status === 'active') && !(state.bankerPlan && state.bankerPlan.day === day) && state.bankerDay !== day) {
+      try {
+        const bp = await bankerThink({ day, events: { winter: !!state.events.winter, dragon: state.events.dragon > 0 }, taxRate: state.taxRate ?? 0.02, market: bankerMarket(state) });
+        if (bp) { applyBankerPlan(state, bp, ai.model, bp._proof || null); broadcast(); }
+      } catch (e) { console.log('[AI] Orin the Banker trades by the rules today:', String(e.message || e).slice(0, 120)); }
+    }
   } catch (e) {
     ai.lastError = String(e.message || e).slice(0, 160);
     ai.planFailed = true; // the craftsmen keep their rule-based habits until a plan comes through
@@ -996,6 +1005,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(rec.json);
   }
   // every kept village record at once (each with its hash), so anyone can keep an independent archive
+  if (url.pathname === '/api/banker/plan') { const bp = state.bankerPlan; if (!bp || !bp.json) return sendJson(res, 404, { ok: false, error: 'Orin has not read the market with NEAR AI yet (he reads it on mornings when someone has a mandate).' }); res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(bp.json); }
   if (url.pathname === '/api/ledger') return sendJson(res, 200, { ok: true, contract: bridge && bridge.ledgerWasm && bridge.root ? bridge.ledgerId : null, status: bridge ? bridge.ledger.status : 'off', locked: !!(bridge && bridge.ledger.locked), written: state.ledgerDone || [], waiting: (state.ledgerOut || []).map(({ kind, day, sha256 }) => ({ kind, day, sha256 })) });
   if (url.pathname === '/api/state-records') return sendJson(res, 200, { ok: true, days: (state.dayLog || []).map((x) => ({ day: x.day, sha256: x.hash, json: x.json })) });
   if (url.pathname === '/api/solvency') return sendJson(res, 200, solvency());

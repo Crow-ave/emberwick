@@ -253,6 +253,29 @@ export async function planDay(brief) {
   return plan;
 }
 
+// Orin the Banker reads the market once a morning (only when someone has a mandate). The answer can only rank
+// goods (buy, sell, hold, avoid) and give a reason; the village rules decide every trade and its size.
+const SYSTEM_BANKER = 'You are Orin, the careful banker of Emberwick, a medieval village whose money is EMWK. Villagers hire you to trade goods for them with the village craftsmen. ' +
+  'You are given, for each good: the cheapest seller and price, the craftsman paying most for it and that price, and its usual price; plus village events. ' +
+  'A profit comes from buying where a good is cheap and selling where it is wanted, after a market tax. Be prudent: you manage other people\'s savings. ' +
+  'Reply with only a JSON object: {"note": "one sentence on today\'s market, in plain words", "picks": [{"good": "<good>", "action": "buy" | "sell" | "hold" | "avoid", "why": "a short reason"}]}. ' +
+  'At most 6 picks, only goods from the list. "buy": worth buying today; "sell": sell what is held; "hold": keep it for a better price; "avoid": do not touch it today. ' +
+  'You never move money yourself: the village rules check every trade against the client\'s limits.';
+export async function bankerThink(brief) {
+  if (MODE === 'fake') {
+    const g = (brief.market || []).find((x) => x.buyFrom && x.sellTo) || (brief.market || [])[0];
+    return { note: 'Test view of the market.', picks: g ? [{ good: g.good, action: 'buy', why: 'Test pick.' }] : [], _proof: null };
+  }
+  if (ai.status !== 'ready') return null;
+  const text = await chat([{ role: 'system', content: SYSTEM_BANKER }, { role: 'user', content: JSON.stringify(brief) }], 1200);
+  let plan = null;
+  try { plan = jsonIn(text); } catch {}
+  if (!plan || !Array.isArray(plan.picks)) throw new Error('Orin did not return a plan: ' + text.replace(/\s+/g, ' ').slice(0, 100));
+  console.log(`[AI] Orin the Banker read the market (${plan.picks.length} picks).`);
+  plan._proof = await verifyAnswer(ai.lastCall);
+  return plan;
+}
+
 const LANGS = { en: 'English', tr: 'Turkish', fr: 'French', de: 'German', ru: 'Russian', zh: 'Simplified Chinese' };
 
 // each craftsman's character, so they do not all sound the same

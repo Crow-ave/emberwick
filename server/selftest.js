@@ -1,5 +1,5 @@
 // Runs the economy for 100 game days and checks that it stays healthy.
-import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable, applyAiPlan, deedFollowsChain } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable, applyAiPlan, deedFollowsChain, bankerView, mandateValue } from './economy.js';
 import { TOKEN, RULES } from './world.js';
 
 const state = createState(42);
@@ -264,6 +264,35 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   const r6 = deedFollowsChain(g, 'plot-2', 'baran.testnet');
   if (r6.changed || g.plots['plot-2'].owner !== a) fail('a villager with land got a second plot from a deed NFT');
   if (Math.abs(totalMoney(g) - TOKEN.totalSupply) > 0.05) fail('money total changed when land followed its deed');
+}
+// Orin the Banker: locked until level and savings, limits kept, money never created, fee only on profit
+{
+  const g = createState(11);
+  const a = joinPlayer(g, 'Deniz', 'farmer').id, pa = g.players[a];
+  const locked = playerAction(g, a, { type: 'mandateOpen', amount: 50 });
+  for (const k of Object.keys(pa.xp)) pa.xp[k] = 400;
+  g.balances['player:' + a] += 500; g.balances.treasury -= 500;
+  const tooBig = playerAction(g, a, { type: 'mandateOpen', amount: 5000 });
+  const opened = playerAction(g, a, { type: 'mandateOpen', amount: 200, maxTrade: 9, stopLoss: 0 });
+  const m = pa.mandate, T0 = totalMoney(g), coins0 = g.balances['player:' + a];
+  const twice = playerAction(g, a, { type: 'mandateOpen', amount: 50 });
+  let maxSpend = 0;
+  for (let i = 0; i < 25 * RULES.ticksPerDay; i++) {
+    const before = g.balances['mandate:' + a] || 0; tick(g);
+    for (const l of (m.log || []).filter((x) => x.kind === 'buy' && x.day === g.day)) maxSpend = Math.max(maxSpend, l.qty * l.unit);
+    if (m.status !== 'active') break;
+  }
+  const v = bankerView(g, a);
+  const closed = m.status === 'active' ? playerAction(g, a, { type: 'mandateClose' }) : { ok: true, ...m.closed };
+  console.log('Orin the Banker: locked at first', !locked.ok, '| limits', m.maxTrade, m.stopLoss, '| trades', m.trades, '| result', closed.profit, 'fee', closed.fee, '| money kept', Math.abs(totalMoney(g) - T0) < 0.05);
+  if (locked.ok || tooBig.ok || !opened.ok || twice.ok) fail('Orin opened a mandate he should not have');
+  if (m.maxTrade !== 0.5 || m.stopLoss !== 0.05) fail('mandate limits were not kept inside their bounds');
+  if (maxSpend > 200 * 0.5 + 0.01) fail('Orin spent more on one purchase than the player allowed: ' + maxSpend);
+  if (Math.abs(totalMoney(g) - T0) > 0.05) fail('money was created or lost by Orin');
+  const cashProfit = (m.closed ? m.closed.cash : 0) - m.stake;
+  if (cashProfit > 0 ? Math.abs(closed.fee - cashProfit * 0.1) > 0.02 : closed.fee !== 0) fail('Orin took the wrong fee');
+  if ((g.balances['mandate:' + a] || 0) > 0.001) fail('money was left behind in a closed mandate');
+  if (!v.market.length || v.unlock.needLevel !== 8) fail('the banker view is missing');
 }
 // Village Ledger: every recorded day waits for the ledger contract with the same full hash the game serves
 {

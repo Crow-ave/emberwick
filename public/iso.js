@@ -590,10 +590,13 @@ function distant(view, ui) {
   const L = [70, 150], V = [330, 44], E = [200, 84];
   const lane = [[-34, 2], [-16, -4], [2, -6], [20, -2], [36, 4]].slice(0, Math.max(2, Math.min(5, built(1) + 2))).map(([dx, dy], k) => hut(L[0] + dx, L[1] - 8 + dy, ['#c4473a', '#3a6ea8', '#4f7a3a', '#8c3a2a', '#7a3b8a'][k])).join('');
   const villa = [[-28, 0], [6, -8], [34, 2]].map(([dx, dy]) => hut(V[0] + dx, V[1] - 8 + dy, '#2f4f6f', 1.5) + `<rect x="${V[0] + dx + 8}" y="${V[1] - 11 + dy}" width="8" height="3" fill="#6ec3ea"/>`).join('');
+  // Gold Row far away: Orin's bank, a small golden dome that shines
+  const G = [470, 20];
+  const gold = `<circle class="goldglow" cx="${G[0]}" cy="${G[1] - 26}" r="30" fill="#ffd36a" opacity=".22"/><rect x="${G[0] - 24}" y="${G[1] - 22}" width="48" height="18" fill="#2f5d4a"/>${[0, 1, 2, 3, 4].map((k) => `<rect x="${G[0] - 21 + k * 10}" y="${G[1] - 20}" width="3" height="15" fill="#f6eed6"/>`).join('')}<rect x="${G[0] - 27}" y="${G[1] - 25}" width="54" height="4" fill="#e2b640"/><path d="M${G[0] - 16} ${G[1] - 25} A16 15 0 0 1 ${G[0] + 16} ${G[1] - 25} Z" fill="#e8b53a" stroke="#a87a18" stroke-width=".8"/><path d="M${G[0] - 10} ${G[1] - 28} A10 9 0 0 1 ${G[0] - 2} ${G[1] - 37}" stroke="#fbe39a" stroke-width="2" fill="none"/><circle cx="${G[0]}" cy="${G[1] - 43}" r="3.2" fill="#f2c94c" stroke="#a87a18" stroke-width=".6"/><path d="M${G[0] + 30} ${G[1] - 40} l2 5 l5 2 l-5 2 l-2 5 l-2 -5 l-5 -2 l5 -2 z" fill="#ffe27a"/><path d="M${G[0] - 34} ${G[1] - 30} l1.5 3.5 l3.5 1.5 l-3.5 1.5 l-1.5 3.5 l-1.5 -3.5 l-3.5 -1.5 l3.5 -1.5 z" fill="#ffe27a"/>`;
   const ex0 = E[0] - 22, ey = E[1] - 26;
   const ex = `<rect x="${ex0 - 3}" y="${ey + 17}" width="50" height="4" fill="#e4dac4"/><rect x="${ex0}" y="${ey}" width="44" height="18" fill="#f6f1e4" stroke="#c9bfa8"/>${[0, 1, 2, 3, 4].map((k) => `<rect x="${ex0 + 3 + k * 8.4}" y="${ey + 2}" width="3" height="16" fill="#fdfbf5"/><rect x="${ex0 + 2.5 + k * 8.4}" y="${ey + 1}" width="4" height="1.6" fill="#e2b640"/>`).join('')}<rect x="${ex0 - 1}" y="${ey - 3}" width="46" height="3" fill="#d9a92e"/><polygon points="${ex0 - 2},${ey - 3} ${E[0]},${ey - 15} ${ex0 + 46},${ey - 3}" fill="#e2b640"/><polygon points="${ex0 + 3},${ey - 4} ${E[0]},${ey - 12} ${ex0 + 41},${ey - 4}" fill="#f8f3e6"/><circle cx="${E[0]}" cy="${ey - 7}" r="2.6" fill="#e2b640"/><circle cx="${E[0]}" cy="${ey - 17}" r="1.8" fill="#f2c94c"/>`;
   return `<g opacity=".97">` + place('go-d2', V[0], V[1], villa, ui.villaName || 'Villa hill', open.includes(2)) + place('go-d3', E[0], E[1], ex, ui.exName || 'Exchange', true) +
-    place('go-d1', L[0], L[1], lane, ui.laneName || 'Ember Lane', open.includes(1)) + `</g>`;
+    place('go-d1', L[0], L[1], lane, ui.laneName || 'Ember Lane', open.includes(1)) + place('go-d4', G[0], G[1], gold, ui.goldName || 'Gold Row', true) + `</g>`;
 }
 
 let groundCache = { key: null, svg: '' };
@@ -765,8 +768,75 @@ function exchangeArt(cx, cy, v) {
   return s + sign(cx + 104, cy + 20, 'coin', '#eef8f4');
 }
 
+// Orin's bank on Gold Row: a deep green and marble hall under a golden dome, a vault door, gold lions,
+// a fountain full of coins, lanterns and banners with Orin's mark
+function bankArt(cx, cy, v) {
+  const sc = 2.1, h = 40;
+  let s = shadow(cx, cy, 80) + poly(diamond(cx, cy + 6, 130, 65), '#c9b27a') + poly(diamond(cx, cy + 6, 112, 56), '#f1e4bd');
+  const f = frame(cx, cy - 4, sc, h);
+  const uL = lift(f.L, h), uB = lift(f.B, h), uR = lift(f.R, h), uT = lift(f.T, h);
+  // walls: dark green with marble bands
+  s += poly([f.L, f.B, uB, uL], '#2f5d4a') + poly([f.B, f.R, uR, uB], '#24493a');
+  for (const k of [0.18, 0.62]) {
+    const a = mid(f.L, uL, k), b = mid(f.B, uB, k), c = mid(f.R, uR, k);
+    s += `<path d="M${a[0]} ${a[1]} L${b[0]} ${b[1]} L${c[0]} ${c[1]}" stroke="#efe6cf" stroke-width="2.4" fill="none"/>`;
+  }
+  // flat roof with a gold cornice
+  s += poly([uT, uR, uB, uL], '#e9dfc4') + `<polygon points="${uL[0]},${uL[1]} ${uB[0]},${uB[1]} ${uB[0]},${uB[1] + 5} ${uL[0]},${uL[1] + 5}" fill="#e0b13a"/><polygon points="${uB[0]},${uB[1]} ${uR[0]},${uR[1]} ${uR[0]},${uR[1] + 5} ${uB[0]},${uB[1] + 5}" fill="#b98d22"/>`;
+  // the golden dome with a lantern and Orin's mark on top
+  const top = [(uT[0] + uB[0]) / 2, (uT[1] + uB[1]) / 2], dr = 30;
+  s += `<rect x="${top[0] - dr}" y="${top[1] - 10}" width="${dr * 2}" height="12" fill="#efe6cf" stroke="#cdbf9f" stroke-width=".6"/>`;
+  for (let k = 0; k < 7; k++) s += `<rect x="${top[0] - dr + 4 + k * 8.4}" y="${top[1] - 9}" width="3" height="10" fill="#fbf7ec"/>`;
+  s += `<path d="M${top[0] - dr} ${top[1] - 10} A${dr} ${dr * 0.95} 0 0 1 ${top[0] + dr} ${top[1] - 10} Z" fill="#e8b53a" stroke="#a87a18" stroke-width="1"/>` +
+    `<path d="M${top[0] - dr + 8} ${top[1] - 14} A${dr - 8} ${dr * 0.78} 0 0 1 ${top[0] - 2} ${top[1] - 36}" stroke="#fbe39a" stroke-width="3" fill="none" opacity=".8"/>` +
+    [-0.6, -0.2, 0.2, 0.6].map((k) => `<path d="M${top[0] + k * dr} ${top[1] - 10} Q${top[0] + k * dr * 0.55} ${top[1] - 30} ${top[0]} ${top[1] - 38}" stroke="#c99420" stroke-width=".9" fill="none"/>`).join('') +
+    `<rect x="${top[0] - 3}" y="${top[1] - 50}" width="6" height="12" fill="#f6eed6" stroke="#c99420" stroke-width=".6"/><circle cx="${top[0]}" cy="${top[1] - 56}" r="6" fill="#f2c94c" stroke="#a87a18"/><text x="${top[0]}" y="${top[1] - 53.5}" font-size="7.5" font-weight="bold" text-anchor="middle" fill="#6a4a10">O</text>`;
+  // marble columns along the front, gold capitals
+  for (let k = 0; k < 6; k++) {
+    const p = mid(f.L, f.B, 0.08 + k * 0.168);
+    s += `<rect x="${p[0] - 3}" y="${p[1] - h + 6}" width="6" height="${h - 6}" fill="#fdfbf5" stroke="#cfc5ae" stroke-width=".6"/><rect x="${p[0] - 4.2}" y="${p[1] - h + 3}" width="8.4" height="3.6" fill="#e2b640"/><rect x="${p[0] - 4}" y="${p[1] - 3}" width="8" height="3" fill="#e6dcc6"/>`;
+  }
+  // round gold-framed windows on the side
+  for (let k = 0; k < 3; k++) { const p = lift(mid(f.B, f.R, 0.2 + k * 0.3), h * 0.5); s += `<ellipse cx="${p[0]}" cy="${p[1]}" rx="5" ry="7" fill="#ffe7a0" stroke="#e2b640" stroke-width="1.6"/>`; }
+  // the vault door: a round steel door with a wheel, set in gold
+  const d = mid(f.L, f.B, 0.5);
+  s += `<circle cx="${d[0]}" cy="${d[1] - 14}" r="12" fill="#e2b640"/><circle cx="${d[0]}" cy="${d[1] - 14}" r="9.5" fill="#8d96a0" stroke="#5f6870" stroke-width="1"/>` +
+    `<circle cx="${d[0]}" cy="${d[1] - 14}" r="4" fill="none" stroke="#e8edf2" stroke-width="1.4"/>` + [0, 60, 120].map((a) => `<path d="M${d[0] - 6 * Math.cos(a * Math.PI / 180)} ${d[1] - 14 - 6 * Math.sin(a * Math.PI / 180)} L${d[0] + 6 * Math.cos(a * Math.PI / 180)} ${d[1] - 14 + 6 * Math.sin(a * Math.PI / 180)}" stroke="#e8edf2" stroke-width="1.2"/>`).join('');
+  // steps with a green carpet
+  for (let k = 0; k < 3; k++) {
+    const o = 4 + k * 4, a = [f.L[0] - o * 0.9, f.L[1] + o * 0.45], b = [f.B[0] + o * 0.2, f.B[1] + o * 0.9];
+    s += `<polygon points="${a[0]},${a[1]} ${b[0]},${b[1]} ${b[0]},${b[1] + 3} ${a[0]},${a[1] + 3}" fill="${k % 2 ? '#e4d6b0' : '#f3e8c8'}" stroke="#c9b27a" stroke-width=".4"/>`;
+  }
+  s += `<polygon points="${d[0] - 5},${d[1] + 1} ${d[0] + 5},${d[1] + 6} ${d[0] - 2},${d[1] + 18} ${d[0] - 12},${d[1] + 13}" fill="#2f6b4f"/>`;
+  // two gold lions guarding the steps
+  for (const p of [mid(f.L, f.B, 0.0), mid(f.L, f.B, 1.0)]) {
+    const x = p[0] + (p[0] < d[0] ? -8 : 8), y = p[1] + 10;
+    s += `<rect x="${x - 7}" y="${y - 4}" width="14" height="6" fill="#e6dcc6" stroke="#c9b27a" stroke-width=".5"/><path d="M${x - 6} ${y - 4} q1 -9 7 -9 q6 0 6 9 z" fill="#e2b640" stroke="#a87a18" stroke-width=".6"/><circle cx="${x + 2}" cy="${y - 12}" r="4.2" fill="#f2c94c" stroke="#a87a18" stroke-width=".6"/><circle cx="${x + 2}" cy="${y - 12}" r="2" fill="#d9a92e"/>`;
+  }
+  // a fountain full of coins in front
+  const fx = cx - 4, fy = cy + 64;
+  s += `<ellipse cx="${fx}" cy="${fy}" rx="26" ry="12" fill="#d8ccb0" stroke="#b8a882"/><ellipse cx="${fx}" cy="${fy - 2}" rx="21" ry="9" fill="#7cc4e4"/>` +
+    [[-10, 0], [-3, 3], [6, -1], [12, 2], [1, -3]].map(([dx, dy]) => `<ellipse cx="${fx + dx}" cy="${fy - 2 + dy}" rx="2.2" ry="1.2" fill="#f2c94c"/>`).join('') +
+    `<rect x="${fx - 2}" y="${fy - 22}" width="4" height="18" fill="#e6dcc6"/><circle class="fountain" cx="${fx}" cy="${fy - 24}" r="4" fill="#bfe6f6" opacity=".9"/><path d="M${fx} ${fy - 26} q-8 6 -12 18 M${fx} ${fy - 26} q8 6 12 18" stroke="#bfe6f6" stroke-width="1.6" fill="none" opacity=".8"/>`;
+  // gold lanterns and green-and-gold banners with Orin's mark
+  for (const [x, y] of [[cx - 118, cy + 26], [cx + 112, cy + 18]]) s += `<rect x="${x - 1}" y="${y - 30}" width="2" height="32" fill="#3a2e22"/><rect x="${x - 4}" y="${y - 38}" width="8" height="9" rx="2" fill="#ffe08a" stroke="#c9971f"/>`;
+  for (const [x, y] of [[cx - 96, cy - 22], [cx + 84, cy - 36]]) s += `<rect x="${x}" y="${y - 52}" width="2" height="56" fill="#c9971f"/><circle cx="${x + 1}" cy="${y - 53}" r="2.2" fill="#f2c94c"/><path d="M${x + 2} ${y - 50} h18 v22 l-9 -5 l-9 5 z" fill="#2f6b4f"/><circle cx="${x + 11}" cy="${y - 41}" r="4.2" fill="#f2c94c"/><text x="${x + 11}" y="${y - 39}" font-size="5.5" font-weight="bold" text-anchor="middle" fill="#2f5d4a">O</text>`;
+  if (v.night) s += `<ellipse cx="${cx}" cy="${cy - 20}" rx="110" ry="60" fill="#ffd36a" opacity=".12"/>`;
+  return s;
+}
+// the notice boards on Gold Row: what Orin does, in three short boards
+function infoBoard(cx, cy, title, lines, color) {
+  const w = 132, hh = 26 + lines.length * 12;
+  let s = `<rect x="${cx - 2}" y="${cy - 4}" width="4" height="26" fill="#5a3a22"/><rect x="${cx - w / 2 + 6}" y="${cy - 4}" width="3" height="22" fill="#5a3a22"/><rect x="${cx + w / 2 - 9}" y="${cy - 4}" width="3" height="22" fill="#5a3a22"/>`;
+  s += `<rect x="${cx - w / 2}" y="${cy - hh - 4}" width="${w}" height="${hh}" rx="5" fill="#fffaf0" stroke="${color}" stroke-width="2.2"/>` +
+    `<rect x="${cx - w / 2}" y="${cy - hh - 4}" width="${w}" height="17" rx="5" fill="${color}"/><text x="${cx}" y="${cy - hh + 8}" font-size="9.5" font-weight="bold" text-anchor="middle" fill="#fff">${title}</text>`;
+  lines.forEach((l, k) => { s += `<text x="${cx - w / 2 + 7}" y="${cy - hh + 25 + k * 12}" font-size="8.4" fill="#3a2e22">${l}</text>`; });
+  return `<g pointer-events="none">${s}</g>`;
+}
+
 const DROADS = {
   3: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 7 || j === 1 || j === 7) ,
+  4: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 7 || j === 1 || j === 7 || (i === 4 && j >= 7)),
   1: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i % 2 === 1 || j % 2 === 1),
   2: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 4 || i === 7 || j === 1 || j === 4 || j === 7),
 };
@@ -785,7 +855,8 @@ export function renderDistrict(svg, world, view, ui) {
   for (let i = 0; i < DN; i++) for (let j = 0; j < DN; j++) {
     const [cx, cy] = dcell(i, j), r = hash(i + 40 * n, j);
     const road = DROADS[n](i, j);
-    s += `<polygon points="${pts(diamond(cx, cy, TW / 2, TH / 2))}" fill="${road ? (winter ? '#ebe3d0' : '#e2ca94') : greens[Math.floor(r * 3)]}" stroke="rgba(40,80,20,.10)" stroke-width=".6"/>`;
+    s += `<polygon points="${pts(diamond(cx, cy, TW / 2, TH / 2))}" fill="${road ? (n === 4 ? ((i + j) % 2 ? '#eed9a0' : '#e6cc86') : winter ? '#ebe3d0' : '#e2ca94') : greens[Math.floor(r * 3)]}" stroke="rgba(40,80,20,.10)" stroke-width=".6"/>`;
+    if (n === 4 && !road && hash(i, j, 7) < 0.12 && i > 0 && j > 0 && i < DN - 1 && j < DN - 1) deco += `<ellipse cx="${cx}" cy="${cy}" rx="7" ry="3.5" fill="rgba(40,60,20,.2)"/><circle cx="${cx}" cy="${cy - 8}" r="7.5" fill="#3f8a45"/><circle cx="${cx - 2}" cy="${cy - 10}" r="2.4" fill="#f2c94c"/>`; // clipped bushes with gold fruit
     if (!road && (i === 0 || j === 0 || i === DN - 1 || j === DN - 1) && hash(i, j, 5 + n) < 0.5) deco += tree(cx, cy, 0.8);
     else if (!road && hash(i, j, 3) < 0.3) deco += `<circle cx="${cx + (hash(i, j, 9) - 0.5) * 30}" cy="${cy}" r="1.8" fill="${['#f4e35c', '#f2f2f2', '#e86a8a'][Math.floor(r * 3)]}"/>`;
   }
@@ -796,10 +867,10 @@ export function renderDistrict(svg, world, view, ui) {
   for (const b of items) {
     const [cx, cy] = b.w > 1 ? dcell(b.i + (b.w - 1) / 2, b.j + (b.w - 1) / 2) : dcell(b.i, b.j);
     const nm = ui.nameOf ? ui.nameOf(b.id) : b.name;
-    const art = b.id === 'exchange' ? exchangeArt(cx, cy, view) : b.villa ? villaArt(b.id, cx, cy, view) : plotArt(b.id, cx, cy, view);
+    const art = b.id === 'bank' ? bankArt(cx, cy, view) : b.id === 'exchange' ? exchangeArt(cx, cy, view) : b.villa ? villaArt(b.id, cx, cy, view) : plotArt(b.id, cx, cy, view);
     s += `<g class="bld" data-id="${b.id}" tabindex="0" role="button" aria-label="${nm}"><title>${nm}</title><g transform="translate(${cx} ${cy}) scale(${K}) translate(${-cx} ${-cy})">${art}</g></g>`;
     const pl = view.plots[b.id] || {};
-    if (ui.hover === b.id || ui.selected === b.id || pl.mine || b.id === 'exchange') {
+    if (ui.hover === b.id || ui.selected === b.id || pl.mine || b.id === 'exchange' || b.id === 'bank') {
       const label = (pl.mine && ui.mineTag ? '✦ ' + ui.mineTag + ' · ' : '') + nm, lw = tlen(label) * 7.4 + 16, ly = cy + TH * (b.w > 1 ? 1.4 : 0.9);
       labels += `<g class="lbl" pointer-events="none"><rect x="${cx - lw / 2}" y="${ly - 14}" width="${lw}" height="20" rx="10" fill="rgba(255,250,242,.92)" stroke="rgba(120,90,60,.3)"/><text class="tag" x="${cx}" y="${ly}" text-anchor="middle">${label}</text></g>`;
     }
@@ -814,7 +885,9 @@ export function renderDistrict(svg, world, view, ui) {
   s += post('go-village', 0, 9, ui.backTag || 'Village', -1);
   if (n === 1) s += post('go-d2', 9, 0, ui.villaTag || 'Villa hill', 1);
   else if (n === 2) s += post('go-d3', 9, 0, ui.exTag || 'Exchange', 1);
+  else if (n === 3) s += post('go-d4', 9, 0, ui.goldTag || 'Gold Row', 1);
   else s += post('go-d1', 9, 0, ui.laneTag || 'Ember Lane', 1);
+  if (n === 4) (ui.bankBoards || []).forEach((bd, k) => { const [bx, by] = dcell([1.2, 6.2, 8.6][k], [5.6, 0.6, 5.2][k]); labels += infoBoard(bx, by, bd[0], bd.slice(1), ['#2f6b4f', '#b98d22', '#7a3b8a'][k]); });
   // a closed neighbourhood: a fence and a sign
   if (!open) {
     s += `<polygon points="${pts([T, R, B, L])}" fill="rgba(60,50,40,.35)" pointer-events="none"/>`;

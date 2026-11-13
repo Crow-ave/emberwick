@@ -11,6 +11,7 @@
 - **Our own locked contract.** The Village Ledger keeps each day's state hash and AI plan hash, once; its account has no key, so nobody, us included, can change it.
 - **Real money paths.** A fixed-supply NEP-141 token that players can cash out to their own NEAR wallet, and real cross-chain swaps on mainnet through NEAR Intents.
 - **Land that follows its NFT.** Send a deed to another player's wallet and the land and house follow it in the game.
+- **Orin the Banker: an AI agent you hire.** On Gold Row, hand Orin part of your savings and set the limits; each morning he reads the market with NEAR AI in a TEE, and the village rules carry out only the trades inside your limits. Your stake sits in Orin's own NEAR account, and his fee is 10% of the profit, nothing on a loss.
 - **Sign in with any wallet.** NEAR, Phantom or MetaMask: no password, no e-mail, and your villager follows you to any device.
 
 ![The village of Emberwick: an isometric map with shops, fields, a mine, the council hall and Dragon peak](docs/img/village.jpg)
@@ -258,7 +259,7 @@ Every real swap (a split counts once) puts one **Village seal** in the player's 
 
 ### 10. Around the game
 
-- **Judge tour:** a ten-step guided tour of every NEAR part with links to the accounts.
+- **Judge tour:** an eleven-step guided tour of every NEAR part with links to the accounts.
 - **Six languages:** English, Turkish, French, German, Russian, Chinese (`public/i18n.js`).
 - **Village chat** with speech bubbles on the map; player profiles.
 - **Sounds and music** made live in the browser, no sound files.
@@ -550,6 +551,7 @@ The server is the single source of truth for the game state (`data/state.json`).
 | GET | `/api/ai/attestation` | NEAR AI Cloud TEE attestation report |
 | GET | `/api/signin/challenge?chain=near\|sol\|evm&address=…&purpose=login\|link` | A one-time message for a wallet to sign (ten minutes, used once) |
 | POST | `/api/signin/login`, `/api/signin/link` | Sign in with that signature (a new device key for the villager), or tie a wallet to your villager |
+| GET | `/api/banker/plan` | Orin the Banker's NEAR AI view of the market today: the exact JSON whose SHA-256 is in the memo on NEAR |
 | GET | `/api/ledger` | The Village Ledger contract (our own), whether it is locked, and the records written to it (kind, day, full SHA-256, transaction) |
 | GET | `/api/deed/holder?plot=ID` | Who holds that plot's deed NFT on NEAR right now (a view call to the deed contract, cached for a minute), next to the game's record; the deed card shows it |
 | GET | `/api/ai/proof?day=N` | Signature check of that day's plan answer, with the exact request and response bytes (the last 10 signed answers are kept; without `day` it shows the newest). Look for `"ok": true` with `signatureOk`, `attested`, `requestHashOk` and `responseHashOk` all true |
@@ -635,6 +637,17 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 
 ---
 
+## Orin the Banker: an AI agent with a mandate
+
+A villager at level 8 with 200 EMWK saved can hire Orin on **Gold Row** (a neighbourhood of its own, with notice boards that explain him):
+
+1. **The mandate.** The player hands Orin 30–400 EMWK and sets two limits: the most of the stake one purchase may use (10–50%) and how far the value may fall before Orin sells everything and stops (5–50%). The money moves to Orin's own NEAR account (`banker.<bank>`), kept apart for that player (`mandate:<player>` in the game's ledger).
+2. **The AI.** Each morning when someone has a mandate, Orin asks NEAR AI (in a TEE) for a view of the market: for each good the cheapest seller, the craftsman paying most, and its usual price. The answer can only rank goods (buy, sell, hold, avoid) with a reason; its signature is checked against the attested key, and its SHA-256 goes to NEAR in a memo (`/api/banker/plan` serves the exact JSON).
+3. **The rules decide.** Around noon the village rules (`bankerDay` in `server/economy.js`) trade for every mandate: they buy only when another craftsman pays more today, or when a good is cheap against its usual price and still sells near cost; they sell held goods only at a profit after the market tax; never more than the player allows per purchase, and never more than the buyers want.
+4. **Closing.** The player can close any time. Orin sells what sells for at least 80% of its cost and hands back the rest as goods; his fee is 10% of the EMWK profit, nothing on a loss.
+
+`npm test` checks that Orin is locked below the level and savings, keeps the limits, never creates or loses money, takes the right fee, and leaves nothing behind in a closed mandate. In 10 simulated runs (30 game days, 200 EMWK, default limits, different seeds) every mandate ended in profit, +17% to +44% before his fee. That is no promise: prices move, the stop exists because a mandate can lose, and Orin pays the market tax on every trade like anyone else.
+
 ## Security and trust model
 
 - **Game keys** live in `~/.emberwick/` on the server machine (or a host's secret variable), never in the repository and never printed in logs.
@@ -655,7 +668,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | Track | What in Emberwick |
 |---|---|
 | **Games With Real Economies** | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token, and real swaps that lower the village's market fee; the economy is tested with 0 to 100 scripted players (`npm run report -- --players`) |
-| **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other (about 18,000 EMWK agent-to-agent in the 100-day report): they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
+| **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other (about 18,000 EMWK agent-to-agent in the 100-day report): they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money; **Orin the Banker** is an agent players hire with delegated, rule-capped authority over their money (most per purchase, a stop on losses), paid 10% of the profit, with his own NEAR account |
 | **Privacy & Private AI** | Every model call goes to NEAR AI Cloud; the game picks a model with a TEE attestation report, keeps the report public (`/api/ai/attestation`), checks each morning plan's signature against the attested key (`/api/ai/proof`), and hashes each day's plan onto NEAR; the full plan hash, model and signature result go into our own locked Village Ledger contract |
 | **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell through NFT escrow on NEAR; send the NFT to another player's wallet and the land and house follow it in the game; the deed card reads the holder live from the contract |
 

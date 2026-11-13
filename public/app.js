@@ -838,10 +838,78 @@ function panelWeek() {
   return h + `<p class="muted small">${t('ff.note')}</p>`;
 }
 
+// ---------- Orin the Banker, on Gold Row ----------
+function panelBank() {
+  const B = view.banker, R = B.rules, me = view.player, m = B.mine, act = m && m.status === 'active';
+  const pc = (x) => Math.round(x * 100) + '%', c = view.chain || {}, acct = c.accounts && c.accounts.npcs && c.accounts.npcs.banker;
+  let h = `<div class="bankhead"><div class="bankseal">O</div><div><h2>${t('b.bank')}</h2><p class="muted small">${t('bank.tag')}</p></div></div>`;
+  h += `<div class="bankstats"><div><b>${B.clients}</b><span>${t('bank.clients')}</span></div><div><b>${Math.round(B.managed)}</b><span>${t('bank.managed')}</span></div><div><b>${Math.round(B.earned)}</b><span>${t('bank.earned')}</span></div></div>`;
+  // how it works, in four steps
+  h += `<div class="bankhow"><p class="sub2">${t('bank.howTitle')}</p><ol class="small">${[1, 2, 3, 4].map((k) => `<li>${t('bank.how' + k, { lvl: R.minLevel, coins: R.minCoins, min: R.minStake, max: R.maxStake, fee: pc(R.fee), mt: pc(R.maxTrade.def), sl: pc(R.stopLoss.def) })}</li>`).join('')}</ol>` +
+    `<p class="muted small">${t('bank.safe')}${acct && chainOk() ? ' · ' + t('bank.account') + ' ' + exLink('address/' + acct, esc(acct)) : ''}</p></div>`;
+  // today's view from NEAR AI
+  const pl = B.plan;
+  h += `<p class="sub2">${t('bank.today')}</p>`;
+  if (pl && pl.picks) {
+    h += `<div class="ai-box"><div class="ai-head"><span class="ai-dot"></span>${t('bank.aiHead', { d: pl.day, model: esc(pl.model || '') })}</div>${pl.note ? `<p class="small">“${esc(pl.note)}”</p>` : ''}` +
+      `<ul class="small bankpicks">${pl.picks.map((x) => `<li><span class="pick pick-${esc(x.action)}">${t('bank.act.' + x.action)}</span> <b>${esc(goodName(x.good))}</b> · ${esc(x.why)}</li>`).join('')}</ul>` +
+      `<p class="small ai-proof">⛓ ${t('bank.planHash', { h: esc(String(pl.hash || '').slice(0, 10)) })} · <a href="/api/banker/plan" target="_blank" rel="noopener">${t('ai.planJson')}</a>${pl.proof ? ` · ✍️ ${pl.proof.ok ? t('bank.signed') : t('bank.unsigned')}` : ''}</p></div>`;
+  } else h += `<p class="muted small">${t('bank.noPlan')}</p>`;
+  // the player's mandate
+  h += `<p class="sub2" id="mandate">${t('bank.yours')}</p>`;
+  if (!me) h += `<p class="muted small">${t('near.joinFirst')}</p>`;
+  else if (act) {
+    const up = m.profit >= 0;
+    h += `<div class="mandate"><div class="bankstats"><div><b>${Math.round(m.value)}</b><span>${t('bank.value')}</span></div><div><b class="${up ? 'ok' : 'closed'}">${up ? '+' : ''}${m.profit}</b><span>${t('bank.profit')}</span></div><div><b>${m.trades}</b><span>${t('bank.trades')}</span></div></div>` +
+      `<p class="small">${t('bank.stakeLine', { s: m.stake, c: Math.round(m.cash), d: m.start })}</p>` +
+      `<p class="small">${Object.entries(m.inv || {}).filter(([, q]) => q >= 1).map(([g, q]) => `${Math.floor(q)} ${esc(goodName(g))}`).join(' · ') || t('bank.noGoods')}</p>` +
+      `<p class="muted small">${t('bank.limits', { mt: pc(m.maxTrade), sl: pc(m.stopLoss), n: m.goods.length })}</p>`;
+    h += m.log && m.log.length ? `<ul class="small banklog">${m.log.slice(0, 8).map((l) => `<li>${t('bank.day', { d: l.day })} · ${bankLogLine(l)}</li>`).join('')}</ul>` : `<p class="muted small">${t('bank.waiting')}</p>`;
+    h += `<div class="row"><input id="bank-add" type="number" min="1" step="1" value="20"><button data-act="mandateAdd">${t('bank.add')}</button></div>` +
+      `<div class="row"><label class="small">${t('bank.maxTrade')} <select id="bank-mt">${[0.1, 0.2, 0.3, 0.4, 0.5].map((x) => `<option value="${x}"${Math.abs(x - m.maxTrade) < 0.001 ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label>` +
+      `<label class="small">${t('bank.stopLoss')} <select id="bank-sl">${[0.05, 0.1, 0.2, 0.3, 0.5].map((x) => `<option value="${x}"${Math.abs(x - m.stopLoss) < 0.001 ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label><button data-act="mandateSettings">${t('bank.save')}</button></div>` +
+      `<button class="primary" data-act="mandateClose">${t('bank.close', { fee: m.feeIfClosed })}</button></div>`;
+  } else if (!B.unlock || !B.unlock.ok) {
+    const u = B.unlock || { level: 0, coins: 0, needLevel: R.minLevel, needCoins: R.minCoins };
+    const bar = (a, b) => `<div class="bar"><i style="width:${Math.min(100, Math.round(a / b * 100))}%"></i></div>`;
+    h += `<div class="mandate locked"><p class="small">🔒 ${t('bank.locked')}</p><p class="small">${t('bank.needLevel', { a: u.level, b: u.needLevel })}</p>${bar(u.level, u.needLevel)}<p class="small">${t('bank.needCoins', { a: Math.floor(u.coins), b: u.needCoins })}</p>${bar(u.coins, u.needCoins)}</div>`;
+  } else {
+    h += `<div class="mandate"><p class="small">${t('bank.offer', { min: R.minStake, max: R.maxStake, fee: pc(R.fee) })}</p>` +
+      `<div class="row"><input id="bank-amount" type="number" min="${R.minStake}" max="${R.maxStake}" step="1" value="${Math.max(R.minStake, Math.min(R.maxStake, Math.floor((me.coins || 0) / 2)))}"><span class="small">EMWK</span></div>` +
+      `<div class="row"><label class="small">${t('bank.maxTrade')} <select id="bank-mt">${[0.1, 0.2, 0.3, 0.4, 0.5].map((x) => `<option value="${x}"${x === R.maxTrade.def ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label>` +
+      `<label class="small">${t('bank.stopLoss')} <select id="bank-sl">${[0.05, 0.1, 0.2, 0.3, 0.5].map((x) => `<option value="${x}"${x === R.stopLoss.def ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label></div>` +
+      `<button class="primary big" data-act="mandateOpen">🏦 ${t('bank.hire')}</button></div>`;
+    if (m && m.closed) h += `<p class="muted small">${t('bank.lastClosed', { d: m.closed.day, p: m.closed.profit, f: m.closed.fee })}</p>`;
+  }
+  if (ui.bankMsg) h += `<p class="small ${ui.bankMsg.ok ? 'ok' : 'closed'}">${ui.bankMsg.text}</p>`;
+  // the market as Orin sees it
+  const mk = (B.market || []).filter((x) => x.buyFrom || x.sellTo);
+  h += `<details class="small" data-keep="bankmarket"${keepOpen('bankmarket')}><summary>${t('bank.market')}</summary><table class="small">${mk.map((x) => `<tr><td>${esc(goodName(x.good))}</td><td class="n">${x.buyFrom ? x.buyFrom.price + ' · ' + esc(npcName(x.buyFrom.npc)) : '–'}</td><td class="n">${x.sellTo ? x.sellTo.price + ' · ' + esc(npcName(x.sellTo.npc)) : '–'}</td></tr>`).join('')}</table><p class="muted small">${t('bank.marketNote')}</p></details>`;
+  return h;
+}
+async function bankAct(type) {
+  if (!playerId) return toast(t('toast.join'), 'bad');
+  const v = (id) => ($(id) || {}).value, extra = {};
+  if (type === 'mandateOpen') Object.assign(extra, { amount: Number(v('bank-amount')), maxTrade: Number(v('bank-mt')), stopLoss: Number(v('bank-sl')) });
+  if (type === 'mandateAdd') extra.amount = Number(v('bank-add'));
+  if (type === 'mandateSettings') Object.assign(extra, { maxTrade: Number(v('bank-mt')), stopLoss: Number(v('bank-sl')) });
+  const r = await post('/api/action', { player: playerId, type, ...extra });
+  if (r.state) view = r.state;
+  ui.bankMsg = r.ok ? { ok: true, text: t('bank.ok.' + type, { p: r.profit, f: r.fee }) } : { ok: false, text: r.code ? t(r.code, r.params || {}) : esc(r.error || '?') };
+  if (r.ok) toast(ui.bankMsg.text, 'win');
+  render();
+}
+function bankLogLine(l) {
+  if (l.kind === 'buy' || l.kind === 'sell') return t('bank.log.' + l.kind, { q: l.qty, g: esc(goodName(l.good)), u: l.unit, n: esc(npcName(l.npc)) }) + (l.why ? ` <span class="muted">· ${esc(/^rule\./.test(l.why) ? t('bank.' + l.why) : l.why)}</span>` : '');
+  if (l.kind === 'close') return t('bank.log.close', { p: l.profit, f: l.fee }) + (l.why === 'stopLoss' ? ' · ' + t('bank.log.stop') : '');
+  return t('bank.log.' + l.kind, { n: l.amount, q: l.qty, g: l.good ? esc(goodName(l.good)) : '' });
+}
+
 function panelSimple(b) {
   const title = `<h2>${esc(placeName(b.id))}</h2>`;
   if (b.id === 'treasury') return title + panelTreasury();
   if (b.id === 'exchange') return panelExchange();
+  if (b.id === 'bank') return panelBank();
   if (b.id === 'council') return panelCouncil();
   if (b.id === 'gate') return title + `<p>${t('gate.text')}</p><button class="primary" data-act="elder">${t('gate.talk')}</button><p class="muted">${t('gate.pop', { n: view.population })}</p>`;
   if (b.type === 'plot') return panelPlot(b);
@@ -1802,8 +1870,8 @@ function pollCurrent() { const g = swapGroup(curSwap()).filter((x) => !REAL_END.
 const NEAR_FEATURES = [
   { k: 'agents', icon: '🤖', tour: 1 },
   { k: 'tee', icon: '🔒', tour: 2 },
-  { k: 'intents', icon: '🌉', tour: 6 },
-  { k: 'economy', icon: '⛓', tour: 4 },
+  { k: 'intents', icon: '🌉', tour: 7 },
+  { k: 'economy', icon: '⛓', tour: 5 },
 ];
 function nearInside(clickable) {
   return `<div class="nearinside"><div class="ni-title">${t('ni.title')}</div><div class="ni-grid">${NEAR_FEATURES.map((f) =>
@@ -2166,7 +2234,7 @@ function panelRoadsign() {
   let h = `<h2>${t('b.roadsign')}</h2><p>${t('district.intro', { free: d.free })}</p>`;
   for (const n of Object.keys(d.defs).map(Number)) {
     const def = d.defs[n], open = d.open.includes(n) || def.alwaysOpen;
-    if (def.alwaysOpen) { h += `<div class="contract"><b>${t('district.' + n)}</b><p class="small">${t('district.about.3')}</p><button class="primary" data-go="go-d${n}">${t('district.visit', { name: t('district.' + n) })}</button></div>`; continue; }
+    if (def.alwaysOpen) { h += `<div class="contract"><b>${t('district.' + n)}</b><p class="small">${t('district.about.' + n)}</p><button class="primary" data-go="go-d${n}">${t('district.visit', { name: t('district.' + n) })}</button></div>`; continue; }
     const plots = Object.values(view.plots).filter((x) => x.district === n), freeN = plots.filter((x) => !x.owner).length;
     const prices = plots.map((x) => x.price);
     h += `<div class="contract"><b>${t('district.' + n)}</b><p class="small">${t('district.about.' + n, { min: Math.min(...prices), max: Math.max(...prices), lvl: def.minLevel })}</p>` +
@@ -2701,7 +2769,7 @@ function renderHud() {
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)} <button class="editname" data-rename="1" title="${esc(t('rename.title'))}" aria-label="${esc(t('rename.title'))}">✎</button></h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
     `<div class="energy" id="energy-row" title="${esc(t('rank.' + String(me.rank).toLowerCase()))}">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.hungry || me.food || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.hungry ? `<span class="cond bad">${t('cond.hungry')}</span>` : me.food && me.food.fromBag + me.food.bought + (me.food.credit || 0) > 0 ? `<span class="cond ok">${t('cond.ate', { n: me.food.fromBag + me.food.bought + (me.food.credit || 0), c: me.food.paid ? t('cond.atePaid', { n: me.food.paid }) : '' })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
-    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button><button class="chip strong proofchip" data-proofs="1">${t('hud.proofs')}</button><button class="chip keepchip" data-keepchip="1">${t(!(me.logins || []).length && !(me.near && me.nearVerified) ? 'hud.keep' : 'hud.keepOk')}</button></div>` +
+    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button><button class="chip strong proofchip" data-proofs="1">${t('hud.proofs')}</button><button class="chip strong" data-go="go-d4">🏦 ${t('npc.banker')}</button><button class="chip keepchip" data-keepchip="1">${t(!(me.logins || []).length && !(me.near && me.nearVerified) ? 'hud.keep' : 'hud.keepOk')}</button></div>` +
     (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}" title="${esc(t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage }))}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}" title="${esc(t('me.homeInfo', { r: me.home.rent, left: dayLeftText() }))}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
   '';
   const q = me.questInfo;
@@ -2824,7 +2892,8 @@ function renderMapNow() {
   view.exBoard = pr ? { NEAR: fmt(px('NEAR')), BTC: fmt(px('BTC')), EMWK: px('NEAR') ? fmt(px('NEAR') / (world.rules.emwkPerNear || 100)) : null } : null;
   if (ui.district === 3 && !ui.exPricesLoading && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) { ui.exPricesLoading = true; loadExPrices(); }
   renderTicker(pr);
-  ui.laneName = t('district.1'); ui.villaName = t('district.2'); ui.exName = t('district.3');
+  ui.laneName = t('district.1'); ui.villaName = t('district.2'); ui.exName = t('district.3'); ui.goldName = t('district.4'); ui.goldTag = t('district.4') + ' →';
+  ui.bankBoards = [1, 2, 3].map((k) => [t('bank.board' + k), t('bank.board' + k + 'a'), t('bank.board' + k + 'b'), t('bank.board' + k + 'c')]);
   if (ui.district && view.districts) {
     ui.backTag = '← ' + t('district.back'); ui.villaTag = t('district.2') + ' →'; ui.laneTag = t('district.1') + ' →';
     ui.districtTitle = t('district.' + ui.district); ui.closedDistrict = t('district.closedTag'); ui.exTag = t('district.3') + ' →';
@@ -3059,7 +3128,7 @@ function flash(what) {
 function select(id) {
   // moving between the village and the neighbourhoods
   if (id === 'go-village') { ui.district = 0; ui.selected = 'roadsign'; render(); return; }
-  if (/^go-d\d$/.test(id)) { ui.district = Number(id.slice(4)); ui.selected = ui.district === 3 ? 'exchange' : null; render(); return; }
+  if (/^go-d\d$/.test(id)) { ui.district = Number(id.slice(4)); ui.selected = ui.district === 3 ? 'exchange' : ui.district === 4 ? 'bank' : null; render(); return; }
   const bdef = world.buildings.find((x) => x.id === id);
   ui.district = bdef && bdef.district ? bdef.district : (bdef ? 0 : ui.district);
   if (ui.scene && ui.scene !== id) { ui.scene = null; sceneKey = null; }
@@ -3102,6 +3171,7 @@ const TOUR = [
   { k: 'proof', go: () => { ui.selected = 'near'; renderMapNow(); renderPanel(); setTimeout(() => { const el = document.querySelector('.ledger-list') || document.querySelector('[data-ledgercheck]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); },
     links: () => { const c = (view && view.chain) || {}; const L = c.ledger && c.ledger.contract; return L ? [['tour.l.ledger', NB + L], ['tour.l.ledgerCode', 'https://github.com/Crow-ave/emberwick/tree/main/contracts/village-ledger']] : []; } },
   { k: 'haggle', go: () => select('inn') },
+  { k: 'banker', go: () => { ui.district = 4; ui.selected = 'bank'; render(); } },
   // the links point at the accounts of the village this server runs (the online demo has its own)
   { k: 'token', go: () => select('treasury'), links: () => { const a = villageAccounts(); return [['tour.l.token', NB + a.token], ['tour.l.bank', NB + a.bank], ['tour.l.treasury', NB + a.treasury], ['tour.l.agent', NB + 'bakery.' + a.bank]]; } },
   { k: 'land', go: () => { ui.selected = 'lands'; ui.district = 0; render(); }, links: () => [['tour.l.deeds', NB + villageAccounts().deeds]] },
@@ -3381,6 +3451,7 @@ document.body.addEventListener('click', (e) => {
     goAndDo('council', 'propose', () => councilAct('propose', extra));
     return;
   }
+  if (/^mandate(Open|Add|Settings|Close)$/.test(a)) { bankAct(a); return; }
   if (a.startsWith('near-')) {
     if (a === 'near-copy') navigator.clipboard?.writeText(btn.dataset.copy).then(() => toast(t('toast.copied'), 'win')).catch(() => {});
     else if (!playerId) toast(t('toast.join'), 'bad');

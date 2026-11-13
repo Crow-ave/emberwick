@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 // EMWK token will behave on NEAR.
 
 import { levelPrice, stepTowards, priceReasons, WANT_FACTOR, USE_UP } from './pricing.js';
-import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND, DISTRICTS, CENTRE_FACTOR, MARKET } from './world.js';
+import { TOKEN, GENESIS, GOODS, GATHER_SPOTS, CRAFTSMEN, START_PATHS, RULES, QUESTS, PATH_ROUTE, BUILDINGS, SKILL_OF, SKILLS, JOBS, HOUSES, COUNCIL, LAND, DISTRICTS, CENTRE_FACTOR, MARKET, BANKER } from './world.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -758,6 +758,7 @@ export function playerAction(state, playerId, action) {
   ensurePlayer(p);
   ensureContracts(state);
   p.quest = p.quest || 0;
+  if (/^mandate(Open|Add|Settings|Close)$/.test(String(action.type))) { p.seenAt = state.tick; return bankerAction(state, playerId, action); } // Orin's bank is open day and night
   // where the player is, so other players can see them walking around the village
   const where = action.place || action.spot || action.npc || action.house || (['vote', 'propose'].includes(action.type) ? 'council' : null);
   if (where && BUILDINGS.some((b) => b.id === where)) p.where = where;
@@ -997,6 +998,8 @@ export function tick(state) {
   if (!night) runCraftsmen(state); // workshops are shut for the night
   if (!night && state.tick % INTERVIEW_EVERY === 0) runInterviews(state);
   if (!night && state.tick % 3 === 0) runMarket(state);
+  // Orin the Banker trades once a day, around noon, with the morning's NEAR AI view when there is one
+  if (!night && state.bankerDay !== state.day && (state.tick % RULES.ticksPerDay) >= Math.floor(RULES.ticksPerDay * BANKER.noonTick)) bankerDay(state, state.bankerPlan && state.bankerPlan.day === state.day ? state.bankerPlan : null);
   runInn(state);
   adjustPrices(state);
   updateReadiness(state);
@@ -2379,6 +2382,7 @@ export function publicView(state, playerId) {
   return {
     aiLog: (state.aiLog || []).map(({ json, ...x }) => x),
     ledger: { done: (state.ledgerDone || []).slice(0, 12), waiting: (state.ledgerOut || []).length },
+    banker: bankerView(state, playerId),
     onchain: { tx: (state.onchain && state.onchain.tx) || 0, aiPlans: state.aiDays || 0 },
     realSwaps: playerId ? (state.realSwaps || []).filter((x) => x.player === playerId && x.status !== 'CANCELLED').slice(0, 8) : [],
     realDone: (state.realSwaps || []).filter((x) => x.status === 'SUCCESS').slice(0, 12).map((x) => ({ name: (state.players[x.player] || {}).name || '?', amountIn: x.amountIn, amountOut: x.amountOut, to: x.to, fromSym: x.dir === 'in' || x.dir === 'any' ? x.fromSym : 'NEAR', dir: x.dir || 'out', toSym: x.toSym, chain: x.chain, fromChain: x.dir === 'in' || x.dir === 'any' ? x.fromChain : 'near', usdOut: x.usdOut || null, depositAddress: x.depositAddress, sentTx: x.sentTx || null, at: x.doneAt || x.at || null, batch: x.batch || null, leg: x.leg || null, origin: x.origin || [], dest: x.dest || [] })),
@@ -2435,4 +2439,207 @@ export function publicView(state, playerId) {
       return [id, { ...h, tenant: st.tenant ? (state.players[st.tenant] || {}).name || '?' : null, mine: !!(st.tenant && st.tenant === playerId) }];
     })),
   };
+}
+
+// ---------- Orin the Banker: a mandate to trade for the player ----------
+// The player hands Orin a stake and sets the limits (most per purchase, how far the value may fall, which
+// goods). Orin's money for each player sits in its own account (`mandate:<player>`), on NEAR in Orin's own
+// account. Once a day Orin reads the market (with NEAR AI when it is on) and proposes trades; the rules below
+// carry out only those that fit the player's limits and make a profit after the market tax. Orin takes
+// BANKER.fee of the profit, and only when the player closes the mandate; a loss costs the player no fee.
+const mAcct = (pid) => 'mandate:' + pid;
+export function bankerUnlock(state, p) {
+  const level = playerLevel(p), coins = balance(state, 'player:' + p.id);
+  return { ok: level >= BANKER.minLevel && coins + mandateValue(state, p.id) >= BANKER.minCoins, level, coins: r2(coins), needLevel: BANKER.minLevel, needCoins: BANKER.minCoins };
+}
+// who sells a good cheapest right now, and who pays most for it
+function bestSeller(state, good) {
+  let best = null;
+  for (const c of CRAFTSMEN) {
+    const n = state.npcs[c.id];
+    if (!n || n.sells[good] === undefined || (n.stock[good] || 0) < 1 || c.id === 'tower') continue;
+    const unit = price(n.sells[good]);
+    if (!best || unit < best.unit) best = { npc: c.id, unit, stock: Math.floor(n.stock[good]) };
+  }
+  return best;
+}
+function bestBuyer(state, good, qty, not = null) {
+  let best = null;
+  for (const c of CRAFTSMEN) {
+    if (c.id === not) continue;
+    const q = sellQuote(state, c.id, good, qty);
+    if (q.qty < 1) continue;
+    if (!best || q.total / q.qty > best.total / best.qty) best = { npc: c.id, ...q };
+  }
+  return best;
+}
+const usual = (state, good) => { const v = CRAFTSMEN.map((c) => state.npcs[c.id] && state.npcs[c.id].base[good]).filter((x) => x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; };
+// what Orin holds for a player is worth today: cash, plus goods at what the best buyer pays now
+export function mandateValue(state, pid) {
+  const m = state.players[pid] && state.players[pid].mandate;
+  if (!m) return 0;
+  let v = balance(state, mAcct(pid));
+  for (const [g, q] of Object.entries(m.inv || {})) {
+    if (q < 1) continue;
+    const b = bestBuyer(state, g, Math.floor(q));
+    v += b ? (b.total + Math.max(0, Math.floor(q) - b.qty) * b.last * 0.5) * (1 - taxRate(state)) : 0; // more than buyers want now counts at half the last price
+  }
+  return r2(v);
+}
+// the market as Orin sees it, for the NEAR AI prompt and for the panel
+export function bankerMarket(state) {
+  return BANKER.goods.map((g) => {
+    const s = bestSeller(state, g), b = bestBuyer(state, g, 1, null);
+    return { good: g, buyFrom: s ? { npc: s.npc, price: s.unit, stock: s.stock } : null, sellTo: b ? { npc: b.npc, price: r2(b.total) } : null, usual: r2(usual(state, g)) };
+  });
+}
+function mLog(m, state, e) { m.log = [{ day: state.day, ...e }, ...(m.log || [])].slice(0, 40); }
+
+// player actions
+export function bankerAction(state, pid, a) {
+  const p = state.players[pid];
+  if (!p) return { ok: false, code: 'err.unknownPlayer' };
+  const m = p.mandate, pct = (v, lim) => clamp(v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) ? lim.def : Number(v), lim.min, lim.max);
+  const goodsOf = (list) => Array.isArray(list) ? [...new Set(list.map(String))].filter((g) => BANKER.goods.includes(g)) : BANKER.goods.slice();
+  if (a.type === 'mandateOpen') {
+    if (m && m.status === 'active') return { ok: false, code: 'err.mandateOpen' };
+    const u = bankerUnlock(state, p);
+    if (!u.ok) return { ok: false, code: 'err.bankerLocked', params: { level: u.needLevel, coins: u.needCoins } };
+    const amount = Math.floor(Number(a.amount) || 0);
+    if (amount < BANKER.minStake || amount > BANKER.maxStake) return { ok: false, code: 'err.stakeRange', params: { min: BANKER.minStake, max: BANKER.maxStake } };
+    if (balance(state, 'player:' + pid) < amount) return { ok: false, code: 'err.noMoney' };
+    const goods = goodsOf(a.goods);
+    if (!goods.length) return { ok: false, code: 'err.noGoods' };
+    transfer(state, 'player:' + pid, mAcct(pid), amount, { memo: `Emberwick: ${p.name} hands Orin the Banker ${amount} EMWK to trade (mandate)` });
+    p.mandate = { status: 'active', stake: amount, start: state.day, inv: {}, cost: {}, maxTrade: pct(a.maxTrade, BANKER.maxTrade), stopLoss: pct(a.stopLoss, BANKER.stopLoss), goods, log: [], trades: 0, realised: 0 };
+    mLog(p.mandate, state, { kind: 'open', amount });
+    addLog(state, `${p.name} hired Orin the Banker with ${amount} EMWK.`, 'good', 'log.mandateOpen', { name: p.name, n: amount });
+    state.rev++;
+    return { ok: true };
+  }
+  if (!m || m.status !== 'active') return { ok: false, code: 'err.noMandate' };
+  if (a.type === 'mandateAdd') {
+    const amount = Math.floor(Number(a.amount) || 0);
+    if (amount < 1 || m.stake + amount > BANKER.maxStake) return { ok: false, code: 'err.stakeRange', params: { min: 1, max: BANKER.maxStake - m.stake } };
+    if (!transfer(state, 'player:' + pid, mAcct(pid), amount, { memo: `Emberwick: ${p.name} adds ${amount} EMWK to the mandate with Orin` })) return { ok: false, code: 'err.noMoney' };
+    m.stake += amount; mLog(m, state, { kind: 'add', amount }); state.rev++;
+    return { ok: true };
+  }
+  if (a.type === 'mandateSettings') {
+    m.maxTrade = pct(a.maxTrade ?? m.maxTrade, BANKER.maxTrade); m.stopLoss = pct(a.stopLoss ?? m.stopLoss, BANKER.stopLoss);
+    if (a.goods) { const g = goodsOf(a.goods); if (!g.length) return { ok: false, code: 'err.noGoods' }; m.goods = g; }
+    mLog(m, state, { kind: 'settings' }); state.rev++;
+    return { ok: true };
+  }
+  if (a.type === 'mandateClose') return closeMandate(state, pid, 'player');
+  return { ok: false, code: 'err.unknownAction' };
+}
+// close: Orin sells what it can, unsold goods go to the player's bag, the cash comes back minus the fee on profit
+export function closeMandate(state, pid, why) {
+  const p = state.players[pid], m = p.mandate;
+  for (const [g, q] of Object.entries(m.inv)) {
+    let left = Math.floor(q);
+    while (left > 0) {
+      const b = bestBuyer(state, g, left);
+      if (!b || b.total / b.qty < (m.cost[g] || 0) * 0.8) break; // no fire sale: what would sell for less than 80% of its cost goes to the player's bag instead
+      const r = sellToNpc(state, { acct: mAcct(pid), holder: m }, b.npc, g, b.qty);
+      if (!r.ok) break;
+      m.realised = r2(m.realised + r.total - r.tax - (m.cost[g] || 0) * r.qty);
+      left -= r.qty; m.trades++;
+      mLog(m, state, { kind: 'sell', good: g, qty: r.qty, unit: r.unit, npc: b.npc, why: 'closing' });
+    }
+    if (left > 0) { addInv(p, g, left); m.inv[g] = 0; m.toBag = r2((m.toBag || 0) + left * (m.cost[g] || 0)); mLog(m, state, { kind: 'toBag', good: g, qty: left }); }
+  }
+  // the fee is on EMWK profit only; goods handed back count in the result at what they cost, but carry no fee
+  const cash = balance(state, mAcct(pid)), cashProfit = r2(cash - m.stake), fee = cashProfit > 0 ? r2(cashProfit * BANKER.fee) : 0, profit = r2(cashProfit + (m.toBag || 0));
+  if (fee > 0) transfer(state, mAcct(pid), 'npc:' + BANKER.id, fee, { memo: `Emberwick: Orin's fee, ${Math.round(BANKER.fee * 100)}% of ${p.name}'s profit` });
+  transfer(state, mAcct(pid), 'player:' + pid, balance(state, mAcct(pid)), { memo: `Emberwick: Orin returns ${p.name}'s mandate` });
+  m.status = 'closed'; m.closed = { day: state.day, why, cash: r2(cash), profit, fee, goods: m.toBag || 0 };
+  mLog(m, state, { kind: 'close', profit, fee, why });
+  addLog(state, `${p.name} closed the mandate with Orin: ${profit >= 0 ? 'profit' : 'loss'} ${Math.abs(profit)} EMWK${fee ? `, fee ${fee}` : ''}.`, profit >= 0 ? 'good' : 'info', 'log.mandateClose', { name: p.name, n: profit, fee });
+  state.rev++;
+  return { ok: true, profit, fee };
+}
+
+// Orin's day, for every active mandate. `plan` is Orin's NEAR AI view of the market ({ picks: [{good, action, why}] })
+// or null; the rules decide either way, and the AI can only rank and veto goods, never add money or goods.
+export function bankerDay(state, plan = null) {
+  const picks = new Map(((plan && plan.picks) || []).map((x) => [String(x.good), x]));
+  const tax = taxRate(state), out = [];
+  for (const p of Object.values(state.players)) {
+    const m = p.mandate;
+    if (!m || m.status !== 'active') continue;
+    const actor = { acct: mAcct(p.id), holder: m }, why = (g, rule) => (picks.get(g) && picks.get(g).why) || rule;
+    let trades = 0;
+    // 1. the stop: if the mandate is worth too little, Orin sells everything and stops
+    if (mandateValue(state, p.id) < m.stake * (1 - m.stopLoss)) { closeMandate(state, p.id, 'stopLoss'); out.push({ pid: p.id, stopped: true }); continue; }
+    // 2. sell what has gained enough
+    for (const [g, q] of Object.entries(m.inv)) {
+      if (q < 1 || trades >= BANKER.tradesPerDay || (picks.get(g) && picks.get(g).action === 'hold')) continue;
+      const b = bestBuyer(state, g, Math.floor(q));
+      if (!b || (b.total / b.qty) * (1 - tax) < (m.cost[g] || 0) * (1 + BANKER.margin)) continue;
+      const r = sellToNpc(state, actor, b.npc, g, b.qty);
+      if (!r.ok) continue;
+      m.realised = r2(m.realised + r.total - r.tax - (m.cost[g] || 0) * r.qty); m.trades++; trades++;
+      mLog(m, state, { kind: 'sell', good: g, qty: r.qty, unit: r.unit, npc: b.npc, why: why(g, 'rule.sellGain') });
+    }
+    // 3. buy: from the cheapest seller when another craftsman pays more today (resell at once), or when it is
+    //    cheap against its usual price and someone buys it (keep it for a better day). Goods the AI marks "avoid" are skipped.
+    const order = m.goods.filter((g) => !(picks.get(g) && picks.get(g).action === 'avoid')).sort((a, b) => (picks.get(b) && picks.get(b).action === 'buy' ? 1 : 0) - (picks.get(a) && picks.get(a).action === 'buy' ? 1 : 0));
+    for (const g of order) {
+      if (trades >= BANKER.tradesPerDay) break;
+      const s = bestSeller(state, g); if (!s) continue;
+      const budget = Math.min(balance(state, actor.acct), m.stake * m.maxTrade);
+      let qty = Math.min(s.stock, Math.floor(budget / s.unit));
+      if (qty < 1) continue;
+      const b = bestBuyer(state, g, qty + Math.floor(m.inv[g] || 0), s.npc);
+      if (!b) continue;
+      qty = Math.min(qty, b.qty - Math.floor(m.inv[g] || 0)); // never more than the buyers want, counting what Orin already holds
+      if (qty < 1) continue;
+      const resell = b.total * (qty / b.qty) * (1 - tax), cost = s.unit * qty;
+      const flip = resell >= cost * (1 + BANKER.margin);
+      const u = usual(state, g), cheap = s.unit <= u * BANKER.cheap && b.last * (1 - tax) >= s.unit * 0.95 && ((picks.get(g) && picks.get(g).action === 'buy') || s.unit <= u * (BANKER.cheap - 0.1));
+      if (!flip && !cheap) continue;
+      const had = m.inv[g] || 0, r = buyFromNpc(state, actor, s.npc, g, qty); // buyFromNpc puts the goods in Orin's store for this player
+      if (!r.ok) continue;
+      m.cost[g] = r2(((m.cost[g] || 0) * had + r.total) / (had + qty)) || s.unit;
+      m.trades++; trades++;
+      mLog(m, state, { kind: 'buy', good: g, qty, unit: s.unit, npc: s.npc, why: why(g, flip ? 'rule.flip' : 'rule.cheap') });
+      if (flip) {
+        const b2 = bestBuyer(state, g, qty, s.npc);
+        if (b2) { const r2s = sellToNpc(state, actor, b2.npc, g, b2.qty); if (r2s.ok) { m.realised = r2(m.realised + r2s.total - r2s.tax - m.cost[g] * r2s.qty); m.trades++; mLog(m, state, { kind: 'sell', good: g, qty: r2s.qty, unit: r2s.unit, npc: b2.npc, why: why(g, 'rule.flipSell') }); } }
+      }
+    }
+    m.lastDay = state.day; m.value = mandateValue(state, p.id);
+    out.push({ pid: p.id, trades, value: m.value });
+  }
+  state.bankerDay = state.day;
+  return out;
+}
+// what a player sees of their mandate and of Orin
+export function bankerView(state, pid) {
+  const p = state.players[pid];
+  const book = Object.values(state.players).filter((q) => q.mandate && q.mandate.status === 'active');
+  const v = { rules: BANKER, clients: book.length, managed: r2(book.reduce((a, q) => a + mandateValue(state, q.id), 0)), earned: r2(balance(state, 'npc:' + BANKER.id)), plan: state.bankerPlan ? (({ json, ...x }) => x)(state.bankerPlan) : null, market: bankerMarket(state), tradedToday: state.bankerDay === state.day };
+  if (!p) return v;
+  const m = p.mandate;
+  v.unlock = bankerUnlock(state, p);
+  if (m) {
+    const value = m.status === 'active' ? mandateValue(state, pid) : null;
+    v.mine = { ...m, cash: r2(balance(state, mAcct(pid))), value, profit: value === null ? null : r2(value - m.stake), feeIfClosed: value !== null && value > m.stake ? r2((value - m.stake) * BANKER.fee) : 0 };
+  }
+  return v;
+}
+// Orin's morning view from NEAR AI: cleaned, kept for the day, and its SHA-256 written to NEAR in a memo
+// (the exact JSON is served at /api/banker/plan), like the craftsmen's plans
+export function applyBankerPlan(state, plan, model, proof = null) {
+  const text = (v, n) => String(v || '').replace(/<[^>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const acts = ['buy', 'sell', 'hold', 'avoid'], seen = new Set();
+  const picks = ((plan && plan.picks) || []).filter((x) => x && BANKER.goods.includes(String(x.good)) && acts.includes(String(x.action)) && !seen.has(x.good) && seen.add(x.good))
+    .slice(0, 6).map((x) => ({ good: String(x.good), action: String(x.action), why: text(x.why, 140) }));
+  const rec = { day: state.day, model: model || null, note: text(plan && plan.note, 200), picks };
+  const json = JSON.stringify(rec), hash = crypto.createHash('sha256').update(json).digest('hex');
+  state.bankerPlan = { ...rec, json, hash, proof: proof ? { ok: !!proof.ok, signer: proof.signer || null } : null };
+  transfer(state, 'treasury', 'newcomerFund', 0.01, { memo: `Emberwick: Orin the Banker's market view day ${state.day}: sha256 ${hash.slice(0, 32)}${proof && proof.ok ? ' (signed in TEE)' : ''}`, bankerPlan: state.day });
+  return state.bankerPlan;
 }

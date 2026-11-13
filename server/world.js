@@ -90,6 +90,7 @@ export const DISTRICTS = {
   1: { id: 'lane',  name: 'Ember Lane', cost: 600, needs: 0, minLevel: 0,
        build: { lumber: 6, fee: 40 }, factors: [0.9, 0.9, 0.85, 0.85, 0.8, 0.8, 0.75, 0.75, 0.7, 0.7, 0.65, 0.65] },
   3: { id: 'exchange', name: 'Exchange quarter', alwaysOpen: true, cost: 0, needs: 0, minLevel: 0, build: {}, factors: [] },
+  4: { id: 'gold', name: 'Gold Row', alwaysOpen: true, cost: 0, needs: 0, minLevel: 0, build: {}, factors: [] },
   2: { id: 'villa', name: 'Villa hill', cost: 1200, needs: 1, minLevel: 5,
        build: { lumber: 14, fee: 120 }, factors: [3, 3, 2.8, 2.8, 2.6, 2.6] },
 };
@@ -101,6 +102,26 @@ for (const [n, cells] of [[1, LANE_CELLS], [2, VILLA_CELLS]]) {
 }
 // the exchange hall in the Exchange quarter: player market, land-deed market and the change desk
 BUILDINGS.push({ id: 'exchange', name: 'Exchange', type: 'civic', district: 3, i: 3, j: 3, w: 3 });
+// Orin's bank on Gold Row
+BUILDINGS.push({ id: 'bank', name: "Orin's Bank", type: 'civic', district: 4, i: 3, j: 3, w: 3 });
+
+// Orin the Banker: an AI agent a player can hire to trade for them. The player hands Orin a sum (a mandate)
+// and sets the limits; every day Orin reads the market with NEAR AI and proposes trades, and the village
+// rules carry out only those inside the player's limits. Orin keeps a share of the profit, never of the stake.
+export const BANKER = {
+  id: 'banker', name: 'Orin the Banker',
+  minLevel: 8,          // a villager with some experience...
+  minCoins: 200,        // ...and some savings
+  minStake: 30, maxStake: 400,
+  fee: 0.10,            // of the profit only, when the mandate is closed
+  maxTrade: { min: 0.1, max: 0.5, def: 0.3 },   // most of the stake one purchase may use
+  stopLoss: { min: 0.05, max: 0.5, def: 0.2 },  // Orin sells everything and stops if the value falls this far
+  margin: 0.04,         // the least profit Orin needs on a trade, after the market tax
+  tradesPerDay: 4,
+  cheap: 0.85,          // a price this far under a good's usual price counts as cheap
+  goods: ['wheat', 'wood', 'ore', 'wool', 'fish', 'lumber', 'flour', 'bread', 'coat', 'sword', 'pickaxe', 'axe', 'bed', 'plow', 'shears', 'rod'],
+  noonTick: 0.45,       // Orin trades at this point of the day
+};
 
 // The exchange: players post sell orders for goods; anyone (players, AI craftsmen, villagers) can fill
 // them. Deeds can be sold too. A small fee goes to the treasury.

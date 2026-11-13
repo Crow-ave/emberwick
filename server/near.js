@@ -212,6 +212,7 @@ export class Bridge {
   chainOf(holder) {
     if (holder === 'withdrawn') return null;
     if (holder.startsWith('npc:')) return this.subId(holder.slice(4));
+    if (holder.startsWith('mandate:') && this.npcIds.includes('banker')) return this.subId('banker'); // what Orin manages for players sits in Orin's own account
     if (holder === 'treasury') return this.subId('treasury');
     if (holder === 'deposits') return this.subId('deposits'); // rent deposits are held apart, so they show on chain
     return this.root; // players, bots and the village funds live in the village bank
