@@ -1,4 +1,5 @@
 import { setupMap, renderMap, renderDistrict, buildGrid, entranceOf, findPath, cellCenter, cellAt, isWalkable, person, workCellOf, isOpenArea, hereBadge, speech } from './iso.js';
+import { renderCity, cityFrame, cityClick, cityReset } from './city.js';
 import { t, LANGS, getLang, setLang, has as hasKey } from './i18n.js';
 import { play, playWork, unlockSound, setSfx, setMusic, setNight, sound } from './sound.js';
 import { sceneMarkup, hasScene, homeHasScene, bubble, KEEPER_HEAD, SW, SH } from './scenes.js';
@@ -204,7 +205,11 @@ function animate(now) {
   const everyone = [...walkers, ...others.values(), ...(you ? [you] : [])];
   const visible = everyone.filter((w) => !w.inside).map((w) => [w, walkerPos(w)]).sort((a, b) => a[1][1] - b[1][1]);
   const sec = now / 1000;
-  if (ui.district) { $('map').querySelector('#walkers').innerHTML = ''; $('map').querySelector('#fx').innerHTML = ''; requestAnimationFrame(animate); return; }
+  if (ui.district) {
+    $('map').querySelector('#walkers').innerHTML = ''; $('map').querySelector('#fx').innerHTML = '';
+    if (ui.district === 5) cityFrame($('map'), now, dt, you ? you.look : null);
+    requestAnimationFrame(animate); return;
+  }
   $('map').querySelector('#walkers').innerHTML = visible.map(([w, [x, y]]) => person(x, y, w.look, sec + (w.cell[0] * 0.3))).join('');
   let over = '';
   if (you && you.inside) {
@@ -910,6 +915,14 @@ async function bankAct(type) {
 }
 // Emberwick City: a building site to look at; the plan, and that it is not playable yet
 function panelCity() {
+  const pl = ui.cityPlace;
+  if (pl && pl !== 'site') {
+    const act = { hall: 'data-go="council"', tower: 'data-go="go-d3"', branch: 'data-go="go-d4"', market: 'data-trade="1"', station: 'data-go="go-village"' }[pl];
+    return `<div class="bankhead"><div class="bankseal citysign">${{ station: '🚉', hall: '🏛️', clock: '🕰️', park: '🌳', market: '🧺', tower: '📈', branch: '🏦', hospital: '🏥', harbor: '⚓', lighthouse: '🗼' }[pl] || '🏙️'}</div><div><h2>${t('city.p.' + pl)}</h2><p class="muted small">${t('district.5')}</p></div></div>` +
+      `<p>${t('city.d.' + pl, { day: view.day, left: Math.max(0, Math.round((1 - (view.dayProgress || 0)) * 24)) })}</p>` +
+      (act ? `<p><button class="primary" ${act}>${t('city.go.' + pl)}</button></p>` : '') +
+      `<p class="muted small">${t('city.previewNote')}</p><p><button data-cityplan="1">${t('city.seePlan')}</button></p>`;
+  }
   return `<div class="bankhead"><div class="bankseal citysign">🚧</div><div><h2>${t('district.5')}</h2><p class="muted small">${t('city.tag')}</p></div></div>` +
     `<div class="near-box warn"><p class="small"><b>${t('city.status')}</b></p></div>` +
     `<div class="bankhow"><p class="sub2">${t('city.planTitle')}</p><ol class="small">${[1, 2, 3, 4, 5].map((k) => `<li>${t('city.plan' + k)}</li>`).join('')}</ol></div>` +
@@ -2924,7 +2937,9 @@ function renderMapNow() {
   if (ui.district && view.districts) {
     ui.backTag = '← ' + t('district.back'); ui.villaTag = t('district.2') + ' →'; ui.laneTag = t('district.1') + ' →';
     ui.districtTitle = t('district.' + ui.district); ui.closedDistrict = t('district.closedTag'); ui.exTag = t('district.3') + ' →';
-    renderDistrict($('map'), world, view, ui);
+    ui.goldBackTag = '← ' + t('district.4'); ui.cityHint = t('city.hint');
+    if (ui.district === 5) renderCity($('map'), view, ui, t, getLang());
+    else renderDistrict($('map'), world, view, ui);
   } else renderMap($('map'), world, view, ui);
 }
 function render() {
@@ -3155,7 +3170,7 @@ function flash(what) {
 function select(id) {
   // moving between the village and the neighbourhoods
   if (id === 'go-village') { ui.district = 0; ui.selected = 'roadsign'; render(); return; }
-  if (/^go-d\d$/.test(id)) { ui.district = Number(id.slice(4)); ui.selected = ui.district === 3 ? 'exchange' : ui.district === 4 ? 'bank' : ui.district === 5 ? 'city' : null; render(); return; }
+  if (/^go-d\d$/.test(id)) { if (id === 'go-d5' && ui.district !== 5) { cityReset(); ui.cityPlace = null; } ui.district = Number(id.slice(4)); ui.selected = ui.district === 3 ? 'exchange' : ui.district === 4 ? 'bank' : ui.district === 5 ? 'city' : null; render(); return; }
   const bdef = world.buildings.find((x) => x.id === id);
   ui.district = bdef && bdef.district ? bdef.district : (bdef ? 0 : ui.district);
   if (ui.scene && ui.scene !== id) { ui.scene = null; sceneKey = null; }
@@ -3268,6 +3283,12 @@ $('map').addEventListener('pointerdown', (e) => {
 });
 $('map').addEventListener('click', (e) => {
   if (ignoreClick) { ignoreClick = false; return; }
+  if (ui.district === 5) { // the city: walk the streets, open a landmark, or take a signpost
+    const r = cityClick($('map'), e);
+    if (r && r.go) { select(r.go); return; }
+    if (r && r.place) { if (r.place === 'site') { ui.cityPlace = null; select('city'); } else { ui.selected = 'city'; ui.cityPlace = r.place; renderPanel(); } play('click'); }
+    return;
+  }
   const g = e.target.closest('.bld');
   if (g) { ui.walkTo = null; select(g.dataset.id); return; }
   walkToGround(e);
@@ -3337,6 +3358,7 @@ document.body.addEventListener('click', (e) => {
   if (rp) { post('/api/action', { player: playerId, type: 'repay', npc: rp.dataset.repay }).then((r) => { if (r.state && newer(r.state)) view = r.state; if (r.ok) { play('coin'); toast(t('credit.paid', { n: r.amount }), 'win'); } else toast(errText(r), 'bad'); render(); }); return; }
   if (e.target.closest('[data-lands]')) { ui.selected = 'lands'; renderMapNow(); renderPanel(); return; }
   if (e.target.closest('[data-eat]')) { act('eat'); return; }
+  if (e.target.closest('[data-cityplan]')) { ui.cityPlace = null; ui.selected = 'city'; renderPanel(); return; }
   if (e.target.closest('[data-guide]')) { ui.selected = 'guide'; renderMapNow(); renderPanel(); return; }
   const go = e.target.closest('[data-go]');
   if (go) { select(go.dataset.go); if (go.dataset.go === 'gate' && view.player && view.player.questInfo.id === 'meet') openElder(); return; }

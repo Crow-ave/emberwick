@@ -952,3 +952,4 @@ export function renderDistrict(svg, world, view, ui) {
   svg.querySelector('#night').setAttribute('opacity', night ? '0.36' : '0');
   svg.classList.toggle('is-night', night);
 }
+export { tree as isoTree, cityArt as isoCityArt, shade as isoShade };

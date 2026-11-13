@@ -20,6 +20,8 @@ body { margin: 0; background: var(--bg); color: var(--ink); }
 #map { width: 100%; height: auto; display: block; }
 #map .bld { cursor: pointer; }
 #map .bld:hover, #map .bld:focus { filter: brightness(1.1); outline: none; }
+#map .cbld { cursor: pointer; }
+#map .cbld:hover, #map .cbld:focus { filter: brightness(1.08); outline: none; }
 #map .tag { font-size: 13px; fill: #2f2418; }
 #map .lbl.sel .tag { fill: var(--ember-dark); font-weight: bold; }
 #map .you-tag { font-size: 12px; font-weight: bold; fill: var(--ember-dark); paint-order: stroke; stroke: #fffaf2; stroke-width: 3px; }
