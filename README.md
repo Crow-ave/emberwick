@@ -712,6 +712,18 @@ A walkable preview is in the game today: **Emberwick City** is a map of its own,
 
 Why it helps with 100 players: the village never has to carry everyone. Experienced players move on and leave the village's jobs and fixed money supply to newcomers, the way a real town grows into a city. Each economy stays a size its rules and the simulation have been checked for, and the city can be tuned for many more players from the start.
 
+**A first model, not a forecast** (`npm run report -- --city`, 100 village days, seeds 42 to 46, scripted players; the city here has no jobs or prices of its own). A player moves at level 8 with 200 EMWK and takes their savings to the city gate; in the trading cases the gate spends 5% of what it holds each morning on the village's spare goods.
+
+| Measure | 100 players, no city | 100, moving only | 100, city buys goods | 33 per village, 3 villages + city |
+|---|---|---|---|---|
+| Players who moved to the city | 0 | 37 to 45 | 48 to 54 | 30 to 33 |
+| Treasury at the end (EMWK) | 6,781 to 7,842 | 2,004 to 4,443 | 5,032 to 6,857 | 8,031 to 8,218 |
+| Shops' combined profit (EMWK) | −458 to +168 | −1,824 to −75 | −1,188 to +597 | +175 to +830 |
+| Player-days without a tool and no money for one | 25% to 46% | 18% to 33% | 17% to 36% | 3% to 5% |
+| Work turns with nothing worth gathering | 92% to 93% | 91% to 95% | 90% to 93% | 81% to 85% |
+
+What it says: moving players out alone makes the village poorer (their savings leave with them), so the city has to buy from the village; small villages feeding one city work best by far; and demand for raw goods stays the bottleneck in every case, so the city's workshops (and villages with different resources trading with each other: a mining village, a fishing village) must buy far more of them than this model does. That is why the city stays a preview until a model with its own economy passes. More villages would use the same rules with their own shops and treasury and one currency: each new village would add its own share of EMWK under a rule fixed in advance and recorded on NEAR, so the money per player stays the same; today's token has a fixed supply, so this needs a new token contract and is not part of the hackathon build.
+
 ### Later
 
 - A governance contract for the council: votes cast and counted on chain

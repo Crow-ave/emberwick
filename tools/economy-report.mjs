@@ -6,7 +6,7 @@
 // call the game makes), and compares the two. It needs a NEAR AI key (NEARAI_API_KEY or
 // ~/.emberwick/nearai-key.txt) and makes one request per village day (100 requests).
 import { EventEmitter } from 'node:events';
-import { createState, tick, totalMoney, balance, aiBrief, applyAiPlan, joinPlayer, playerAction, isNight, innFree, sellQuote } from '../server/economy.js';
+import { createState, tick, totalMoney, balance, aiBrief, applyAiPlan, joinPlayer, playerAction, isNight, innFree, sellQuote, transfer, playerLevel } from '../server/economy.js';
 import { TOKEN, RULES, CRAFTSMEN, GATHER_SPOTS } from '../server/world.js';
 
 EventEmitter.defaultMaxListeners = 50; // many requests in a row over one connection: not a leak
@@ -17,6 +17,8 @@ const DAYS = nums[0] || 100;
 let SEED = nums[1] || 42;
 const SPREAD = args.includes('--spread');
 const CROWD = args.includes('--players');
+const CITY = args.includes('--city');
+let CITY_MODE = 'off'; // --city: off | move (experienced players leave for the city) | trade (and the city buys the village's goods)
 let PLAYERS = 0;
 const r2 = (n) => Math.round(n * 100) / 100;
 const WATCH = [['bakery', 'bread', 'sells'], ['mill', 'flour', 'sells'], ['smithy', 'sword', 'sells'], ['tailor', 'coat', 'sells'],
@@ -161,8 +163,40 @@ function newCrowd(state, n) {
     if (innFree(state) < 1) { m.innFull++; return; }
     if (act(id, { type: 'sleep', place: 'inn' }).ok) m.innNights++;
   }
+  const moved = new Set(), cm = { moved: 0, savingsOut: 0, cityBought: 0, cityBuys: 0, activeDays: [] };
+  // the city (a model, nothing in the game yet): a player at level 8 with 200 EMWK moves there with their savings,
+  // which wait at the city gate; with 'trade' the gate spends 5% of what it holds each morning on the village's
+  // finished goods (bread, flour, tools, swords, coats, furniture), which the city uses up
+  function cityMorning() {
+    for (const id of ids) {
+      if (!id || moved.has(id)) continue;
+      const p = state.players[id], c = coins(id);
+      if (playerLevel(p) >= 8 && c >= 200) { transfer(state, 'player:' + id, 'cityGate', c, { why: 'moves to the city' }); moved.add(id); cm.moved++; cm.savingsOut += c; }
+    }
+    if (CITY_MODE === 'trade' || CITY_MODE === 'raw') {
+      let budget = balance(state, 'cityGate') * 0.05;
+      for (const n of Object.values(state.npcs)) {
+        if (n.id === 'tower' || !n.sells) continue;
+        for (const [g, price] of Object.entries(n.sells)) {
+          const spare = Math.floor((n.stock[g] || 0) - 4), q = Math.min(spare, Math.floor(budget / price));
+          if (q < 1) continue;
+          n.stock[g] -= q; transfer(state, 'cityGate', 'npc:' + n.id, q * price, { why: 'city buys ' + g }); budget -= q * price; cm.cityBought += q * price; cm.cityBuys++;
+        }
+        // 'raw': the city also takes raw goods the shops hold too much of (wheat, wood, ore, wool, fish), at the price the shop paid,
+        // so the shops have room to buy from the villagers again
+        if (CITY_MODE === 'raw') for (const [g, price] of Object.entries(n.buys || {})) {
+          if (n.sells && n.sells[g] !== undefined) continue;
+          const spare = Math.floor((n.stock[g] || 0) - 6), q = Math.min(spare, Math.floor(budget / price));
+          if (q < 1) continue;
+          n.stock[g] -= q; transfer(state, 'cityGate', 'npc:' + n.id, q * price, { why: 'city buys ' + g }); budget -= q * price; cm.cityBought += q * price; cm.cityBuys++;
+        }
+      }
+    }
+    cm.activeDays.push(ids.filter((x) => x && !moved.has(x)).length);
+  }
   return {
     step(t) {
+      if (CITY_MODE !== 'off' && t % RULES.ticksPerDay === 2) cityMorning();
       if (t % RULES.ticksPerDay === 1) for (const id of ids) { const f = id && state.players[id].food; if (f && f.day === state.day) { m.mornings++; if (f.missing > 0) { m.unfed++; if (f.why === 'money') m.unfedMoney++; } } }
       for (let k = ids.length; k < n && joinTick[k] <= t; k++) {
         const r = joinPlayer(state, 'Sim' + k, PATHS[k % PATHS.length]);
@@ -170,20 +204,20 @@ function newCrowd(state, n) {
       }
       const dark = isNight(state);
       for (const id of ids) {
-        if (!id) continue;
+        if (!id || moved.has(id)) continue;
         const p = state.players[id];
         if (dark) { if (rnd() < 0.5) night(id, p); continue; }
         if (rnd() < (Number(process.env.CROWD_ACTIVE) || 0.3)) day(id, p); // nobody plays every minute
       }
     },
     result() {
-      const live = ids.filter(Boolean);
+      const live = ids.filter((x) => x && !moved.has(x)); // the ones still in the village
       const end = live.map((id) => coins(id)), gain = live.map((id) => coins(id) - start[id]);
       const sorted = [...end].sort((a, b) => a - b);
       const top10 = sorted.slice(-Math.max(1, Math.round(sorted.length / 10))).reduce((a, b) => a + b, 0), total = sorted.reduce((a, b) => a + b, 0);
       return { n: live.length, wanted: n, startAvg: avg(live.map((id) => start[id])), endAvg: avg(end), gainAvg: avg(gain), richest: sorted[sorted.length - 1] || 0, poorest: sorted[0] || 0,
         fullStart: live.filter((id) => start[id] >= START_COINS[state.players[id].path] - 0.01).length,
-        losers: gain.filter((g) => g < 0).length, top10Share: total > 0 ? top10 / total : 0, ...m,
+        losers: gain.filter((g) => g < 0).length, top10Share: total > 0 ? top10 / total : 0, ...m, city: { ...cm, gateEnd: balance(state, 'cityGate'), peakActive: Math.max(0, ...cm.activeDays), endActive: live.length },
         debug: process.env.CROWD_DEBUG ? live.map((id) => { const p = state.players[id]; return `${p.path} c${Math.round(coins(id))} job:${p.job ? p.job.npc : '-'} inv:${JSON.stringify(p.inv)} e${p.energy}`; }) : null };
     },
   };
@@ -231,6 +265,40 @@ function compare(a, b, model) {
   return out.join('\n') + '\n\nSame seed for both runs: the only difference is the NEAR AI morning plan.';
 }
 
+// --city: 100 scripted players without a city, with experienced players moving to the city, and with the city
+// also buying the village's goods; and 33 players in each of three villages that feed one city
+if (CITY) {
+  const seeds = [42, 43, 44, 45, 46];
+  const pct = (x) => `${Math.round(x * 100)}%`, span = (v, f = (x) => Math.round(x)) => (Math.min(...v) === Math.max(...v) ? `${f(v[0])}` : `${f(Math.min(...v))} to ${f(Math.max(...v))}`);
+  const cases = [['100 players, no city', 100, 'off'], ['100, moving to the city', 100, 'move'], ['100, city buys finished goods', 100, 'trade'], ['100, city buys raw goods too', 100, 'raw'], ['33 per village, 3 villages + city (raw too)', 33, 'raw']];
+  const res = [];
+  for (const [name, n, mode] of cases) {
+    PLAYERS = n; CITY_MODE = mode; const rs = [];
+    for (const sd of seeds) { SEED = sd; const r = await run(null); rs.push(r); console.error(`  ${name}, seed ${sd} done`); }
+    res.push([name, rs]);
+  }
+  const out = [`Emberwick city model: ${DAYS} village days, seeds 42 to 46, scripted players, no NEAR AI. Ranges are over the 5 seeds.`, '',
+    `| Measure | ${res.map(([n]) => n).join(' | ')} |`, `|---|${res.map(() => '---').join('|')}|`];
+  const line = (name, f) => out.push(row(name, ...res.map(([, rs]) => f(rs))));
+  const C = (r) => r.crowd, shops7 = (r) => r.shopIds.filter((id) => id !== 'tower');
+  line('Players who moved to the city', (rs) => span(rs.map((r) => C(r).city.moved)));
+  line('Players still in the village at the end', (rs) => span(rs.map((r) => C(r).city.endActive || C(r).n)));
+  line('Savings carried to the city gate (EMWK)', (rs) => span(rs.map((r) => C(r).city.savingsOut)));
+  line('City purchases of village goods (EMWK)', (rs) => span(rs.map((r) => C(r).city.cityBought)));
+  line('Shops whose wallet fell below 25 EMWK (of 7)', (rs) => span(rs.map((r) => shops7(r).filter((id) => r.shops[id].min < 25).length)));
+  line('Shops\' combined profit (EMWK)', (rs) => span(rs.map((r) => shops7(r).reduce((a, id) => a + r.shops[id].end - r.shops[id].start, 0))));
+  line('Treasury at the end (EMWK)', (rs) => span(rs.map((r) => r.treasuryEnd)));
+  line('Villagers\' (12 bots) average purse at the end', (rs) => span(rs.map((r) => avg(r.botEnd))));
+  line('Players in the village: average coins at the end', (rs) => span(rs.map((r) => C(r).endAvg)));
+  line('Players in the village who ended below their start', (rs) => span(rs.map((r) => C(r).losers / Math.max(1, C(r).n)), pct));
+  line('Share of village player coins held by the richest 10%', (rs) => span(rs.map((r) => C(r).top10Share), pct));
+  line('Player-days with a hungry moment', (rs) => span(rs.map((r) => C(r).hungryDays / Math.max(1, C(r).playerDays)), pct));
+  line('Work turns with nothing worth gathering', (rs) => span(rs.map((r) => C(r).noDemand / Math.max(1, C(r).workTries)), pct));
+  line('Player-days without a tool and no money for one', (rs) => span(rs.map((r) => C(r).toolless / Math.max(1, C(r).playerDays)), pct));
+  console.log(out.join('\n'));
+  console.log('\nA model, not the game: the city has no jobs or prices of its own here. A player moves at level 8 with 200 EMWK and takes all their coins to the city gate. With "buys finished goods", the gate spends 5% of what it holds each morning on finished goods the village shops have to spare (more than 4 on the shelf), at the shop\'s price; with "raw goods too", the same budget also takes raw goods a shop holds more than 6 of, at the price the shop pays. The last column is one village of 33 players; three such villages would feed one city.');
+  process.exit(0);
+}
 // --players: the same village with 0, 10, 30 and 100 scripted players, each from 5 seeds
 if (CROWD) {
   const sizes = nums.length > 1 ? nums.slice(1) : [0, 10, 30, 100];
