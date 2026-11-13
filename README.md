@@ -690,6 +690,24 @@ What the simulation shows at 100 always-on players (see [With players: 0 to 100]
 
 **What success looks like** with 100 always-on players, measured over 5 seeds: fewer than 30% of players end poorer than they started (64–73% today), fewer than 75% of work turns find nothing worth gathering (92–93% today; even with 10 players it is 83–88%, because scripted players never stop trying), fewer than 10% of mornings without money for food (57–68% today), the richest tenth below half of the players' coins (69–86% today), and the treasury above 6,000 EMWK (6,781–7,842 today, kept).
 
+### What we tried for 100 players, and what we learned (13 November)
+
+We tried step 1 of the plan above in its simplest form: every production chain keeps more stock for every active player, the way the bread chain does. The simulation (`npm run report -- --players`, 5 seeds) said no, so it is not in the game:
+
+| 100 players | Today's rules | Every chain grows with players |
+|---|---|---|
+| Treasury rescues of a shop | 15–27 | 64–205 |
+| Shops' combined profit (EMWK) | −458 to 168 | −1,800 to −64 |
+| Players who end poorer than they started | 64–73% | 75–79% |
+
+The money supply is fixed (25,000 EMWK). Shops that buy more raw goods only pay out faster; unless villagers also need and buy more, the shops run dry and the coins gather with the hardest workers. So the next step is not "shops buy more" but more reasons to spend: new trades whose products villagers use up, and a second economy for those who outgrow the village (below).
+
+### Emberwick City: a second economy for those who outgrow the village
+
+The idea: a villager who reaches a high level (and has saved enough) can move to a city on the far side of the river, a road away from the village. The city is a modern economy of its own: workshops become companies, there are offices, a market hall, a hospital and a pharmacy, rents and salaries, and its own currency. A villager moves their savings at an exchange rate quoted at the city gate (on NEAR, the same way the exchange quotes NEAR Intents today). Villagers can walk to the city to look around, but only citizens can work and trade there.
+
+Why it helps with 100 players: the village never has to carry everyone. Experienced players move on and leave the village's jobs and fixed money supply to newcomers, the way a real town grows into a city. Each economy stays a size its rules and the simulation have been checked for, and the city can be tuned for many more players from the start.
+
 ### Later
 
 - A governance contract for the council: votes cast and counted on chain

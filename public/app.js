@@ -3614,7 +3614,8 @@ function applyZoom() {
   if (!mz.base) return;
   const [bx, by, bw, bh] = mz.base, w = bw / mz.z;
   // follow the shape of the screen, so a tall phone screen is filled instead of showing empty bands
-  const r = svg.getBoundingClientRect(), ratio = r.width ? r.height / r.width : bh / bw;
+  // (phones only: with a mouse the whole village always fits at the widest zoom, so it can never get stuck cropped)
+  const r = svg.getBoundingClientRect(), ratio = touchMap && r.width ? r.height / r.width : bh / bw;
   const h = Math.min(bh, w * ratio);
   mz.cx = Math.max(bx + w / 2, Math.min(bx + bw - w / 2, mz.cx));
   mz.cy = Math.max(by + h / 2, Math.min(by + bh - h / 2, mz.cy));
@@ -3625,6 +3626,7 @@ function setupTouchMap() {
   const svg = $('map');
   mz.base = svg.getAttribute('viewBox').split(' ').map(Number);
   mz.cx = mz.base[0] + mz.base[2] / 2; mz.cy = mz.base[1] + mz.base[3] * 0.52;
+  if ('ResizeObserver' in window) new ResizeObserver(() => applyZoom()).observe(svg); // the map's box changes when panels open and close
   if (!touchMap) { setupMouseMap(svg); applyZoom(); return; }
   mz.z = matchMedia('(max-width: 700px)').matches ? 1.6 : 1.25;
   applyZoom();
