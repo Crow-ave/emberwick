@@ -3241,7 +3241,7 @@ const TOUR = [
   // our own contract, and a check that runs in the judge's browser, not on our server
   { k: 'proof', go: () => { ui.selected = 'near'; renderMapNow(); renderPanel(); setTimeout(() => { const el = document.querySelector('.ledger-list') || document.querySelector('[data-ledgercheck]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); },
     links: () => { const c = (view && view.chain) || {}; const L = c.ledger && c.ledger.contract; return L ? [['tour.l.ledger', NB + L], ['tour.l.ledgerCode', 'https://github.com/Crow-ave/emberwick/tree/main/contracts/village-ledger']] : []; } },
-  { k: 'haggle', go: () => select('inn') },
+  { k: 'haggle', go: () => select('bakery') }, // the bakery always sells bread, so its 🤝 Haggle button is there even with empty pockets
   { k: 'banker', go: () => { ui.district = 4; ui.selected = 'bank'; render(); } },
   // the links point at the accounts of the village this server runs (the online demo has its own)
   { k: 'token', go: () => select('treasury'), links: () => { const a = villageAccounts(); return [['tour.l.token', NB + a.token], ['tour.l.bank', NB + a.bank], ['tour.l.treasury', NB + a.treasury], ['tour.l.agent', NB + 'bakery.' + a.bank]]; } },
