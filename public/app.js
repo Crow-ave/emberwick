@@ -2541,6 +2541,7 @@ function panelNear() {
     `<a class="btnlink" href="${c.wallet}" target="_blank" rel="noopener">${t('near.openWallet')}</a></div></div>`;
   else if (!['ready', 'setup', 'need-funds'].includes(st)) h += `<div class="status">${t('near.st.' + (st in { off: 1, starting: 1, error: 1 } ? st : 'starting'))}</div>`;
   if (st === 'ready') h += ledgerSection(c);
+  h += keepBox();
 
   if (c.accounts && st === 'ready') {
     const a = c.accounts, bal = c.balances || {};
@@ -2555,7 +2556,6 @@ function panelNear() {
     h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, a.deposits, ...Object.values(a.npcs)].filter(Boolean).map(row).join('')}</table>`;
   }
 
-  h += keepBox();
   h += `<p class="sub2">${t('near.wallet')}</p>`;
   const meteor = chainOk() && window.EmberwickWallet;
   if (!me) h += `<p class="muted small">${t('near.joinFirst')}</p>`;
@@ -2701,7 +2701,7 @@ function renderHud() {
   $('me').innerHTML = `<div class="me-row">${avatarSvg(me.path)}<div class="who"><h3>${esc(me.name)} <button class="editname" data-rename="1" title="${esc(t('rename.title'))}" aria-label="${esc(t('rename.title'))}">✎</button></h3><div class="sub">${t('path.' + me.path)} · ${t('me.level', { n: me.level })}</div></div><div class="coins">${me.coins.toFixed(0)} <small>EMWK</small></div></div>` +
     `<div class="energy" id="energy-row" title="${esc(t('rank.' + String(me.rank).toLowerCase()))}">${t('me.energy')} <div class="bar"><div class="fill" style="width:${(me.energy / me.maxEnergy) * 100}%"></div></div>${Math.floor(me.energy)}/${me.maxEnergy}</div>` +
     ((me.asleep || me.cold || me.hungry || me.food || me.freezing || me.coatLeft) ? `<div class="conds">${me.asleep ? `<span class="cond sleep">☾ ${t('cond.asleep')}</span>` : ''}${me.cold ? `<span class="cond bad">${t('cond.cold', { n: view.rules ? '' : 3 })}</span>` : ''}${me.hungry ? `<span class="cond bad">${t('cond.hungry')}</span>` : me.food && me.food.fromBag + me.food.bought + (me.food.credit || 0) > 0 ? `<span class="cond ok">${t('cond.ate', { n: me.food.fromBag + me.food.bought + (me.food.credit || 0), c: me.food.paid ? t('cond.atePaid', { n: me.food.paid }) : '' })}</span>` : ''}${me.freezing ? `<span class="cond bad">❄ ${t('cond.freezing')}</span>` : ''}${me.coatLeft ? `<span class="cond ok">${t('cond.coat', { n: me.coatLeft })}</span>` : ''}</div>` : '') +
-    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button><button class="chip strong proofchip" data-proofs="1">${t('hud.proofs')}</button>${!(me.logins || []).length && !(me.near && me.nearVerified) ? `<button class="chip keepchip" data-keepchip="1">${t('hud.keep')}</button>` : ''}</div>` +
+    `<div class="shortcuts"><button class="chip strong" data-trade="1">${t('trade.btn')}</button><button class="chip strong" data-board="1">${t('hud.board', { n: view.jobOffers.length })}</button><button class="chip strong" data-go="council">${t('hud.council', { n: view.council.open.length })}</button><button class="chip strong" data-go="roadsign">${t('hud.districts')}</button><button class="chip strong" data-lands="1">${t('lands.btn', { n: Object.values(view.plots).filter((x) => x.sale || (!x.owner && x.open)).length })}</button><button class="chip strong proofchip" data-proofs="1">${t('hud.proofs')}</button><button class="chip keepchip" data-keepchip="1">${t(!(me.logins || []).length && !(me.near && me.nearVerified) ? 'hud.keep' : 'hud.keepOk')}</button></div>` +
     (me.job || me.home || me.plot || me.lease ? `<div class="contracts">${me.job ? `<button class="chip" data-go="${me.job.npc}" title="${esc(t('me.jobInfo', { start: me.job.startDay, done: Math.max(0, view.day - me.job.startDay), total: me.job.daysLeft + Math.max(0, view.day - me.job.startDay), a: me.job.shiftsToday, b: me.job.maxShifts, all: me.job.shifts, earned: me.job.shifts * me.job.wage }))}">${esc(t('me.job', { place: placeName(me.job.npc), days: me.job.daysLeft }))}</button>` : ''}${me.lease ? `<button class="chip" data-go="${me.lease}">${esc(t('me.home', { place: placeName(me.lease) }))}</button>` : ''}${me.home ? `<button class="chip" data-go="${me.home.id}" title="${esc(t('me.homeInfo', { r: me.home.rent, left: dayLeftText() }))}">${esc(t('me.home', { place: placeName(me.home.id) }))}</button>` : ''}${me.plot ? `<button class="chip deedchip" data-go="${me.plot}" title="${esc(t('deed.title'))}">✦ ${esc(t('deed.badge', { place: placeName(me.plot) }))}${(view.plots[me.plot] || {}).deed && view.plots[me.plot].deed.minted ? ' · NFT ✓' : ''}</button>` : ''}</div>` : '') +
   '';
   const q = me.questInfo;
@@ -3340,6 +3340,7 @@ document.body.addEventListener('click', (e) => {
     ui.selected = 'near'; renderMapNow(); renderPanel();
     const me = view.player;
     if (me && window.EmberwickWallet && (!me.near || ui.challenge)) nearMeteor();
+    else setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); // linked: show which wallets sign you in
     return;
   }
   if (e.target.closest('[data-keepchip]')) { ui.selected = 'near'; renderMapNow(); renderPanel(); watchSys(); setTimeout(() => { const el = $('keep-box'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); return; }
