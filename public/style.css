@@ -1038,3 +1038,4 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .banklog { padding-left: 16px; } .banklog li { margin-bottom: 2px; }
 .goldglow { animation: goldpulse 2.4s ease-in-out infinite; } @keyframes goldpulse { 50% { opacity: .38; } }
 .bankseal.citysign { background: radial-gradient(circle at 35% 30%, #fff3c4, #f0b43a 60%, #c0392b); font-size: 22px; box-shadow: 0 0 0 3px #6f7378; }
+.banktable { width: 100%; border-collapse: collapse; margin-top: 4px; } .banktable th { text-align: left; font-weight: 600; color: #5b6b62; border-bottom: 1px solid #d9e6dd; } .banktable td { border-bottom: 1px solid #eef3ef; padding: 2px 4px; vertical-align: top; } .banktable tr.me td { background: #f3fbf6; font-weight: 600; }

@@ -865,6 +865,8 @@ function panelBank() {
       `<p class="small">${Object.entries(m.inv || {}).filter(([, q]) => q >= 1).map(([g, q]) => `${Math.floor(q)} ${esc(goodName(g))}`).join(' · ') || t('bank.noGoods')}</p>` +
       `<p class="muted small">${t('bank.limits', { mt: pc(m.maxTrade), sl: pc(m.stopLoss), n: m.goods.length })}</p>`;
     h += m.log && m.log.length ? `<ul class="small banklog">${m.log.slice(0, 8).map((l) => `<li>${t('bank.day', { d: l.day })} · ${bankLogLine(l)}</li>`).join('')}</ul>` : `<p class="muted small">${t('bank.waiting')}</p>`;
+    const done = (m.log || []).filter((l) => l.kind === 'buy' || l.kind === 'sell');
+    if (done.length) h += `<details class="small" data-keep="banktrades"${keepOpen('banktrades')}><summary>${t('bank.allTrades', { n: done.length })}</summary><table class="small banktable"><tr><th>${t('bank.th.day')}</th><th>${t('bank.th.what')}</th><th class="n">${t('bank.th.total')}</th></tr>${done.map((l) => `<tr><td>${l.day}</td><td>${bankLogLine(l)}</td><td class="n ${l.kind === 'sell' ? 'ok' : ''}">${l.kind === 'sell' ? '+' : '−'}${(Math.round(l.qty * l.unit * 100) / 100)}</td></tr>`).join('')}</table></details>`;
     h += `<div class="row"><input id="bank-add" type="number" min="1" step="1" value="20"><button data-act="mandateAdd">${t('bank.add')}</button></div>` +
       `<div class="row"><label class="small">${t('bank.maxTrade')} <select id="bank-mt">${[0.1, 0.2, 0.3, 0.4, 0.5].map((x) => `<option value="${x}"${Math.abs(x - m.maxTrade) < 0.001 ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label>` +
       `<label class="small">${t('bank.stopLoss')} <select id="bank-sl">${[0.05, 0.1, 0.2, 0.3, 0.5].map((x) => `<option value="${x}"${Math.abs(x - m.stopLoss) < 0.001 ? ' selected' : ''}>${pc(x)}</option>`).join('')}</select></label><button data-act="mandateSettings">${t('bank.save')}</button></div>` +
@@ -882,6 +884,8 @@ function panelBank() {
     if (m && m.closed) h += `<p class="muted small">${t('bank.lastClosed', { d: m.closed.day, p: m.closed.profit, f: m.closed.fee })}</p>`;
   }
   if (ui.bankMsg) h += `<p class="small ${ui.bankMsg.ok ? 'ok' : 'closed'}">${ui.bankMsg.text}</p>`;
+  // Orin's book: everyone who hired him, each mandate apart
+  if ((B.book || []).length) h += `<details class="small" data-keep="bankbook"${keepOpen('bankbook')}><summary>${t('bank.book', { n: B.book.length })}</summary><table class="small banktable"><tr><th>${t('bank.th.client')}</th><th class="n">${t('bank.th.since')}</th><th class="n">${t('bank.th.stake')}</th><th class="n">${t('bank.th.value')}</th><th class="n">${t('bank.trades')}</th></tr>${B.book.map((c) => `<tr${c.me ? ' class="me"' : ''}><td>${esc(c.name)}</td><td class="n">${c.since}</td><td class="n">${c.stake}</td><td class="n ${c.profit >= 0 ? 'ok' : 'closed'}">${Math.round(c.value)} (${c.profit >= 0 ? '+' : ''}${c.profit})</td><td class="n">${c.trades}</td></tr>`).join('')}</table></details>`;
   // the market as Orin sees it
   const mk = (B.market || []).filter((x) => x.buyFrom || x.sellTo);
   h += `<details class="small" data-keep="bankmarket"${keepOpen('bankmarket')}><summary>${t('bank.market')}</summary><table class="small">${mk.map((x) => `<tr><td>${esc(goodName(x.good))}</td><td class="n">${x.buyFrom ? x.buyFrom.price + ' · ' + esc(npcName(x.buyFrom.npc)) : '–'}</td><td class="n">${x.sellTo ? x.sellTo.price + ' · ' + esc(npcName(x.sellTo.npc)) : '–'}</td></tr>`).join('')}</table><p class="muted small">${t('bank.marketNote')}</p></details>`;
@@ -909,6 +913,7 @@ function panelCity() {
 }
 function bankLogLine(l) {
   if (l.kind === 'buy' || l.kind === 'sell') return t('bank.log.' + l.kind, { q: l.qty, g: esc(goodName(l.good)), u: l.unit, n: esc(npcName(l.npc)) }) + (l.why ? ` <span class="muted">· ${esc(/^rule\./.test(l.why) ? t('bank.' + l.why) : l.why)}</span>` : '');
+  if (l.kind === 'idle') return t('bank.idle.' + l.why);
   if (l.kind === 'close') return t('bank.log.close', { p: l.profit, f: l.fee }) + (l.why === 'stopLoss' ? ' · ' + t('bank.log.stop') : '');
   return t('bank.log.' + l.kind, { n: l.amount, q: l.qty, g: l.good ? esc(goodName(l.good)) : '' });
 }

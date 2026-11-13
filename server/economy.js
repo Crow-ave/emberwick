@@ -2493,7 +2493,7 @@ export function bankerMarket(state) {
     return { good: g, buyFrom: s ? { npc: s.npc, price: s.unit, stock: s.stock } : null, sellTo: b ? { npc: b.npc, price: r2(b.total) } : null, usual: r2(usual(state, g)) };
   });
 }
-function mLog(m, state, e) { m.log = [{ day: state.day, ...e }, ...(m.log || [])].slice(0, 40); }
+function mLog(m, state, e) { m.log = [{ day: state.day, ...e }, ...(m.log || [])].slice(0, 300); } // the whole history of the mandate (the last 300 entries)
 
 // player actions
 export function bankerAction(state, pid, a) {
@@ -2610,6 +2610,8 @@ export function bankerDay(state, plan = null) {
         if (b2) { const r2s = sellToNpc(state, actor, b2.npc, g, b2.qty); if (r2s.ok) { m.realised = r2(m.realised + r2s.total - r2s.tax - m.cost[g] * r2s.qty); m.trades++; mLog(m, state, { kind: 'sell', good: g, qty: r2s.qty, unit: r2s.unit, npc: b2.npc, why: why(g, 'rule.flipSell') }); } }
       }
     }
+    // a day without a trade says why, so the player is not left guessing
+    if (!trades) mLog(m, state, { kind: 'idle', why: balance(state, actor.acct) < 1 ? 'noCash' : Object.values(m.inv).some((q) => q >= 1) ? 'holding' : 'noDeal' });
     m.lastDay = state.day; m.value = mandateValue(state, p.id);
     out.push({ pid: p.id, trades, value: m.value });
   }
@@ -2620,7 +2622,9 @@ export function bankerDay(state, plan = null) {
 export function bankerView(state, pid) {
   const p = state.players[pid];
   const book = Object.values(state.players).filter((q) => q.mandate && q.mandate.status === 'active');
-  const v = { rules: BANKER, clients: book.length, managed: r2(book.reduce((a, q) => a + mandateValue(state, q.id), 0)), earned: r2(balance(state, 'npc:' + BANKER.id)), plan: state.bankerPlan ? (({ json, ...x }) => x)(state.bankerPlan) : null, market: bankerMarket(state), tradedToday: state.bankerDay === state.day };
+  // Orin's book: every client and how their mandate stands (the village sees who hired Orin, like the market)
+  const clients = book.map((q) => { const val = mandateValue(state, q.id); return { name: q.name, me: q.id === pid, since: q.mandate.start, stake: q.mandate.stake, value: val, profit: r2(val - q.mandate.stake), trades: q.mandate.trades }; });
+  const v = { rules: BANKER, clients: book.length, book: clients, managed: r2(book.reduce((a, q) => a + mandateValue(state, q.id), 0)), earned: r2(balance(state, 'npc:' + BANKER.id)), plan: state.bankerPlan ? (({ json, ...x }) => x)(state.bankerPlan) : null, market: bankerMarket(state), tradedToday: state.bankerDay === state.day };
   if (!p) return v;
   const m = p.mandate;
   v.unlock = bankerUnlock(state, p);
