@@ -1039,3 +1039,8 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .goldglow { animation: goldpulse 2.4s ease-in-out infinite; } @keyframes goldpulse { 50% { opacity: .38; } }
 .bankseal.citysign { background: radial-gradient(circle at 35% 30%, #fff3c4, #f0b43a 60%, #c0392b); font-size: 22px; box-shadow: 0 0 0 3px #6f7378; }
 .banktable { width: 100%; border-collapse: collapse; margin-top: 4px; } .banktable th { text-align: left; font-weight: 600; color: #5b6b62; border-bottom: 1px solid #d9e6dd; } .banktable td { border-bottom: 1px solid #eef3ef; padding: 2px 4px; vertical-align: top; } .banktable tr.me td { background: #f3fbf6; font-weight: 600; }
+/* a long card scrolls: room at the bottom, and a soft fade that shows there is more below */
+.map-card { padding-bottom: 22px; }
+.map-card::after { content: ''; position: sticky; display: block; bottom: -22px; height: 28px; margin: 0 -16px -22px; background: linear-gradient(rgba(255,250,242,0), rgba(255,250,242,.95)); pointer-events: none; }
+/* a phone: a card over the map (the exchange) gets most of the screen, not the 440px strip */
+@media (max-width: 700px) { .view.card-on { height: calc(100vh - 110px); min-height: 520px; } }

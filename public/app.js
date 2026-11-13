@@ -1906,7 +1906,7 @@ function renderNearbar() {
   const box = $('nearbar');
   let closed = false; try { closed = localStorage.getItem('ew.nearbar') === '0'; } catch {}
   // out of the way while a scene or a card on the map is open
-  if (!view || ui.scene || onMapCard(ui.selected)) { box.hidden = true; return; }
+  if (!view || ui.scene || onMapCard(ui.selected) || ui.district) { box.hidden = true; return; } // in a neighbourhood its own boards and tickers use that corner
   const oc = view.onchain || {}, c = view.chain || {};
   const key = JSON.stringify([getLang(), closed, oc.tx, chainOk(), (view.aiLog || []).length, view.solvency && view.solvency.ratio]);
   box.hidden = false;
