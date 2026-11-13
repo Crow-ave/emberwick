@@ -2650,7 +2650,9 @@ export function bankerView(state, pid) {
   const others = rows.filter((c) => !c.me);
   const clients = rows.filter((c) => c.me);
   const othersSum = { n: others.length, up: others.filter((c) => c.profit > 0).length, down: others.filter((c) => c.profit < 0).length, trades: others.reduce((a, c) => a + c.trades, 0) };
-  const v = { rules: BANKER, clients: book.length, book: clients, others: othersSum, managed: r2(book.reduce((a, q) => a + mandateValue(state, q.id), 0)), earned: r2(balance(state, 'npc:' + BANKER.id)), plan: state.bankerPlan ? (({ json, ...x }) => x)(state.bankerPlan) : null, market: bankerMarket(state), tradedToday: state.bankerDay === state.day };
+  // Orin is paid only when a mandate closes in profit; this is what he would get if every open mandate closed now (a total, no names)
+  const pendingFees = r2(rows.reduce((a, c) => a + Math.max(0, c.profit) * BANKER.fee, 0));
+  const v = { rules: BANKER, clients: book.length, book: clients, others: othersSum, pendingFees, managed: r2(book.reduce((a, q) => a + mandateValue(state, q.id), 0)), earned: r2(balance(state, 'npc:' + BANKER.id)), plan: state.bankerPlan ? (({ json, ...x }) => x)(state.bankerPlan) : null, market: bankerMarket(state), tradedToday: state.bankerDay === state.day };
   if (!p) return v;
   const m = p.mandate;
   v.unlock = bankerUnlock(state, p);

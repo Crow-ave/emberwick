@@ -848,7 +848,7 @@ function panelBank() {
   const B = view.banker, R = B.rules, me = view.player, m = B.mine, act = m && m.status === 'active';
   const pc = (x) => Math.round(x * 100) + '%', c = view.chain || {}, acct = c.accounts && c.accounts.npcs && c.accounts.npcs.banker;
   let h = `<div class="bankhead"><div class="bankseal">O</div><div><h2>${t('b.bank')}</h2><p class="muted small">${t('bank.tag')}</p></div></div>`;
-  h += `<div class="bankstats"><div><b>${B.clients}</b><span>${t('bank.clients')}</span></div><div><b>${Math.round(B.managed)}</b><span>${t('bank.managed')}</span></div><div><b>${Math.round(B.earned)}</b><span>${t('bank.earned')}</span></div></div>`;
+  h += `<div class="bankstats"><div><b>${B.clients}</b><span>${t('bank.clients')}</span></div><div><b>${Math.round(B.managed)}</b><span>${t('bank.managed')}</span></div><div><b>${Math.round(B.earned)}</b><span>${t('bank.earned')}</span>${B.pendingFees ? `<small class="muted" title="${esc(t('bank.pendingWhy'))}">${t('bank.pending', { n: Math.round(B.pendingFees * 10) / 10 })}</small>` : ''}</div></div>`;
   // how it works, in four steps
   h += `<div class="bankhow"><p class="sub2">${t('bank.howTitle')}</p><ol class="small">${[1, 2, 3, 4].map((k) => `<li>${t('bank.how' + k, { lvl: R.minLevel, coins: R.minCoins, min: R.minStake, max: R.maxStake, fee: pc(R.fee), mt: pc(R.maxTrade.def), sl: pc(R.stopLoss.def) })}</li>`).join('')}</ol>` +
     `<p class="muted small">${t('bank.safe')}${acct && chainOk() ? ' · ' + t('bank.account') + ' ' + exLink('address/' + acct, esc(acct)) : ''}</p></div>`;
@@ -892,7 +892,7 @@ function panelBank() {
   }
   if (ui.bankMsg) h += `<p class="small ${ui.bankMsg.ok ? 'ok' : 'closed'}">${ui.bankMsg.text}</p>`;
   // Orin's book: everyone who hired him, each mandate apart
-  if (B.clients) h += `<details class="small" data-keep="bankbook"${keepOpen('bankbook')}><summary>${t('bank.book', { n: B.clients })}</summary>` +
+  if (B.clients) h += `<details class="small" data-keep="bankbook"${keepOpen('bankbook', true)}><summary>${t('bank.book', { n: B.clients })}</summary>` +
     `<p class="muted small">${t('bank.private')}</p>` +
     (B.others && B.others.n ? `<p class="small">${t('bank.othersSum', { n: B.others.n, up: B.others.up, down: B.others.down, tr: B.others.trades })}</p>` : '') +
     ((B.book || []).length ? `<table class="small banktable"><tr><th>${t('bank.th.client')}</th><th class="n">${t('bank.th.since')}</th><th class="n">${t('bank.th.stake')}</th><th class="n">${t('bank.th.value')}</th><th class="n">${t('bank.trades')}</th></tr>${B.book.map((c) => `<tr${c.me ? ' class="me"' : ''}><td>${esc(c.name)}</td><td class="n">${c.since}</td><td class="n">${c.stake}</td><td class="n ${c.profit >= 0 ? 'ok' : 'closed'}">${Math.round(c.value)} (${c.profit >= 0 ? '+' : ''}${c.profit})</td><td class="n">${c.trades}</td></tr>`).join('')}</table>` : '') + `</details>`;
