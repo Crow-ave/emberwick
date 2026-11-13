@@ -1037,3 +1037,4 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .pick-buy { background: #dff3e6; color: #2f6b4f; } .pick-sell { background: #fbecd0; color: #8a5a10; } .pick-hold { background: #e6ecf6; color: #3b5680; } .pick-avoid { background: #f6e1dc; color: #8a2f18; }
 .banklog { padding-left: 16px; } .banklog li { margin-bottom: 2px; }
 .goldglow { animation: goldpulse 2.4s ease-in-out infinite; } @keyframes goldpulse { 50% { opacity: .38; } }
+.bankseal.citysign { background: radial-gradient(circle at 35% 30%, #fff3c4, #f0b43a 60%, #c0392b); font-size: 22px; box-shadow: 0 0 0 3px #6f7378; }

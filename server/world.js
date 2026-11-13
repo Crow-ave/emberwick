@@ -91,6 +91,7 @@ export const DISTRICTS = {
        build: { lumber: 6, fee: 40 }, factors: [0.9, 0.9, 0.85, 0.85, 0.8, 0.8, 0.75, 0.75, 0.7, 0.7, 0.65, 0.65] },
   3: { id: 'exchange', name: 'Exchange quarter', alwaysOpen: true, cost: 0, needs: 0, minLevel: 0, build: {}, factors: [] },
   4: { id: 'gold', name: 'Gold Row', alwaysOpen: true, cost: 0, needs: 0, minLevel: 0, build: {}, factors: [] },
+  5: { id: 'city', name: 'Emberwick City', alwaysOpen: true, preview: true, cost: 0, needs: 0, minLevel: 0, build: {}, factors: [] }, // under construction: a place to look at, nothing to do yet
   2: { id: 'villa', name: 'Villa hill', cost: 1200, needs: 1, minLevel: 5,
        build: { lumber: 14, fee: 120 }, factors: [3, 3, 2.8, 2.8, 2.6, 2.6] },
 };
@@ -104,6 +105,8 @@ for (const [n, cells] of [[1, LANE_CELLS], [2, VILLA_CELLS]]) {
 BUILDINGS.push({ id: 'exchange', name: 'Exchange', type: 'civic', district: 3, i: 3, j: 3, w: 3 });
 // Orin's bank on Gold Row
 BUILDINGS.push({ id: 'bank', name: "Orin's Bank", type: 'civic', district: 4, i: 3, j: 3, w: 3 });
+// Emberwick City: a building site for now (see the roadmap in the README)
+BUILDINGS.push({ id: 'city', name: 'Emberwick City', type: 'civic', district: 5, i: 3, j: 3, w: 3 });
 
 // Orin the Banker: an AI agent a player can hire to trade for them. The player hands Orin a sum (a mandate)
 // and sets the limits; every day Orin reads the market with NEAR AI and proposes trades, and the village

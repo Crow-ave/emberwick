@@ -899,6 +899,14 @@ async function bankAct(type) {
   if (r.ok) toast(ui.bankMsg.text, 'win');
   render();
 }
+// Emberwick City: a building site to look at; the plan, and that it is not playable yet
+function panelCity() {
+  return `<div class="bankhead"><div class="bankseal citysign">🚧</div><div><h2>${t('district.5')}</h2><p class="muted small">${t('city.tag')}</p></div></div>` +
+    `<div class="near-box warn"><p class="small"><b>${t('city.status')}</b></p></div>` +
+    `<div class="bankhow"><p class="sub2">${t('city.planTitle')}</p><ol class="small">${[1, 2, 3, 4, 5].map((k) => `<li>${t('city.plan' + k)}</li>`).join('')}</ol></div>` +
+    `<p class="sub2">${t('city.whyTitle')}</p><p class="small">${t('city.why')}</p>` +
+    `<p class="muted small">${t('city.more')}</p>`;
+}
 function bankLogLine(l) {
   if (l.kind === 'buy' || l.kind === 'sell') return t('bank.log.' + l.kind, { q: l.qty, g: esc(goodName(l.good)), u: l.unit, n: esc(npcName(l.npc)) }) + (l.why ? ` <span class="muted">· ${esc(/^rule\./.test(l.why) ? t('bank.' + l.why) : l.why)}</span>` : '');
   if (l.kind === 'close') return t('bank.log.close', { p: l.profit, f: l.fee }) + (l.why === 'stopLoss' ? ' · ' + t('bank.log.stop') : '');
@@ -910,6 +918,7 @@ function panelSimple(b) {
   if (b.id === 'treasury') return title + panelTreasury();
   if (b.id === 'exchange') return panelExchange();
   if (b.id === 'bank') return panelBank();
+  if (b.id === 'city') return panelCity();
   if (b.id === 'council') return panelCouncil();
   if (b.id === 'gate') return title + `<p>${t('gate.text')}</p><button class="primary" data-act="elder">${t('gate.talk')}</button><p class="muted">${t('gate.pop', { n: view.population })}</p>`;
   if (b.type === 'plot') return panelPlot(b);
@@ -2892,7 +2901,8 @@ function renderMapNow() {
   view.exBoard = pr ? { NEAR: fmt(px('NEAR')), BTC: fmt(px('BTC')), EMWK: px('NEAR') ? fmt(px('NEAR') / (world.rules.emwkPerNear || 100)) : null } : null;
   if (ui.district === 3 && !ui.exPricesLoading && (!ui.exPrices || Date.now() - (ui.exPricesAt || 0) > 60000)) { ui.exPricesLoading = true; loadExPrices(); }
   renderTicker(pr);
-  ui.laneName = t('district.1'); ui.villaName = t('district.2'); ui.exName = t('district.3'); ui.goldName = t('district.4'); ui.goldTag = t('district.4') + ' →';
+  ui.laneName = t('district.1'); ui.villaName = t('district.2'); ui.exName = t('district.3'); ui.goldName = t('district.4'); ui.goldTag = t('district.4') + ' →'; ui.cityName = t('district.5') + ' 🚧'; ui.cityTag = t('district.5') + ' →';
+  ui.cityBoards = [1, 2, 3].map((k) => [t('city.board' + k), t('city.board' + k + 'a'), t('city.board' + k + 'b'), t('city.board' + k + 'c')]);
   ui.bankBoards = [1, 2, 3].map((k) => [t('bank.board' + k), t('bank.board' + k + 'a'), t('bank.board' + k + 'b'), t('bank.board' + k + 'c')]);
   if (ui.district && view.districts) {
     ui.backTag = '← ' + t('district.back'); ui.villaTag = t('district.2') + ' →'; ui.laneTag = t('district.1') + ' →';
@@ -3128,7 +3138,7 @@ function flash(what) {
 function select(id) {
   // moving between the village and the neighbourhoods
   if (id === 'go-village') { ui.district = 0; ui.selected = 'roadsign'; render(); return; }
-  if (/^go-d\d$/.test(id)) { ui.district = Number(id.slice(4)); ui.selected = ui.district === 3 ? 'exchange' : ui.district === 4 ? 'bank' : null; render(); return; }
+  if (/^go-d\d$/.test(id)) { ui.district = Number(id.slice(4)); ui.selected = ui.district === 3 ? 'exchange' : ui.district === 4 ? 'bank' : ui.district === 5 ? 'city' : null; render(); return; }
   const bdef = world.buildings.find((x) => x.id === id);
   ui.district = bdef && bdef.district ? bdef.district : (bdef ? 0 : ui.district);
   if (ui.scene && ui.scene !== id) { ui.scene = null; sceneKey = null; }

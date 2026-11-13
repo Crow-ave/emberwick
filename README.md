@@ -706,6 +706,8 @@ The money supply is fixed (25,000 EMWK). Shops that buy more raw goods only pay 
 
 The idea: a villager who reaches a high level (and has saved enough) can move to a city on the far side of the river, a road away from the village. The city is a modern economy of its own: workshops become companies, there are offices, a market hall, a hospital and a pharmacy, rents and salaries, and its own currency. A villager moves their savings at an exchange rate quoted at the city gate (on NEAR, the same way the exchange quotes NEAR Intents today). Villagers can walk to the city to look around, but only citizens can work and trade there.
 
+A walkable preview is in the game today: **Emberwick City** is a building site on the village map (cranes, towers in scaffolding, a half-built hospital), with notice boards and a side panel that say plainly it is not playable yet.
+
 Why it helps with 100 players: the village never has to carry everyone. Experienced players move on and leave the village's jobs and fixed money supply to newcomers, the way a real town grows into a city. Each economy stays a size its rules and the simulation have been checked for, and the city can be tuned for many more players from the start.
 
 ### Later

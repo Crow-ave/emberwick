@@ -591,12 +591,14 @@ function distant(view, ui) {
   const lane = [[-34, 2], [-16, -4], [2, -6], [20, -2], [36, 4]].slice(0, Math.max(2, Math.min(5, built(1) + 2))).map(([dx, dy], k) => hut(L[0] + dx, L[1] - 8 + dy, ['#c4473a', '#3a6ea8', '#4f7a3a', '#8c3a2a', '#7a3b8a'][k])).join('');
   const villa = [[-28, 0], [6, -8], [34, 2]].map(([dx, dy]) => hut(V[0] + dx, V[1] - 8 + dy, '#2f4f6f', 1.5) + `<rect x="${V[0] + dx + 8}" y="${V[1] - 11 + dy}" width="8" height="3" fill="#6ec3ea"/>`).join('');
   // Gold Row far away: Orin's bank, a small golden dome that shines
-  const G = [470, 20];
+  const G = [800, 70], C = [10, 40]; // clear of the banners that show over the top middle of the map
   const gold = `<circle class="goldglow" cx="${G[0]}" cy="${G[1] - 26}" r="30" fill="#ffd36a" opacity=".22"/><rect x="${G[0] - 24}" y="${G[1] - 22}" width="48" height="18" fill="#2f5d4a"/>${[0, 1, 2, 3, 4].map((k) => `<rect x="${G[0] - 21 + k * 10}" y="${G[1] - 20}" width="3" height="15" fill="#f6eed6"/>`).join('')}<rect x="${G[0] - 27}" y="${G[1] - 25}" width="54" height="4" fill="#e2b640"/><path d="M${G[0] - 16} ${G[1] - 25} A16 15 0 0 1 ${G[0] + 16} ${G[1] - 25} Z" fill="#e8b53a" stroke="#a87a18" stroke-width=".8"/><path d="M${G[0] - 10} ${G[1] - 28} A10 9 0 0 1 ${G[0] - 2} ${G[1] - 37}" stroke="#fbe39a" stroke-width="2" fill="none"/><circle cx="${G[0]}" cy="${G[1] - 43}" r="3.2" fill="#f2c94c" stroke="#a87a18" stroke-width=".6"/><path d="M${G[0] + 30} ${G[1] - 40} l2 5 l5 2 l-5 2 l-2 5 l-2 -5 l-5 -2 l5 -2 z" fill="#ffe27a"/><path d="M${G[0] - 34} ${G[1] - 30} l1.5 3.5 l3.5 1.5 l-3.5 1.5 l-1.5 3.5 l-1.5 -3.5 l-3.5 -1.5 l3.5 -1.5 z" fill="#ffe27a"/>`;
+  const city = [[-26, 34, '#7d8e9c'], [-12, 52, '#5b7a92'], [4, 40, '#8a9bab'], [18, 28, '#6d8194']].map(([dx, hh, c]) => `<rect x="${C[0] + dx}" y="${C[1] - 8 - hh}" width="12" height="${hh}" fill="${c}"/>` + [0, 1, 2, 3].map((k) => `<rect x="${C[0] + dx + 2}" y="${C[1] - 4 - hh + k * 9}" width="8" height="2" fill="#bfe3f4"/>`).join('')).join('') +
+    `<path d="M${C[0] + 34} ${C[1] - 8} V${C[1] - 76} M${C[0] + 34} ${C[1] - 76} L${C[0] - 10} ${C[1] - 74}" stroke="#e8b52e" stroke-width="1.6"/><text x="${C[0] + 40}" y="${C[1] - 60}" font-size="14">🚧</text>`;
   const ex0 = E[0] - 22, ey = E[1] - 26;
   const ex = `<rect x="${ex0 - 3}" y="${ey + 17}" width="50" height="4" fill="#e4dac4"/><rect x="${ex0}" y="${ey}" width="44" height="18" fill="#f6f1e4" stroke="#c9bfa8"/>${[0, 1, 2, 3, 4].map((k) => `<rect x="${ex0 + 3 + k * 8.4}" y="${ey + 2}" width="3" height="16" fill="#fdfbf5"/><rect x="${ex0 + 2.5 + k * 8.4}" y="${ey + 1}" width="4" height="1.6" fill="#e2b640"/>`).join('')}<rect x="${ex0 - 1}" y="${ey - 3}" width="46" height="3" fill="#d9a92e"/><polygon points="${ex0 - 2},${ey - 3} ${E[0]},${ey - 15} ${ex0 + 46},${ey - 3}" fill="#e2b640"/><polygon points="${ex0 + 3},${ey - 4} ${E[0]},${ey - 12} ${ex0 + 41},${ey - 4}" fill="#f8f3e6"/><circle cx="${E[0]}" cy="${ey - 7}" r="2.6" fill="#e2b640"/><circle cx="${E[0]}" cy="${ey - 17}" r="1.8" fill="#f2c94c"/>`;
   return `<g opacity=".97">` + place('go-d2', V[0], V[1], villa, ui.villaName || 'Villa hill', open.includes(2)) + place('go-d3', E[0], E[1], ex, ui.exName || 'Exchange', true) +
-    place('go-d1', L[0], L[1], lane, ui.laneName || 'Ember Lane', open.includes(1)) + place('go-d4', G[0], G[1], gold, ui.goldName || 'Gold Row', true) + `</g>`;
+    place('go-d1', L[0], L[1], lane, ui.laneName || 'Ember Lane', open.includes(1)) + place('go-d4', G[0], G[1], gold, ui.goldName || 'Gold Row', true) + place('go-d5', C[0], C[1], city, ui.cityName || 'Emberwick City', true) + `</g>`;
 }
 
 let groundCache = { key: null, svg: '' };
@@ -824,6 +826,43 @@ function bankArt(cx, cy, v) {
   if (v.night) s += `<ellipse cx="${cx}" cy="${cy - 20}" rx="110" ry="60" fill="#ffd36a" opacity=".12"/>`;
   return s;
 }
+// Emberwick City, under construction: glass towers in scaffolding, a crane, a half-built hospital with its red
+// cross, a pharmacy sign, striped fences and cones. Only something to look at for now.
+function cityArt(cx, cy, v) {
+  let s = shadow(cx, cy, 86) + poly(diamond(cx, cy + 6, 140, 70), '#b9b4aa') + poly(diamond(cx, cy + 6, 124, 62), '#d6d1c6');
+  // a tower: an isometric box with window rows; `done` of its height built, the rest scaffolding
+  const tower = (x, y, w, h, done, c1, c2) => {
+    const T = [x, y - w / 2], R = [x + w, y], B = [x, y + w / 2], L = [x - w, y], hb = h * done;
+    let g = poly([L, B, lift(B, hb), lift(L, hb)], c1) + poly([B, R, lift(R, hb), lift(B, hb)], c2) + poly([lift(T, hb), lift(R, hb), lift(B, hb), lift(L, hb)], shade(c1, 1.25));
+    for (let k = 6; k < hb - 4; k += 8) { const a = lift(L, k), b = lift(B, k), c = lift(R, k); g += `<path d="M${a[0] + 2} ${a[1] + 1} L${b[0] - 1} ${b[1] - 1}" stroke="#bfe3f4" stroke-width="2.4" opacity=".85"/><path d="M${b[0] + 1} ${b[1] - 1} L${c[0] - 2} ${c[1] + 1}" stroke="#9cc6dc" stroke-width="2.4" opacity=".8"/>`; }
+    if (done < 1) { // scaffolding above what is built
+      const l0 = lift(L, hb), b0 = lift(B, hb), r0 = lift(R, hb), l1 = lift(L, h), b1 = lift(B, h), r1 = lift(R, h);
+      g += `<path d="M${l0[0]} ${l0[1]} V${l1[1]} M${b0[0]} ${b0[1]} V${b1[1]} M${r0[0]} ${r0[1]} V${r1[1]}" stroke="#d98a2b" stroke-width="1.3"/>`;
+      for (let k = hb + 7; k < h; k += 7) { const a = lift(L, k), b = lift(B, k), c = lift(R, k); g += `<path d="M${a[0]} ${a[1]} L${b[0]} ${b[1]} L${c[0]} ${c[1]}" stroke="#d98a2b" stroke-width="1" fill="none"/>`; }
+      g += `<path d="M${l0[0]} ${l0[1]} L${b1[0]} ${b1[1]} M${b0[0]} ${b0[1]} L${r1[0]} ${r1[1]}" stroke="#e3a24a" stroke-width=".7"/>`;
+    }
+    return g;
+  };
+  s += tower(cx + 40, cy - 34, 22, 120, 0.62, '#5b7a92', '#4a667c');
+  s += tower(cx - 46, cy - 20, 18, 84, 1, '#7d8e9c', '#687a88');
+  s += tower(cx + 8, cy + 6, 16, 58, 0.45, '#8a9bab', '#738596');
+  // the crane: a lattice mast, a long jib, a hook with a beam
+  const mx = cx + 92, my = cy - 30;
+  s += `<rect x="${mx - 3}" y="${my - 170}" width="6" height="170" fill="none" stroke="#e8b52e" stroke-width="1.6"/>`;
+  for (let k = 0; k < 170; k += 10) s += `<path d="M${mx - 3} ${my - k} L${mx + 3} ${my - k - 10}" stroke="#e8b52e" stroke-width=".9"/>`;
+  s += `<path d="M${mx - 20} ${my - 170} H${mx + 6} M${mx + 6} ${my - 170} L${mx - 128} ${my - 166} M${mx - 128} ${my - 166} L${mx + 6} ${my - 178} L${mx - 20} ${my - 170}" stroke="#e8b52e" stroke-width="2" fill="none"/>` +
+    `<rect x="${mx + 6}" y="${my - 176}" width="12" height="8" fill="#8a8f96"/><path class="cranehook" d="M${mx - 96} ${my - 167} V${my - 110}" stroke="#555" stroke-width=".8"/><rect class="cranehook" x="${mx - 110}" y="${my - 110}" width="28" height="4" fill="#c56a2a"/>`;
+  // the hospital, half built: white walls, a red cross banner
+  const hx = cx - 92, hy = cy + 30;
+  s += poly([[hx - 26, hy], [hx, hy + 13], [hx, hy - 15], [hx - 26, hy - 28]], '#f4f1ea') + poly([[hx, hy + 13], [hx + 26, hy], [hx + 26, hy - 28], [hx, hy - 15]], '#e2ddd2') +
+    `<rect x="${hx + 6}" y="${hy - 44}" width="16" height="16" rx="2" fill="#fff" stroke="#d33" stroke-width="1"/><path d="M${hx + 14} ${hy - 41} v10 M${hx + 9} ${hy - 36} h10" stroke="#d33" stroke-width="3"/>`;
+  // a pharmacy sign
+  s += `<rect x="${cx + 70}" y="${cy + 26}" width="2" height="22" fill="#555"/><rect x="${cx + 62}" y="${cy + 12}" width="18" height="16" rx="3" fill="#2e8b57"/><text x="${cx + 71}" y="${cy + 24.5}" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">+</text>`;
+  // fences with warning stripes, and cones
+  for (const [x, y] of [[cx - 30, cy + 60], [cx + 10, cy + 70], [cx + 50, cy + 58]]) s += `<rect x="${x - 16}" y="${y - 8}" width="32" height="8" fill="#fff" stroke="#c33" stroke-width=".8"/>` + [0, 1, 2, 3].map((k) => `<path d="M${x - 14 + k * 8} ${y} l6 -8" stroke="#d33" stroke-width="2"/>`).join('') + `<rect x="${x - 15}" y="${y}" width="2" height="5" fill="#666"/><rect x="${x + 13}" y="${y}" width="2" height="5" fill="#666"/>`;
+  for (const [x, y] of [[cx - 70, cy + 54], [cx + 84, cy + 54], [cx - 4, cy + 84]]) s += `<path d="M${x - 4} ${y} L${x} ${y - 11} L${x + 4} ${y} Z" fill="#f07a1a"/><rect x="${x - 2.4}" y="${y - 7}" width="4.8" height="2" fill="#fff"/><rect x="${x - 5}" y="${y}" width="10" height="2" fill="#333"/>`;
+  return s;
+}
 // the notice boards on Gold Row: what Orin does, in three short boards
 function infoBoard(cx, cy, title, lines, color) {
   const w = 132, hh = 26 + lines.length * 12;
@@ -836,6 +875,7 @@ function infoBoard(cx, cy, title, lines, color) {
 
 const DROADS = {
   3: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 7 || j === 1 || j === 7) ,
+  5: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 7 || j === 1 || j === 7),
   4: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 7 || j === 1 || j === 7 || (i === 4 && j >= 7)),
   1: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i % 2 === 1 || j % 2 === 1),
   2: (i, j) => i >= 1 && i <= 8 && j >= 1 && j <= 9 && (i === 1 || i === 4 || i === 7 || j === 1 || j === 4 || j === 7),
@@ -854,8 +894,9 @@ export function renderDistrict(svg, world, view, ui) {
   let deco = '';
   for (let i = 0; i < DN; i++) for (let j = 0; j < DN; j++) {
     const [cx, cy] = dcell(i, j), r = hash(i + 40 * n, j);
+    if (n === 5 && !DROADS[5](i, j)) { s += `<polygon points="${pts(diamond(cx, cy, TW / 2, TH / 2))}" fill="${['#c9c2b0', '#c2baa6', '#cfc8b6'][Math.floor(r * 3)]}" stroke="rgba(80,70,50,.12)" stroke-width=".6"/>`; continue; } // bare building ground
     const road = DROADS[n](i, j);
-    s += `<polygon points="${pts(diamond(cx, cy, TW / 2, TH / 2))}" fill="${road ? (n === 4 ? ((i + j) % 2 ? '#eed9a0' : '#e6cc86') : winter ? '#ebe3d0' : '#e2ca94') : greens[Math.floor(r * 3)]}" stroke="rgba(40,80,20,.10)" stroke-width=".6"/>`;
+    s += `<polygon points="${pts(diamond(cx, cy, TW / 2, TH / 2))}" fill="${road ? (n === 5 ? '#6f7378' : n === 4 ? ((i + j) % 2 ? '#eed9a0' : '#e6cc86') : winter ? '#ebe3d0' : '#e2ca94') : greens[Math.floor(r * 3)]}" stroke="rgba(40,80,20,.10)" stroke-width=".6"/>`;
     if (n === 4 && !road && hash(i, j, 7) < 0.12 && i > 0 && j > 0 && i < DN - 1 && j < DN - 1) deco += `<ellipse cx="${cx}" cy="${cy}" rx="7" ry="3.5" fill="rgba(40,60,20,.2)"/><circle cx="${cx}" cy="${cy - 8}" r="7.5" fill="#3f8a45"/><circle cx="${cx - 2}" cy="${cy - 10}" r="2.4" fill="#f2c94c"/>`; // clipped bushes with gold fruit
     if (!road && (i === 0 || j === 0 || i === DN - 1 || j === DN - 1) && hash(i, j, 5 + n) < 0.5) deco += tree(cx, cy, 0.8);
     else if (!road && hash(i, j, 3) < 0.3) deco += `<circle cx="${cx + (hash(i, j, 9) - 0.5) * 30}" cy="${cy}" r="1.8" fill="${['#f4e35c', '#f2f2f2', '#e86a8a'][Math.floor(r * 3)]}"/>`;
@@ -867,10 +908,10 @@ export function renderDistrict(svg, world, view, ui) {
   for (const b of items) {
     const [cx, cy] = b.w > 1 ? dcell(b.i + (b.w - 1) / 2, b.j + (b.w - 1) / 2) : dcell(b.i, b.j);
     const nm = ui.nameOf ? ui.nameOf(b.id) : b.name;
-    const art = b.id === 'bank' ? bankArt(cx, cy, view) : b.id === 'exchange' ? exchangeArt(cx, cy, view) : b.villa ? villaArt(b.id, cx, cy, view) : plotArt(b.id, cx, cy, view);
+    const art = b.id === 'city' ? cityArt(cx, cy, view) : b.id === 'bank' ? bankArt(cx, cy, view) : b.id === 'exchange' ? exchangeArt(cx, cy, view) : b.villa ? villaArt(b.id, cx, cy, view) : plotArt(b.id, cx, cy, view);
     s += `<g class="bld" data-id="${b.id}" tabindex="0" role="button" aria-label="${nm}"><title>${nm}</title><g transform="translate(${cx} ${cy}) scale(${K}) translate(${-cx} ${-cy})">${art}</g></g>`;
     const pl = view.plots[b.id] || {};
-    if (ui.hover === b.id || ui.selected === b.id || pl.mine || b.id === 'exchange' || b.id === 'bank') {
+    if (ui.hover === b.id || ui.selected === b.id || pl.mine || b.id === 'exchange' || b.id === 'bank' || b.id === 'city') {
       const label = (pl.mine && ui.mineTag ? '✦ ' + ui.mineTag + ' · ' : '') + nm, lw = tlen(label) * 7.4 + 16, ly = cy + TH * (b.w > 1 ? 1.4 : 0.9);
       labels += `<g class="lbl" pointer-events="none"><rect x="${cx - lw / 2}" y="${ly - 14}" width="${lw}" height="20" rx="10" fill="rgba(255,250,242,.92)" stroke="rgba(120,90,60,.3)"/><text class="tag" x="${cx}" y="${ly}" text-anchor="middle">${label}</text></g>`;
     }
@@ -886,7 +927,9 @@ export function renderDistrict(svg, world, view, ui) {
   if (n === 1) s += post('go-d2', 9, 0, ui.villaTag || 'Villa hill', 1);
   else if (n === 2) s += post('go-d3', 9, 0, ui.exTag || 'Exchange', 1);
   else if (n === 3) s += post('go-d4', 9, 0, ui.goldTag || 'Gold Row', 1);
+  else if (n === 4) s += post('go-d5', 9, 0, ui.cityTag || 'Emberwick City', 1);
   else s += post('go-d1', 9, 0, ui.laneTag || 'Ember Lane', 1);
+  if (n === 5) (ui.cityBoards || []).forEach((bd, k) => { const [bx, by] = dcell([1.2, 6.2, 4.6][k], [5.6, 0.6, 9.0][k]); labels += infoBoard(bx, by, bd[0], bd.slice(1), ['#c0392b', '#3b5680', '#2e8b57'][k]); });
   if (n === 4) (ui.bankBoards || []).forEach((bd, k) => { const [bx, by] = dcell([1.2, 6.2, 8.6][k], [5.6, 0.6, 5.2][k]); labels += infoBoard(bx, by, bd[0], bd.slice(1), ['#2f6b4f', '#b98d22', '#7a3b8a'][k]); });
   // a closed neighbourhood: a fence and a sign
   if (!open) {
