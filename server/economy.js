@@ -1646,7 +1646,7 @@ function aiOpinion(state, voter, prop) {
     }
     case 'tower':
       if (voter === 'npc:carpenter') return say(true, 'buildWork');
-      if (voter === 'npc:tower') return say(true, 'self');
+      if (voter === 'npc:tower') return say(true, 'guardTower');
       if (danger) return r < 0.85 ? say(true, 'danger') : say(false, 'poor');
       return (rich ? r < 0.5 : r < 0.2) ? say(true, 'safety') : say(false, rich ? 'enoughTowers' : 'poor');
     case 'reserve':
@@ -1785,7 +1785,11 @@ export function ensureContracts(state) {
   // older saves: a 'no' vote on a new street or a tower gave the newcomer-fund reason; give it the one that fits
   for (const pr of [...((state.council && state.council.open) || []), ...((state.council && state.council.closed) || [])]) {
     if (!pr || !pr.votes || (pr.kind !== 'district' && pr.kind !== 'tower')) continue;
-    for (const v of Object.values(pr.votes)) if (v && v.why === 'notNeeded') v.why = pr.kind === 'district' ? 'enoughLand' : 'enoughTowers';
+    for (const [who, v] of Object.entries(pr.votes)) {
+      if (!v) continue;
+      if (v.why === 'notNeeded') v.why = pr.kind === 'district' ? 'enoughLand' : 'enoughTowers';
+      if (v.why === 'self') v.why = who === 'npc:tower' ? 'guardTower' : 'buildWork';
+    }
   }
   // older saves: the village news once named Orin's clients and their amounts; his book is private now
   for (const l of state.log || []) if (l.key === 'log.mandateOpen' || l.key === 'log.mandateClose') { l.text = l.key === 'log.mandateOpen' ? 'A villager hired Orin the Banker (his book is private).' : 'A villager closed a mandate with Orin.'; l.p = {}; }
