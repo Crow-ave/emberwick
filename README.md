@@ -1,24 +1,31 @@
 # Emberwick
 
-**A living village economy on NEAR.** AI craftsmen with their own NEAR wallets run the shops, think privately with NEAR AI Cloud inside a TEE, and trade in a real token economy on NEAR testnet. Players work, haggle, rent homes, own land as NFTs and vote in a village council whose results are recorded on NEAR, and the village exchange makes **real cross-chain swaps on mainnet through NEAR Intents**, from the player's own wallet.
+**A village game where AI shopkeepers run a real token economy, and their decisions and each day's records can be checked on NEAR.**
 
-**▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** (desktop and phone). Press **Judge tour** in the top bar for a two-minute walk through every NEAR part. Source: [github.com/Crow-ave/emberwick](https://github.com/Crow-ave/emberwick) (MIT, see [LICENSE](LICENSE)).
-
-**Tracks:** Games With Real Economies · Agent Economy · Privacy & Private AI · NFTs That Do Something.
-
-**What sets it apart**
-- **AI you can verify, not just trust.** The craftsmen's plans come from NEAR AI Cloud in a TEE; the game checks every plan's signature against the attested key, and writes the plan's hash to NEAR. In the game, press **🔒 Check it on NEAR** on your character card (or the 🔒 Private AI card), then **Check it yourself**: your own browser re-hashes a record and reads it straight from NEAR, without asking our server.
-- **Our own locked contract.** The Village Ledger keeps each day's state hash and AI plan hash, once; its account has no key, so nobody, us included, can change it.
-- **Real money paths.** A fixed-supply NEP-141 token that players can cash out to their own NEAR wallet, and real cross-chain swaps on mainnet through NEAR Intents.
-- **Land that follows its NFT.** Send a deed to another player's wallet and the land and house follow it in the game.
-- **Orin the Banker: an AI agent you hire.** On Gold Row, hand Orin part of your savings and set the limits; each morning he reads the market with NEAR AI in a TEE, and the village rules carry out only the trades inside your limits. Your stake sits in Orin's own NEAR account, and his fee is 10% of the profit, nothing on a loss.
-- **Sign in with any wallet.** NEAR, Phantom or MetaMask: no password, no e-mail, and your villager follows you to any device.
+**▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** (desktop and phone) · Press **Judge tour** in the top bar · Source: [github.com/Crow-ave/emberwick](https://github.com/Crow-ave/emberwick) (MIT, [LICENSE](LICENSE))
 
 ![The village of Emberwick: an isometric map with shops, fields, a mine, the council hall and Dragon peak](docs/img/village.jpg)
 
-### In one minute
+### Try it in 30 seconds
+1. Open the [live demo](https://emberwick-xcf8.onrender.com) and join with any name (no wallet, no money).
+2. Press **Judge tour** in the top bar: eleven short steps through every NEAR part.
+3. Press **🔒 Check it on NEAR** on your character card, then **Check it yourself**: your browser reads a record straight from NEAR.
 
-A multiplayer village economy: eight AI craftsmen with their own NEAR accounts buy, produce, price and sell; players work, trade, own land and vote. Every coin is EMWK, a fixed-supply NEP-141 token on NEAR testnet. The craftsmen plan with NEAR AI Cloud, and every plan's signature is checked against the attested TEE key.
+### What sets it apart
+- **Verifiable AI:** craftsmen plan with NEAR AI in a TEE; each plan's signature is checked and its hash goes on NEAR.
+- **Our own locked contract:** the Village Ledger keeps each day's hashes once; no key can change it.
+- **Real money paths:** fixed-supply EMWK token (NEP-141) you can cash out, and real mainnet swaps through NEAR Intents.
+- **Land that follows its NFT:** send a deed NFT to another wallet and the house follows it in the game.
+- **Orin the Banker:** an AI agent you hire with your own limits; paid 10% of profit, nothing on a loss.
+- **Any wallet signs you in:** NEAR, Phantom or MetaMask from the top bar; no password, no e-mail.
+
+### Hackathon tracks and where to look
+- **Games With Real Economies:** the EMWK token, eight craftsmen with stock and prices, rent, jobs, the council and the treasury.
+- **Agent Economy:** eight AI craftsmen with their own NEAR accounts paying each other, and Orin the Banker trading for players.
+- **Privacy & Private AI:** NEAR AI Cloud in a TEE, signatures checked against the attested key, plan hashes on the Village Ledger.
+- **NFTs That Do Something:** land deeds (NEP-171) that carry the house, sell through NFT escrow and move the land when sent.
+
+### What is on NEAR and what is not
 
 | On NEAR (anyone can check) | On the game server |
 |---|---|
