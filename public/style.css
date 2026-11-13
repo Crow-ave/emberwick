@@ -1003,3 +1003,11 @@ button.wtile:hover { transform: translateY(-1px); background: color-mix(in srgb,
 .altwin.even{background:#f2efe6;border:1px solid #d8cfb7}
 .altwin.other{background:#f6f1e4;border:1px solid #d8cfb7;color:#5b4a2a}
 .nocut{color:#3d5a2c;margin:4px 0}
+
+/* Village Ledger: check a record in your own browser */
+.ledger-list li { margin-bottom: 6px; }
+.ledger-res { font-size: 12px; margin: 4px 0 2px; padding: 6px 8px; border-radius: 8px; line-height: 1.4; }
+.ledger-res.ok { background: #e8f5e4; color: #2d5a22; }
+.ledger-res.bad { background: #fbe9e4; color: #8a2f18; }
+.ledger-res code { font-size: 11px; }
+.ledger-btn { font-size: 11px; padding: 2px 8px; margin-left: 4px; }

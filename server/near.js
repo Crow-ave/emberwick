@@ -268,7 +268,7 @@ export class Bridge {
       npcs: Object.fromEntries(this.npcIds.map((id) => [id, this.subId(id)])),
     } : null;
     return {
-      network: NET.networkId, explorer: NET.explorer, wallet: NET.wallet,
+      network: NET.networkId, explorer: NET.explorer, wallet: NET.wallet, rpc: NET.rpcs,
       status: this.status, detail: this.detail, accounts,
       balances: this.chainBalances, feed: this.feed.slice(0, FEED_MAX), pending: this.queue.length, txCount: this.txCount,
       deeds: { ...this.deeds, contract: this.root ? this.deedsId : null, pending: this.deedQueue.length },

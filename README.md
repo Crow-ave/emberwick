@@ -6,6 +6,12 @@
 
 **Tracks:** Games With Real Economies · Agent Economy · Privacy & Private AI · NFTs That Do Something.
 
+**What sets it apart**
+- **AI you can verify, not just trust.** The craftsmen's plans come from NEAR AI Cloud in a TEE; the game checks every plan's signature against the attested key, and writes the plan's hash to NEAR. In the game, **Check it yourself** lets your own browser re-hash a record and read it straight from NEAR, without asking our server.
+- **Our own locked contract.** The Village Ledger keeps each day's state hash and AI plan hash, once; its account has no key, so nobody, us included, can change it.
+- **Real money paths.** A fixed-supply NEP-141 token that players can cash out to their own NEAR wallet, and real cross-chain swaps on mainnet through NEAR Intents.
+- **Land that follows its NFT.** Send a deed to another player's wallet and the land and house follow it in the game.
+
 ![The village of Emberwick: an isometric map with shops, fields, a mine, the council hall and Dragon peak](docs/img/village.jpg)
 
 ### In one minute
@@ -16,7 +22,7 @@ A multiplayer village economy: eight AI craftsmen with their own NEAR accounts b
 |---|---|
 | EMWK token, 25,000 fixed supply (NEP-141) | Payments inside the village bank (one player or villager paying another) |
 | Coin moves between NEAR accounts: bank, treasury, rent deposits, each craftsman, a player's wallet | Prices, stock, jobs, homes, chat |
-| Land deeds as NEP-171 NFTs; deed sales through NFT escrow | Who may build, sleep and collect rent on a plot |
+| Land deeds as NEP-171 NFTs; deed sales through NFT escrow; the land follows the NFT to another player's wallet | Building, sleeping and rent rules (they apply to whoever holds the deed) |
 | Hashes of every AI plan and of each day's village state, kept in the Village Ledger: our own contract, locked so its code can never change | Counting council votes (in-game governance, not a DAO contract) |
 | Real cross-chain swaps on mainnet through NEAR Intents, from the player's own wallet | |
 
@@ -129,7 +135,7 @@ Screenshots are from a local run in English. The swap screens used a test RPC, s
 | **NEAR AI Cloud (TEE)** | Daily plan per craftsman, answers to players with action buttons, haggling lines, credit decisions, and reading swap sentences. Models with a TEE attestation report are picked first, and each morning plan's signature is checked against the attested key. | `server/ai.js` | `/api/ai/attestation`, `/api/ai/proof?day=N`, `/api/ai/plan?day=N`, the shop panel's 🔒, ✍️ and ⛓ lines |
 | **On-chain records (memos)** | AI plan SHA-256, signed job contracts, council results, and every real mainnet swap are written to NEAR testnet as 0.01 EMWK memo transfers. | `server/economy.js`, `server/index.js` | Memo text on the transfer in NearBlocks |
 | **Village Ledger (our contract)** | Emberwick's own Rust contract (`ledger.<bank>`): each day's full village-state SHA-256 and each NEAR AI plan's SHA-256 with model, TEE report and signature check. Append-only: one record per day, never changed; the account's key is deleted after setup, so its code can never be replaced. | `contracts/village-ledger/src/lib.rs`, `server/near.js` (`setupLedger`, `sendLedger`) | NEAR panel → Village Ledger; `HOST/api/ledger`; view methods `get`, `latest` ([how](contracts/README.md#the-village-ledger)) |
-| **NEP-171 NFTs (land deeds)** | Each plot of land is an NFT. Owning the plot lets you build, sleep at home, rent out for daily income, and sell on the exchange with NFT escrow; by design the game's record decides those rights (the rules run on the server), while every deed sale goes through NFT escrow on NEAR; the deed card reads the NFT's holder live from the contract and shows it next to the game's record; making the on-chain holder decide them is on the roadmap. | `server/near.js` (`setupDeeds`, `moveDeed`), `contracts/emwk_deeds.wasm` | [deeds contract](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet); deed card in game |
+| **NEP-171 NFTs (land deeds)** | Each plot of land is an NFT. Owning the plot lets you build, sleep at home, rent out for daily income, and sell on the exchange with NFT escrow; **the land follows the NFT**: if a deed moves on NEAR to another player's verified wallet (traded wallet to wallet, outside the game), the plot and its house move to that player in the game, checked every two minutes. The deed card reads the NFT's holder live from the contract. | `server/near.js` (`setupDeeds`, `moveDeed`), `server/economy.js` (`deedFollowsChain`), `contracts/emwk_deeds.wasm` | [deeds contract](https://testnet.nearblocks.io/address/deeds.emberwick-village.testnet); deed card in game |
 | **NEP-413 wallet link** | A player proves ownership of a NEAR account by signing a message; the server checks it against the account's full-access key. Then EMWK can be cashed out to, or deposited from, that wallet. | `server/index.js` (`/api/near/*`), `public/vendor/near-wallet.js` | NEAR panel → wallet section |
 | **NEAR Intents (mainnet)** | Real cross-chain swaps between any supported tokens and chains, one approval from the player's wallet, tracked to delivery. Also live dry-run quotes, a pay-from-any-chain preview, a council reserve quote and a NEAR price oracle. | `server/index.js` (`realQuote`, `quoteAny`, `realStatus`), `public/app.js` (swap UI), `public/vendor/wallets.src.mjs` | [A real swap made from the game](https://explorer.near-intents.org/transactions/8pbsZb3giBZLihUSarvtvQDR4gNbz5Td7WP4gdCyRMDC) |
 | **Chain abstraction** | One NEAR transaction with one approval funds up to five swaps to different chains (split send). NEAR is the meeting point even for Base → Solana. | `wallets.src.mjs` (`nearSendMany`), `server/index.js` (`/api/intents/real/multi`) | Split view: one wallet transaction for all parts |
@@ -175,7 +181,7 @@ Each feature lists what it does, how it works, and where it lives in the code.
 
 - **Plots:** four village plots (144–168 EMWK; dearer near the centre), 12 on Ember Lane and 6 on Villa hill once the council opens them. One plot per villager.
 - **Deed NFT:** buying a plot mints a NEP-171 deed on `deeds.emberwick-village.testnet`. It goes to the buyer's verified wallet; without one, the village bank holds it until the player verifies.
-- **A deed that does something:** build a home (6 lumber + 40 EMWK), add a bed to sleep there, rent it out for daily player-to-player rent (paid inside the village bank, kept in the game's ledger), and sell it on the exchange. On sale, the bank holds the NFT in escrow and sends it to the buyer's wallet. These rights follow the game's record of who owns the plot; a deed moved outside the game does not move them yet (see the roadmap).
+- **A deed that does something:** build a home (6 lumber + 40 EMWK), add a bed to sleep there, rent it out for daily player-to-player rent (paid inside the village bank, kept in the game's ledger), and sell it on the exchange. On sale, the bank holds the NFT in escrow and sends it to the buyer's wallet. These rights follow the NFT: send the deed to another player's verified wallet on NEAR, and within two minutes the land and its house are theirs in the game.
 - **Fair-value floor:** if no player buys, the treasury buys one deed a day for a newcomer family at most 10% over fair value (land + house + bed), so land always has a buyer.
 
 ### 5. Village council (in-game governance with on-chain records)
@@ -251,7 +257,7 @@ Every real swap (a split counts once) puts one **Village seal** in the player's 
 
 ### 10. Around the game
 
-- **Judge tour:** a nine-step guided tour of every NEAR part with links to the accounts.
+- **Judge tour:** a ten-step guided tour of every NEAR part with links to the accounts.
 - **Six languages:** English, Turkish, French, German, Russian, Chinese (`public/i18n.js`).
 - **Village chat** with speech bubbles on the map; player profiles.
 - **Sounds and music** made live in the browser, no sound files.
@@ -345,7 +351,7 @@ Emberwick is a **blockchain-backed game run by a server**, not a fully on-chain 
 | EMWK a player cashed out | The player's own NEAR wallet | Stays with the player |
 | EMWK still inside the game | The village bank's account on NEAR (the game owes it to the player) | Stays in the bank account; the player cannot move it without the game |
 | Craftsmen's and treasury money | Their own NEAR sub-accounts | Stays on chain |
-| Land deeds | NEP-171 NFTs; in the player's verified wallet, or held by the bank until the player verifies. The game's own record decides who may build, sleep and collect rent on a plot; selling in the game requires the NFT to be in the bank's escrow, checked on chain. A deed moved to another wallet outside the game does not move those rights yet (roadmap). | NFTs in wallets stay with their owners |
+| Land deeds | NEP-171 NFTs; in the player's verified wallet, or held by the bank until the player verifies. Who may build, sleep and collect rent follows the NFT: a deed that moves to another player's verified wallet takes the land with it in the game. A deed held by the bank, or by a wallet no player has verified, leaves the game's record as it is (one plot per villager). Selling in the game requires the NFT to be in the bank's escrow, checked on chain. | NFTs in wallets stay with their owners |
 | Real NEAR Intents swaps | Mainnet, from the player's own wallet to the player's own address | Already settled; the game never held the funds |
 | Records (AI plan hashes, daily village-state hashes, job contracts, council results, swap records) | Memos on NEAR testnet transfers | Stay readable forever, and prove what the state was each day |
 | Prices, stock, jobs, homes, council proposals and votes, chat | `data/state.json` on the server | Lost with the server; the public part of each day can be checked against its hash on NEAR |
@@ -646,7 +652,7 @@ To run a second, separate village on a host with its own NEAR bank: run `npm run
 | **Games With Real Economies** | The whole game: AI merchants with their own wallets, prices that move by themselves, jobs, rent, land, a fixed-supply token, and real swaps that lower the village's market fee; the economy is tested with 0 to 100 scripted players (`npm run report -- --players`) |
 | **Agent Economy** | Eight AI agents with their own NEAR accounts trade with players, villager bots and each other (about 18,000 EMWK agent-to-agent in the 100-day report): they buy raw goods, produce, set prices from their stock, give credit, hire apprentices, pay wages and vote in the council, all with their own money |
 | **Privacy & Private AI** | Every model call goes to NEAR AI Cloud; the game picks a model with a TEE attestation report, keeps the report public (`/api/ai/attestation`), checks each morning plan's signature against the attested key (`/api/ai/proof`), and hashes each day's plan onto NEAR; the full plan hash, model and signature result go into our own locked Village Ledger contract |
-| **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell through NFT escrow on NEAR; the deed card reads the holder live from the contract |
+| **NFTs That Do Something** | Land deeds (NEP-171): build, sleep, earn rent from a tenant, sell through NFT escrow on NEAR; send the NFT to another player's wallet and the land and house follow it in the game; the deed card reads the holder live from the contract |
 
 ---
 

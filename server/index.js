@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { markSeen, ledgerWritten, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
+import { markSeen, ledgerWritten, deedFollowsChain, awaySummary, giveSeal, createState, ensureContracts, moneyHistory, transfer, addLog, aiBrief, applyAiPlan, shopCard, creditPolicy, giveCredit, commissionPolicy, villageDirectory, customerBrief, checkAiActions, weekSnapshot, weekSummary, tick, setOracle, lockedFunds, balance, joinPlayer, playerAction, publicView, onTransfer, onGameEvent, linkWallet, withdraw, depositIn, setDeed } from './economy.js';
 import crypto from 'node:crypto';
 import { BUILDINGS, GOODS, START_PATHS, RULES, TOKEN, PATH_ROUTE, CRAFTSMEN } from './world.js';
 import { Bridge, makeNearAdapter, fileStore } from './near.js';
@@ -129,6 +129,20 @@ async function startNear() {
   setInterval(() => { if (bridge.status === 'ready') bridge.needReconcile = true; }, 5 * 60 * 1000);
   // each day's records go to the Village Ledger contract (also the ones from before a restart)
   setInterval(() => { if (bridge.ledger.status === 'ready') for (const e of state.ledgerOut || []) bridge.recordLedger(e); }, 10000);
+  // the land follows its deed NFT: deeds in players' wallets are looked up on NEAR every two minutes
+  // (a deed with the bank only moves when the game moves it, so those are not asked about)
+  setInterval(async () => {
+    if (bridge.deeds.status !== 'ready' || !bridge.root) return;
+    for (const [id, plot] of Object.entries(state.plots || {})) {
+      const d = plot.deed;
+      if (!plot.owner || !d || !d.minted || !d.owner || d.owner === bridge.root || bridge.deedQueue.some((q) => q.tokenId === d.tokenId)) continue;
+      let holder = null;
+      try { holder = await bridge.deedOwner(d.tokenId); } catch { continue; }
+      if (!holder) continue;
+      const r = deedFollowsChain(state, id, holder);
+      if (r.changed) { console.log(`[NEAR] ${id}: the deed NFT is now in ${holder}; the land follows it in the game.`); save(); broadcast(); }
+    }
+  }, 120000);
   // deeds for land bought while NEAR was offline (or before a restart) are minted later
   setInterval(() => {
     if (bridge.deeds.status !== 'ready') return;

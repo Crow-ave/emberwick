@@ -1,5 +1,5 @@
 // Runs the economy for 100 game days and checks that it stays healthy.
-import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable, applyAiPlan } from './economy.js';
+import { createState, tick, joinPlayer, playerAction, totalMoney, publicView, checkAiActions, withdraw, linkWallet, withdrawable, applyAiPlan, deedFollowsChain } from './economy.js';
 import { TOKEN, RULES } from './world.js';
 
 const state = createState(42);
@@ -237,6 +237,33 @@ console.log('Recent log:'); v.log.slice(0, 8).forEach((l) => console.log('  day'
   const notAttested = checkSignature(call, { text, signature: sign(text, k2), signing_address: addr(k2) }, keys);
   console.log('AI answer signatures: good', good.ok, '| changed answer', changed.ok, '| wrong key', wrongKey.ok, '| key not attested', notAttested.ok);
   if (!good.ok || changed.ok || wrongKey.ok || notAttested.ok) fail('the NEAR AI answer signature check is wrong');
+}
+// the land follows its deed NFT: only a move to another player's verified wallet changes the owner in the game
+{
+  const g = createState(9); g.nearBank = 'bank.testnet';
+  const a = joinPlayer(g, 'Ayla', 'farmer').id, b = joinPlayer(g, 'Baran', 'farmer').id, c = joinPlayer(g, 'Cem', 'farmer').id;
+  g.players[a].near = 'ayla.testnet'; g.players[a].nearVerified = true;
+  g.players[b].near = 'baran.testnet'; g.players[b].nearVerified = true;
+  g.players[c].near = 'cem.testnet'; g.players[c].nearVerified = false; // linked, but never signed
+  g.balances['player:' + a] += 500; g.balances.treasury -= 500;
+  const bought = playerAction(g, a, { type: 'buyPlot', plot: 'plot-1' });
+  const plot = g.plots['plot-1']; Object.assign(plot.deed, { minted: true, owner: 'ayla.testnet' });
+  g.players[a].sleep = { place: 'plot-1' };
+  const r1 = deedFollowsChain(g, 'plot-1', 'bank.testnet'), r2 = deedFollowsChain(g, 'plot-1', 'ayla.testnet');
+  const r3 = deedFollowsChain(g, 'plot-1', 'cem.testnet'), r4 = deedFollowsChain(g, 'plot-1', 'stranger.testnet');
+  const still = plot.owner === a;
+  const r5 = deedFollowsChain(g, 'plot-1', 'baran.testnet');
+  console.log('Deed follows NFT: bank', r1.changed, '| own wallet', r2.changed, '| unverified', r3.changed, '| unknown', r4.changed, '| other player', r5.changed, '->', plot.owner === b ? 'Baran' : plot.owner);
+  if (!bought.ok || r1.changed || r2.changed || r3.changed || r4.changed || !still || !r5.changed || plot.owner !== b || g.players[b].plot !== 'plot-1' || g.players[a].plot || g.players[a].sleep) fail('the land did not follow its deed NFT correctly');
+  // one plot per villager: someone who already has land does not get a second one
+  g.balances['player:' + b] += 500; g.balances.treasury -= 500;
+  g.players[a].near = 'ayla.testnet';
+  g.balances['player:' + a] += 500; g.balances.treasury -= 500;
+  playerAction(g, a, { type: 'buyPlot', plot: 'plot-2' });
+  Object.assign(g.plots['plot-2'].deed, { minted: true, owner: 'ayla.testnet' });
+  const r6 = deedFollowsChain(g, 'plot-2', 'baran.testnet');
+  if (r6.changed || g.plots['plot-2'].owner !== a) fail('a villager with land got a second plot from a deed NFT');
+  if (Math.abs(totalMoney(g) - TOKEN.totalSupply) > 0.05) fail('money total changed when land followed its deed');
 }
 // Village Ledger: every recorded day waits for the ledger contract with the same full hash the game serves
 {

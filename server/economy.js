@@ -181,6 +181,28 @@ export function setDeed(state, plotId, info) {
   state.rev = (state.rev || 0) + 1;
 }
 
+// The deed NFT decides: when a minted deed turns up on NEAR in another player's verified wallet (they traded it
+// wallet to wallet, outside the game's exchange), the land and its house follow the NFT in the game.
+// Only that case changes anything: a deed with the village bank (escrow, or held for a player without a wallet),
+// in its owner's own wallet, or in a wallet no player has verified leaves the game's record as it is.
+export function deedFollowsChain(state, plotId, holder) {
+  const plot = state.plots && state.plots[plotId];
+  if (!plot || !plot.owner || !plot.deed || !plot.deed.minted || !holder) return { changed: false };
+  if (state.nearBank && holder === state.nearBank) return { changed: false, why: 'bank' };
+  const was = state.players[plot.owner];
+  if (was && was.nearVerified && was.near === holder) return { changed: false, why: 'same' };
+  const next = Object.values(state.players).find((q) => q.nearVerified && q.near === holder);
+  if (!next) { if (plot.deed.owner !== holder) { plot.deed.owner = holder; state.rev = (state.rev || 0) + 1; } return { changed: false, why: 'unknownWallet' }; }
+  if (next.plot) return { changed: false, why: 'havePlot' }; // one plot per villager: the game waits until they have none
+  if (was) { was.plot = null; if (was.sleep && was.sleep.place === plotId) was.sleep = null; }
+  if (plot.lease && plot.lease.tenant === next.id) { plot.lease = null; next.lease = null; } // the tenant now owns the house
+  plot.owner = next.id; plot.sale = null; plot.since = state.day; plot.deed.owner = holder;
+  next.plot = plotId;
+  addLog(state, `${next.name} now owns ${plotId}: the deed NFT moved to their wallet on NEAR.`, 'good', 'log.deedFollowed', { name: next.name, seller: was ? was.name : '?', place: { $place: plotId } });
+  state.rev = (state.rev || 0) + 1;
+  return { changed: true, from: was ? was.id : null, to: next.id };
+}
+
 export function linkWallet(state, playerId, accountId, verified = false) {
   const p = state.players[playerId];
   if (!p) return { ok: false, error: 'Unknown player.', code: 'err.unknownPlayer' };

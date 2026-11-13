@@ -2162,6 +2162,42 @@ function fairNote(x) {
   return `<p class="small ${ok ? 'fair-ok' : 'fair-no'}">${t(ok ? 'ex.fairOk' : 'ex.fairNo', { n: x.fair, max: Math.floor(x.fair * 1.1), p: x.sale.price })}</p>`;
 }
 
+// "Check it yourself": the player's own browser hashes the record the game serves and reads the same day's
+// record straight from the Village Ledger contract on NEAR (the game server is not asked what NEAR says)
+async function checkLedger(k) {
+  const [kind, dayS] = k.split(':'), day = Number(dayS), c = view.chain || {}, L = c.ledger || {};
+  ui.ledgerCheck = ui.ledgerCheck || {};
+  ui.ledgerCheck[k] = { busy: true }; renderPanel();
+  const done = (r) => { ui.ledgerCheck[k] = r; renderPanel(); };
+  const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  // 1. what NEAR holds, read from a public NEAR RPC
+  let rec = null, reached = false;
+  const args = btoa(JSON.stringify({ kind, day }));
+  for (const url of c.rpc || ['https://rpc.testnet.fastnear.com', 'https://rpc.testnet.near.org']) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'ew', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: L.contract, method_name: 'get', args_base64: args } }) });
+      const j = await r.json();
+      if (j && j.result && Array.isArray(j.result.result)) { rec = JSON.parse(new TextDecoder().decode(new Uint8Array(j.result.result))); reached = true; break; }
+    } catch { /* next RPC */ }
+  }
+  if (!reached) return done({ ok: false, html: t('ledger.err') });
+  if (!rec) return done({ ok: false, html: t('ledger.notYet') });
+  // 2. the record the game serves, hashed here in the browser from its exact bytes
+  let bytes = null;
+  try {
+    const r = await fetch(kind === 'state' ? '/api/state-record?day=' + day : '/api/ai/plan?day=' + day);
+    if (r.ok) { const b = await r.arrayBuffer(); const j = JSON.parse(new TextDecoder().decode(b)); if (j && j.day === day) bytes = b; }
+  } catch { /* the game no longer keeps it */ }
+  const onNear = `<code>${esc(rec.sha256.slice(0, 16))}…</code>`;
+  const where = t('ledger.where', { c: esc(L.contract), b: rec.block_height });
+  if (!bytes) return done({ ok: true, html: t('ledger.gone', { h: onNear }) + ' ' + where });
+  const mine = hex(await crypto.subtle.digest('SHA-256', bytes));
+  if (mine !== rec.sha256) return done({ ok: false, html: t('ledger.bad', { a: `<code>${mine.slice(0, 16)}…</code>`, b: onNear }) });
+  let extra = '';
+  if (kind === 'ai_plan') extra = ' ' + t('ledger.ai', { m: esc(rec.model || '?'), tee: rec.tee ? '✓' : '✗', sig: rec.signed ? '✓' : '✗' });
+  done({ ok: true, html: t('ledger.ok', { h: `<code>${mine.slice(0, 16)}…</code>` }) + ' ' + where + extra });
+}
+
 // read-only: the deed NFT's holder read live from the NEAR contract, next to the game's own record
 const deedLiveCache = {};
 function deedLive(id) {
@@ -2496,7 +2532,12 @@ function panelNear() {
       h += `<p class="sub2">${t('near.ledger')}</p><p class="muted small">${t('near.ledger.note')}</p>`;
       if (L.status === 'ready') {
         h += `<p>${exLink('address/' + L.contract, esc(L.contract))}${L.locked ? ` · <span class="nocut">🔒 ${t('near.ledger.locked')}</span>` : ''}</p>`;
-        h += done.length ? `<ul class="decided">${done.slice(0, 6).map((x) => `<li>${t('near.ledger.' + (x.kind === 'state' ? 'state' : 'plan'), { n: x.day })} · <code>${esc(String(x.sha256).slice(0, 12))}…</code>${x.tx ? ' · ' + exLink('txns/' + x.tx, '⛓', 'near-link small') : ''}</li>`).join('')}</ul>` : `<p class="muted small">${t('near.ledger.none')}</p>`;
+        h += done.length ? `<p class="muted small">${t('ledger.checkNote')}</p><ul class="decided ledger-list">${done.slice(0, 6).map((x) => {
+          const k = x.kind + ':' + x.day, r = (ui.ledgerCheck || {})[k];
+          return `<li>${t('near.ledger.' + (x.kind === 'state' ? 'state' : 'plan'), { n: x.day })} · <code>${esc(String(x.sha256).slice(0, 12))}…</code>${x.tx ? ' · ' + exLink('txns/' + x.tx, '⛓', 'near-link small') : ''}` +
+            ` <button class="ledger-btn" data-ledgercheck="${esc(k)}"${r && r.busy ? ' disabled' : ''}>${t(r && r.busy ? 'ledger.checking' : 'ledger.check')}</button>` +
+            (r && !r.busy ? `<div class="ledger-res ${r.ok ? 'ok' : 'bad'}">${r.html}</div>` : '') + '</li>';
+        }).join('')}</ul>` : `<p class="muted small">${t('near.ledger.none')}</p>`;
       } else h += `<p>${esc(L.contract)} · ${esc(L.status)}${L.detail && L.detail.amount ? ` (${t('near.st.need-funds', { n: L.detail.amount })} <code class="addr">${esc(L.detail.address)}</code>)` : ''}</p>`;
     }
     h += `<p class="sub2">${t('near.accounts')}</p><table class="near-acc">${[a.bank, a.treasury, a.deposits, ...Object.values(a.npcs)].filter(Boolean).map(row).join('')}</table>`;
@@ -3043,6 +3084,9 @@ function villageAccounts() {
 const TOUR = [
   { k: 'start' },
   { k: 'ai', go: () => select('bakery'), links: [['ai.attestLink', '/api/ai/attestation'], ['ai.planJson', '/api/ai/plan']] },
+  // our own contract, and a check that runs in the judge's browser, not on our server
+  { k: 'proof', go: () => { ui.selected = 'near'; renderMapNow(); renderPanel(); setTimeout(() => { const el = document.querySelector('.ledger-list') || document.querySelector('[data-ledgercheck]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); },
+    links: () => { const c = (view && view.chain) || {}; const L = c.ledger && c.ledger.contract; return L ? [['tour.l.ledger', NB + L], ['tour.l.ledgerCode', 'https://github.com/Crow-ave/emberwick/tree/main/contracts/village-ledger']] : []; } },
   { k: 'haggle', go: () => select('inn') },
   // the links point at the accounts of the village this server runs (the online demo has its own)
   { k: 'token', go: () => select('treasury'), links: () => { const a = villageAccounts(); return [['tour.l.token', NB + a.token], ['tour.l.bank', NB + a.bank], ['tour.l.treasury', NB + a.treasury], ['tour.l.agent', NB + 'bakery.' + a.bank]]; } },
@@ -3197,6 +3241,8 @@ document.body.addEventListener('click', (e) => {
   if (e.target.closest('[data-howto]')) { openHowto(); return; }
   const tb = e.target.closest('[data-tour]');
   if (tb) { if (!playerId && Number(tb.dataset.tour) > 0) return toast(t('toast.join'), 'bad'); tourTo(Number(tb.dataset.tour)); return; }
+  const lc = e.target.closest('[data-ledgercheck]');
+  if (lc) { checkLedger(lc.dataset.ledgercheck); return; }
   const rc = e.target.closest('[data-realcancel]');
   if (rc) { const v = rc.dataset.realcancel; if (v === 'ask') ui.realCancelAsk = true; else if (v === 'no') ui.realCancelAsk = false; else cancelReal(); render(); return; }
   if (e.target.closest('[data-recipclear]')) { readRealForm(); ui.real.recipient = ''; ui.recipTyped = true; render(); setTimeout(() => { const i = $('real-recip'); if (i) i.focus(); }, 30); return; }
