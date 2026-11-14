@@ -4,6 +4,8 @@
 
 **▶ Play it now: [emberwick-xcf8.onrender.com](https://emberwick-xcf8.onrender.com)** (desktop and phone) · Press **Judge tour** in the top bar · Source: [github.com/Crow-ave/emberwick](https://github.com/Crow-ave/emberwick) (MIT, [LICENSE](LICENSE))
 
+**🎬 Demo video (5 min, with chapters): [youtu.be/cUxQbZLcUT0](https://youtu.be/cUxQbZLcUT0)**
+
 ![The village of Emberwick: an isometric map with shops, fields, a mine, the council hall and Dragon peak](docs/img/village.jpg)
 
 ### Try it in 30 seconds
